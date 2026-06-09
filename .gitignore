@@ -1,0 +1,35 @@
+.DS_Store
+node_modules/
+.next/
+out/
+dist/
+
+# Secrets and local databases
+.env
+.env.*
+!.env.example
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+app/prisma/*.db*
+app/tmp/
+tmp/
+
+# Raw handoff data and generated exports are not committed to the public repo.
+files/
+files.zip
+source_files/
+**/*.xlsx
+**/*.xls
+**/*.xlsm
+**/*.pdf
+
+# Data extracts that may contain production product/actual data.
+docs/*.csv
+docs/*.json
+docs/user_manual.html
+docs/user_manual_assets/
+app/exports/
+app/tsconfig.tsbuildinfo
+.snapshots/

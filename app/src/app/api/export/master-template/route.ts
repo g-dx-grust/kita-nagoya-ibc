@@ -1,0 +1,202 @@
+import { toCsv } from "@/lib/csv";
+import { badRequest, handleError } from "@/lib/http";
+
+const TEMPLATES: Record<string, { header: string[]; example: (string | number)[][] }> = {
+  products: {
+    header: [
+      "product_code",
+      "official_name",
+      "display_name",
+      "production_type",
+      "safety_stock_quantity",
+      "standard_production_lot_size",
+      "unit",
+      "pack_size_g",
+      "pack_count",
+      "case_pack_qty",
+      "category",
+      "source_system",
+      "source_product_key",
+      "source_sheet_name",
+      "source_row_number",
+      "specification",
+      "pack_count_expression",
+      "bundle_count",
+      "brand_name",
+      "bag_tray_name",
+      "carton_name",
+      "accessory_name",
+      "seal_count",
+      "classification_note",
+      "raw_material_note",
+      "default_work_area_name",
+      "billing_enabled",
+      "note",
+      "aliases",
+      "forecast_method",
+      "equivalence_group_name",
+      "valid_from",
+      "valid_to",
+    ],
+    example: [
+      [
+        "P001",
+        "サンプル商品A",
+        "商品A",
+        "stock",
+        200,
+        500,
+        "袋",
+        100,
+        24,
+        24,
+        "通常",
+        "",
+        "",
+        "",
+        "",
+        "100g",
+        "24",
+        "6",
+        "サンプルB",
+        "専用袋",
+        "KS-1",
+        "バイタロン 100",
+        2,
+        "",
+        "原料メモ",
+        "一般部屋",
+        "true",
+        "",
+        "旧名A|別名A",
+        "YEAR_RATIO",
+        "",
+        "2026-01-01",
+        "",
+      ],
+    ],
+  },
+  materials: {
+    header: [
+      "material_code",
+      "name",
+      "unit",
+      "standard_unit_price",
+      "supplier_name",
+      "lead_time_days",
+      "shelf_life_managed",
+      "note",
+      "safety_stock_quantity",
+      "order_lot_qty",
+      "min_order_qty",
+      "valid_from",
+      "valid_to",
+    ],
+    example: [["RM001", "サンプル原料X", "kg", 200, "サンプル仕入先", 3, "false", "", 5, 10, 10, "2026-01-01", ""]],
+  },
+  packaging: {
+    header: [
+      "material_code",
+      "name",
+      "kind",
+      "unit",
+      "case_pack_qty",
+      "standard_unit_price",
+      "supplier_name",
+      "lead_time_days",
+      "note",
+      "safety_stock_quantity",
+      "order_lot_qty",
+      "min_order_qty",
+      "valid_from",
+      "valid_to",
+    ],
+    example: [["PK001", "標準袋", "bag", "枚", 100, 5, "サンプル仕入先", 7, "", 500, 1000, 1000, "2026-01-01", ""]],
+  },
+  "work-areas": {
+    header: [
+      "name",
+      "area_type",
+      "default_start_time",
+      "default_end_time",
+      "max_people_count",
+      "display_order",
+      "external_flag",
+      "note",
+      "equipment_kind",
+      "concurrent_operation_allowed",
+      "valid_from",
+      "valid_to",
+    ],
+    example: [["一般部屋", "internal", "09:00", "17:00", 6, 1, "false", "", "ROOM", "true", "2026-01-01", ""]],
+  },
+  capacities: {
+    header: [
+      "product_code",
+      "product_name",
+      "work_area_name",
+      "units_per_person_hour",
+      "standard_people",
+      "standard_break_minutes",
+      "note",
+      "source_type",
+      "locked",
+      "valid_from",
+      "valid_to",
+    ],
+    example: [["P001", "", "一般部屋", 100, 5, 0, "", "MANUAL", "false", "2026-01-01", ""]],
+  },
+  shifts: {
+    header: [
+      "employee_name",
+      "date",
+      "start_time",
+      "end_time",
+      "break_minutes",
+      "status",
+      "shift_pattern_name",
+    ],
+    example: [["山田太郎", "2026-05-20", "09:00", "17:00", 60, "confirmed", "標準（平日）"]],
+  },
+  "shift-patterns": {
+    header: [
+      "name",
+      "start_time",
+      "end_time",
+      "overtime_allowed",
+      "note",
+      "valid_from",
+      "valid_to",
+    ],
+    example: [["標準（平日）", "08:00", "17:00", "true", "", "2026-01-01", ""]],
+  },
+  "shift-breaks": {
+    header: ["shift_pattern_name", "start_time", "end_time", "label", "valid_from", "valid_to"],
+    example: [["", "12:00", "13:00", "昼休憩", "2026-01-01", ""]],
+  },
+  "product-monthly-actuals": {
+    header: ["product_code", "year_month", "actual_quantity", "source_type", "note"],
+    example: [
+      ["P001", "2025-03", 800, "manual", ""],
+      ["P001", "2025-04", 900, "manual", ""],
+    ],
+  },
+};
+
+export async function GET(req: Request) {
+  try {
+    const url = new URL(req.url);
+    const type = url.searchParams.get("type") ?? "";
+    const tpl = TEMPLATES[type];
+    if (!tpl) return badRequest("unknown_template", { type });
+    const csv = toCsv(tpl.header, tpl.example);
+    return new Response("﻿" + csv, {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${type}_template.csv"`,
+      },
+    });
+  } catch (e) {
+    return handleError(e);
+  }
+}

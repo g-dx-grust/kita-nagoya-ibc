@@ -1,0 +1,702 @@
+// Kitagoya Production System – Phase 0 + 1 schema.
+// Production target: Supabase PostgreSQL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// --- Auth / users ---
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  role      String // admin | production_mgr | floor | purchasing | accounting | viewer
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// --- Masters ---
+
+model WorkArea {
+  id                         String    @id @default(cuid())
+  name                       String    @unique
+  areaType                   String // internal | external | warehouse
+  defaultStartTime           String? // HH:MM
+  defaultEndTime             String?
+  maxPeopleCount             Int       @default(4)
+  displayOrder               Int       @default(0)
+  equipmentKind              String    @default("ROOM") // ROOM | LINE | MACHINE | OTHER
+  concurrentOperationAllowed Boolean   @default(true)
+  active                     Boolean   @default(true)
+  externalFlag               Boolean   @default(false)
+  validFrom                  DateTime?
+  validTo                    DateTime?
+  note                       String?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+
+  productsDefault      Product[]            @relation("ProductDefaultWorkArea")
+  productionCapacities ProductionCapacity[]
+  productionPlans      ProductionPlan[]
+}
+
+model Product {
+  id                        String                   @id @default(cuid())
+  productCode               String                   @unique
+  officialName              String
+  displayName               String?
+  productionType            String // stock | make_to_order | both
+  forecastMethod            String                   @default("MANUAL") // MANUAL | YEAR_RATIO | SALES_INPUT | NONE
+  equivalenceGroupId        String?
+  safetyStockQuantity       Float                    @default(0)
+  standardProductionLotSize Float                    @default(0)
+  schedulePriority          Int? // 生産スケジュール並び順(小さいほど先)。null=従来順(納期→希望日→商品コード)
+  unit                      String                   @default("袋") // base counting unit
+  packSizeG                 Float? // 入り数g
+  packCount                 Int? // 入数
+  casePackQty               Float? // ケース入数 (1ケース=何基本単位か。例 24袋/ケース)。null時はケース表記しない
+  category                  String?
+  sourceSystem              String? // 取込元システム/ファイル種別
+  sourceProductKey          String?                  @unique // 取込元での安定識別キー
+  sourceSheetName           String?
+  sourceRowNumber           Int?
+  specification             String? // 規格
+  packCountExpression       String? // 入数の原表記
+  bundleCount               String? // 結束
+  brandName                 String?
+  bagTrayName               String?
+  cartonName                String?
+  accessoryName             String? // 備品
+  sealCount                 Float?
+  classificationNote        String? // 商品分類表の備考
+  rawMaterialNote           String? // 商品分類表の原料欄
+  defaultWorkAreaId         String?
+  defaultWorkArea           WorkArea?                @relation("ProductDefaultWorkArea", fields: [defaultWorkAreaId], references: [id])
+  equivalenceGroup          ProductEquivalenceGroup? @relation(fields: [equivalenceGroupId], references: [id])
+  billingEnabled            Boolean                  @default(true)
+  usedAtKitagoya            Boolean                  @default(false) // 北名古屋拠点で使用する商品か(暫定スコープ)
+  active                    Boolean                  @default(true)
+  validFrom                 DateTime?
+  validTo                   DateTime?
+  note                      String?
+  createdAt                 DateTime                 @default(now())
+  updatedAt                 DateTime                 @updatedAt
+
+  aliases               ProductAlias[]
+  bomItems              ProductBomItem[]
+  capacities            ProductionCapacity[]
+  billingPrices         BillingPrice[]
+  productionPlans       ProductionPlan[]
+  demands               ProductDemand[]
+  monthlyActuals        ProductMonthlyActual[]
+  dailyReportEntries    ProductionDailyReportEntry[]
+  monthlyLaborFees      ProductMonthlyLaborFee[]
+  equivalenceGroupItems ProductEquivalenceGroupItem[]
+  specialDemandEvents   SpecialDemandEvent[]
+
+  @@index([equivalenceGroupId])
+  @@index([sourceSystem, sourceProductKey])
+}
+
+model ProductAlias {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  aliasName String
+
+  @@unique([productId, aliasName])
+}
+
+model Material {
+  id                  String    @id @default(cuid())
+  materialCode        String    @unique
+  name                String
+  unit                String    @default("kg")
+  standardUnitPrice   Float     @default(0)
+  supplierId          String?
+  supplier            Supplier? @relation(fields: [supplierId], references: [id])
+  leadTimeDays        Int       @default(0)
+  safetyStockQuantity Float     @default(0)
+  orderLotQty         Float?
+  minOrderQty         Float?
+  shelfLifeManaged    Boolean   @default(false)
+  active              Boolean   @default(true)
+  validFrom           DateTime?
+  validTo             DateTime?
+  note                String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  dailyReportMaterials ProductionDailyReportEntryMaterial[]
+}
+
+model PackagingMaterial {
+  id                  String    @id @default(cuid())
+  materialCode        String    @unique
+  name                String
+  kind                String? // bag | desiccant | carton | other
+  unit                String    @default("枚")
+  casePackQty         Float? // ケース入数 (1ケース=何基本単位か)。null時はケース表記しない
+  standardUnitPrice   Float     @default(0)
+  supplierId          String?
+  supplier            Supplier? @relation(fields: [supplierId], references: [id])
+  leadTimeDays        Int       @default(0)
+  safetyStockQuantity Float     @default(0)
+  orderLotQty         Float?
+  minOrderQty         Float?
+  active              Boolean   @default(true)
+  validFrom           DateTime?
+  validTo             DateTime?
+  note                String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+}
+
+model Supplier {
+  id           String    @id @default(cuid())
+  name         String    @unique
+  contact      String?
+  orderingUnit String?
+  closingInfo  String?
+  active       Boolean   @default(true)
+  validFrom    DateTime?
+  validTo      DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  materials          Material[]
+  packagingMaterials PackagingMaterial[]
+}
+
+model ProductBomItem {
+  id              String    @id @default(cuid())
+  productId       String
+  product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  itemType        String // raw_material | packaging
+  itemId          String // -> Material.id or PackagingMaterial.id
+  quantityPerUnit Float
+  unit            String
+  lossRate        Float     @default(0)
+  mixRatio        Float? // for mixed raw materials
+  active          Boolean   @default(true)
+  validFrom       DateTime?
+  validTo         DateTime?
+  note            String?
+
+  @@index([productId])
+  @@index([itemType, itemId])
+}
+
+model ProductionCapacity {
+  id                   String    @id @default(cuid())
+  productId            String
+  product              Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  workAreaId           String
+  workArea             WorkArea  @relation(fields: [workAreaId], references: [id])
+  unitsPerPersonHour   Float
+  standardPeople       Float     @default(1)
+  standardBreakMinutes Int       @default(0)
+  note                 String?
+  sourceType           String    @default("MANUAL") // MANUAL | DAILY_REPORT_MEDIAN
+  locked               Boolean   @default(false)
+  active               Boolean   @default(true)
+  validFrom            DateTime?
+  validTo              DateTime?
+  reviewStatus         String    @default("unreviewed") // unreviewed | confirmed | needs_review
+  reviewMemo           String?
+  reviewedAt           DateTime?
+
+  @@unique([productId, workAreaId])
+}
+
+model BillingPrice {
+  id            String    @id @default(cuid())
+  productId     String
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  unitPrice     Float
+  unit          String
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  billingTarget Boolean   @default(true)
+  externalCode  String?
+  note          String?
+
+  @@index([productId, effectiveFrom])
+}
+
+model Employee {
+  id                  String   @id @default(cuid())
+  name                String
+  employmentType      String   @default("own") // own | temp | other
+  affiliation         String?
+  defaultStartTime    String   @default("09:00") // HH:MM
+  defaultEndTime      String   @default("17:00")
+  defaultBreakMinutes Int      @default(60)
+  active              Boolean  @default(true)
+  note                String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  shifts      Shift[]
+  assignments ProductionPlanAssignment[]
+}
+
+model ShiftPattern {
+  id              String    @id @default(cuid())
+  name            String
+  startTime       String
+  endTime         String
+  overtimeAllowed Boolean   @default(false)
+  active          Boolean   @default(true)
+  validFrom       DateTime?
+  validTo         DateTime?
+  note            String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  shifts Shift[]
+  breaks ShiftBreak[]
+
+  @@map("shift_patterns")
+}
+
+model ShiftBreak {
+  id             String    @id @default(cuid())
+  shiftPatternId String?
+  startTime      String
+  endTime        String
+  label          String?
+  active         Boolean   @default(true)
+  validFrom      DateTime?
+  validTo        DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  pattern ShiftPattern? @relation(fields: [shiftPatternId], references: [id], onDelete: Cascade)
+
+  @@index([shiftPatternId, startTime])
+  @@map("shift_breaks")
+}
+
+model Shift {
+  id             String        @id @default(cuid())
+  employeeId     String
+  employee       Employee      @relation(fields: [employeeId], references: [id])
+  date           DateTime
+  startTime      String // HH:MM
+  endTime        String
+  breakMinutes   Int           @default(60)
+  status         String        @default("draft") // draft | confirmed | off
+  shiftPatternId String?
+  pattern        ShiftPattern? @relation(fields: [shiftPatternId], references: [id])
+
+  @@unique([employeeId, date])
+}
+
+// --- Production plan ---
+
+model ProductionPlan {
+  id                 String   @id @default(cuid())
+  date               DateTime
+  productId          String
+  product            Product  @relation(fields: [productId], references: [id])
+  productionType     String // stock | make_to_order | external | trial | other
+  plannedQuantity    Float
+  unit               String
+  workAreaId         String
+  workArea           WorkArea @relation(fields: [workAreaId], references: [id])
+  plannedStartTime   String // HH:MM
+  plannedEndTime     String?
+  desiredEndTime     String?
+  breakMinutes       Int      @default(0)
+  plannedPeopleCount Float
+  status             String   @default("draft") // draft | confirmed | cancelled | completed
+  overflowQuantity   Float    @default(0)
+  overtimeMinutes    Int      @default(0)
+
+  // Cached estimates
+  estUnitsPerPersonHour Float?
+  estLaborCost          Float?
+  estMaterialCost       Float?
+  estPackagingCost      Float?
+  estTotalCost          Float?
+
+  baselineEndTime String   @default("17:00")
+  note            String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  requirements ProductionPlanRequirement[]
+  assignments  ProductionPlanAssignment[]
+  dailyReport  DailyReport?
+
+  @@index([date])
+  @@index([workAreaId, date])
+}
+
+model ProductionPlanRequirement {
+  id                 String         @id @default(cuid())
+  productionPlanId   String
+  productionPlan     ProductionPlan @relation(fields: [productionPlanId], references: [id], onDelete: Cascade)
+  itemType           String // raw_material | packaging
+  itemId             String
+  itemName           String // snapshot for display
+  unit               String
+  plannedQuantity    Float
+  onHandQuantity     Float          @default(0)
+  confirmedInbound   Float          @default(0)
+  unconfirmedInbound Float          @default(0)
+  shortageQuantity   Float          @default(0)
+  shortageType       String         @default("none") // none | hard_shortage | unconfirmed_dependency
+  unitPriceSnapshot  Float          @default(0)
+
+  @@index([productionPlanId])
+}
+
+model ProductionPlanAssignment {
+  id               String         @id @default(cuid())
+  productionPlanId String
+  productionPlan   ProductionPlan @relation(fields: [productionPlanId], references: [id], onDelete: Cascade)
+  employeeId       String
+  employee         Employee       @relation(fields: [employeeId], references: [id])
+  startTime        String
+  endTime          String
+  moveAfterPlanId  String?
+}
+
+// --- Stock ledger ---
+
+model StockMovement {
+  id            String   @id @default(cuid())
+  itemType      String // raw_material | packaging | product
+  itemId        String
+  locationId    String?
+  movementType  String // opening | planned_reserve | actual_consume | inbound | adjustment | transfer
+  quantity      Float // negative for consumption
+  effectiveDate DateTime
+  sourceType    String?
+  sourceId      String?
+  status        String   @default("CONFIRMED") // PLANNED | CONFIRMED | CANCELLED
+  unitPrice     Float?
+  note          String?
+  expiryDate       DateTime? // 賞味期限 (手入力。主に入庫ロット)
+  shippingDeadline DateTime? // 出荷期限 (手入力)
+  createdAt     DateTime @default(now())
+
+  @@unique([sourceType, sourceId, movementType], name: "stock_movement_source_unique")
+  @@index([itemType, itemId, effectiveDate])
+}
+
+// --- Purchase orders (Phase 2 scaffold) ---
+
+model PurchaseOrder {
+  id                   String    @id @default(cuid())
+  itemType             String // raw_material | packaging
+  itemId               String
+  supplierId           String?
+  orderedQuantity      Float
+  confirmedQuantity    Float?
+  expectedArrivalDate  DateTime?
+  shortageDate         DateTime?
+  recommendedOrderDate DateTime?
+  urgency              String    @default("NONE") // CRITICAL|WARNING|INFO|NONE
+  sourceType           String?
+  sourceId             String?
+  status               String    @default("candidate") // candidate|draft|ordered_unconfirmed|confirmed|received|cancelled
+  receivedQuantity     Float?
+  receivedDate         DateTime?
+  note                 String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([itemType, itemId, status])
+  @@index([status, shortageDate])
+  @@index([urgency, recommendedOrderDate])
+}
+
+// --- Product inventory demand (Phase 6 minimum viable planning) ---
+
+model ProductDemand {
+  id           String   @id @default(cuid())
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  dueDate      DateTime
+  demandType   String   @default("order") // order | shipment | forecast
+  quantity     Float
+  status       String   @default("open") // open | fulfilled | cancelled
+  customerName String?
+  externalRef  String?
+  note         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([productId, dueDate])
+  @@index([status, dueDate])
+}
+
+// Product monthly actual quantities used to forecast monthly production before
+// the previous month has been finalized for material procurement.
+
+model ProductMonthlyActual {
+  id             String   @id @default(cuid())
+  productId      String
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  yearMonth      String // YYYY-MM
+  actualQuantity Float
+  sourceType     String   @default("manual") // manual | import | daily_report
+  note           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([productId, yearMonth])
+  @@index([yearMonth])
+}
+
+// Excel由来の「製造日報」蓄積台帳。
+// 既存の DailyReport は ProductionPlan に紐づく在庫反映用の実績であり、
+// 過去Excel取込・商品別月次集計・手間賃検証用の日報行はこのテーブルへ保存する。
+model LaborFeeRate {
+  id         String    @id @default(cuid())
+  code       String    @unique
+  name       String
+  hourlyRate Float
+  active     Boolean   @default(true)
+  validFrom  DateTime?
+  validTo    DateTime?
+  note       String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  dailyReportEntries ProductionDailyReportEntry[]
+}
+
+model ProductionDailyReportEntry {
+  id                    String        @id @default(cuid())
+  reportDate            DateTime
+  productId             String?
+  product               Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productName           String
+  normalizedProductName String
+  productMatchStatus    String        @default("unmatched") // product_id | exact | alias | fuzzy | unmatched
+  expiryDate            DateTime?
+  startTime             String
+  endTime               String
+  breakMinutes          Int           @default(0)
+  workerCount           Float
+  productionQty         Float
+  materialUsedKg        Float
+  laborFeeRateId        String?
+  laborFeeRate          LaborFeeRate? @relation(fields: [laborFeeRateId], references: [id], onDelete: SetNull)
+  note                  String?
+  sourceType            String        @default("manual") // manual | excel_import | api_import
+  sourceSheetName       String?
+  sourceRowNumber       Int?
+  active                Boolean       @default(true)
+  approvalStatus        String        @default("approved") // submitted | approved | rejected
+  submittedBy           String?
+  approvedAt            DateTime?
+  approvedBy            String?
+  labelPhotosJson       String        @default("[]") // [{name,type,dataUrl}] for staff label photo review
+
+  // 商品/BOM/単価は日報時点の値をスナップショットする。
+  capacityGSnapshot             Float?
+  materialUnitCostSnapshot      Float @default(0)
+  packageCostPerUnitSnapshot    Float @default(0)
+  unitPriceSnapshot             Float @default(0)
+  laborHourlyRateSnapshot       Float @default(0)
+
+  // 計算列。手入力させず、保存時に product-daily-report-calculations.ts から導出する。
+  operatingMinutes       Float @default(0)
+  totalOperatingMinutes  Float @default(0)
+  perHourQty             Float @default(0)
+  perUnitTimeMinutes     Float @default(0)
+  laborFeePerUnit        Float @default(0)
+  bagWeightG             Float @default(0)
+  lossRate               Float @default(0)
+  materialCost           Float @default(0)
+  packageCost            Float @default(0)
+  totalCost              Float @default(0)
+  sales                  Float @default(0)
+  profitRate             Float @default(0)
+  calculationWarnings    String @default("[]")
+
+  materials ProductionDailyReportEntryMaterial[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([reportDate])
+  @@index([productId, reportDate])
+  @@index([normalizedProductName])
+  @@index([sourceType, sourceSheetName, sourceRowNumber])
+}
+
+// 日報1行で使用した原料(複数可)。materialId を持つ行だけ在庫差引対象。
+// 親 ProductionDailyReportEntry.materialUsedKg は usedKg の合計を保持する(派生値)。
+model ProductionDailyReportEntryMaterial {
+  id                String                     @id @default(cuid())
+  entryId           String
+  entry             ProductionDailyReportEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  materialId        String?
+  material          Material?                  @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  materialName      String
+  materialCode      String?
+  usedKg            Float
+  unitPriceSnapshot Float                      @default(0)
+  mixRatio          Float?
+  sortOrder         Int                        @default(0)
+
+  @@index([entryId])
+  @@index([materialId])
+}
+
+// 蓄積日報から商品別・月次に算出した「1袋手間賃」のスナップショット。
+// status=draft で再計算保存、手動 apply で BillingPrice(売値=手間賃単価)へ反映する。
+model ProductMonthlyLaborFee {
+  id                  String    @id @default(cuid())
+  productId           String
+  product             Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  yearMonth           String // YYYY-MM
+  perBagLaborFee      Float // 対象月の laborFeePerUnit の中央値
+  avgPerHourQty       Float     @default(0)
+  sampleCount         Int       @default(0)
+  status              String    @default("draft") // draft | applied
+  computedAt          DateTime  @default(now())
+  appliedAt           DateTime?
+  appliedBillingPriceId String?
+  note                String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([productId, yearMonth])
+  @@index([yearMonth])
+}
+
+model ProductEquivalenceGroup {
+  id              String    @id @default(cuid())
+  name            String
+  calculationMode String    @default("SUM_AS_SAME_PRODUCT") // SUM_AS_SAME_PRODUCT | REFERENCE_ONLY
+  active          Boolean   @default(true)
+  validFrom       DateTime?
+  validTo         DateTime?
+  note            String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  items    ProductEquivalenceGroupItem[]
+  products Product[]
+
+  @@map("product_equivalence_groups")
+}
+
+model ProductEquivalenceGroupItem {
+  id        String    @id @default(cuid())
+  groupId   String
+  productId String
+  validFrom DateTime?
+  validTo   DateTime?
+  createdAt DateTime  @default(now())
+
+  group   ProductEquivalenceGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  product Product                 @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, productId])
+  @@index([productId])
+  @@map("product_equivalence_group_items")
+}
+
+model SpecialDemandEvent {
+  id                      String    @id @default(cuid())
+  productId               String
+  productionPlanCandidate String?
+  customerLabel           String?
+  targetYearMonth         String
+  qty                     Float
+  eventType               String // FLYER | SPECIAL_CUSTOMER | CAMPAIGN | OTHER
+  includeInNormalForecast Boolean   @default(false)
+  status                  String    @default("DRAFT") // DRAFT | CONFIRMED | CANCELLED
+  note                    String?
+  validFrom               DateTime?
+  validTo                 DateTime?
+  active                  Boolean   @default(true)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([targetYearMonth, productId])
+  @@index([productId])
+  @@map("special_demand_events")
+}
+
+// --- Daily reports (Phase 4 scaffold) ---
+
+model DailyReport {
+  id                 String         @id @default(cuid())
+  productionPlanId   String         @unique
+  productionPlan     ProductionPlan @relation(fields: [productionPlanId], references: [id], onDelete: Cascade)
+  actualStartTime    String?
+  actualEndTime      String?
+  actualBreakMinutes Int?
+  actualPeopleCount  Float?
+  actualQuantity     Float?
+  // 実績原価（確定時に実績数量×単価で再計算。予定原価 ProductionPlan.est* とは別管理）
+  actualLaborCost     Float?
+  actualMaterialCost  Float?
+  actualPackagingCost Float?
+  actualTotalCost     Float?
+  status             String    @default("draft") // draft|confirmed|voided
+  confirmedAt        DateTime?
+  note               String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  consumptions DailyReportConsumption[]
+}
+
+model DailyReportConsumption {
+  id                String      @id @default(cuid())
+  dailyReportId     String
+  dailyReport       DailyReport @relation(fields: [dailyReportId], references: [id], onDelete: Cascade)
+  itemType          String
+  itemId            String
+  actualQuantity    Float
+  unitPriceSnapshot Float       @default(0)
+}
+
+// --- Invoice exports (Phase 5 scaffold) ---
+
+model InvoiceExport {
+  id          String   @id @default(cuid())
+  periodStart DateTime
+  periodEnd   DateTime
+  exportedBy  String?
+  exportedAt  DateTime @default(now())
+  fileName    String
+  rowCount    Int      @default(0)
+  totalAmount Float    @default(0)
+}
+
+// --- Audit log ---
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  beforeJson String? // JSON
+  afterJson  String? // JSON
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}

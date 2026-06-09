@@ -1,0 +1,368 @@
+import {
+  computeProductPlanningSuggestions,
+  type ProductPlanningDemand,
+  type ProductPlanningProduct,
+} from "./product-planning";
+import {
+  computeMonthlyProductionSchedule,
+  schedulePriorityKey,
+  type MonthlyPlanningDemand,
+  type MonthlyPlanningExistingProduction,
+  type MonthlyPlanningProduct,
+  type MonthlyProductionProductSummary,
+  type MonthlyProductionSuggestion,
+} from "./monthly-production-schedule";
+import {
+  computeHistoricalMonthlyProductionForecasts,
+  getHistoricalForecastReferenceMonths,
+  yearMonthFromDateInput,
+  type MonthlyProductionActualQuantity,
+  type MonthlyProductionForecastProduct,
+  type ProductForecastMethod,
+} from "./monthly-production-forecast";
+import { computeMonthlyVariance, type MonthlyVarianceRow } from "./monthly-reconciliation";
+import { isExcludedFromNormalForecast } from "./special-demand-events";
+import { getInventoryFor } from "./inventory";
+import { prisma } from "./prisma";
+
+export type MonthlyProductionPlanningBasis = "historical_actual" | "inventory_shortage";
+
+export async function loadProductPlanningSuggestions({
+  dateFrom,
+  dateTo,
+}: {
+  dateFrom: Date;
+  dateTo: Date;
+}) {
+  const [products, planRows, demandRows] = await Promise.all([
+    prisma.product.findMany({ where: { active: true }, orderBy: { productCode: "asc" } }),
+    prisma.productionPlan.groupBy({
+      by: ["productId"],
+      where: {
+        date: { gte: dateFrom, lte: dateTo },
+        status: { in: ["draft", "confirmed"] },
+      },
+      _sum: { plannedQuantity: true },
+    }),
+    prisma.productDemand.findMany({
+      where: {
+        dueDate: { lte: dateTo },
+        status: "open",
+        product: { active: true },
+      },
+    }),
+  ]);
+  const productInventory = await getInventoryFor(
+    "product",
+    products.map((product) => product.id),
+    dateFrom,
+  );
+
+  const onHandByProductId: Record<string, number> = {};
+  const confirmedInboundByProductId: Record<string, number> = {};
+  const unconfirmedInboundByProductId: Record<string, number> = {};
+  const plannedInByProductId: Record<string, number> = {};
+  for (const product of products) {
+    const inventory = productInventory[product.id];
+    onHandByProductId[product.id] = inventory?.onHand ?? 0;
+    confirmedInboundByProductId[product.id] = inventory?.confirmedInbound ?? 0;
+    unconfirmedInboundByProductId[product.id] = inventory?.unconfirmedInbound ?? 0;
+    plannedInByProductId[product.id] = inventory?.plannedIn ?? 0;
+  }
+
+  const plannedProductionByProductId: Record<string, number> = {};
+  for (const row of planRows) {
+    plannedProductionByProductId[row.productId] = plannedInByProductId[row.productId] || row._sum.plannedQuantity || 0;
+  }
+  for (const [productId, quantity] of Object.entries(plannedInByProductId)) {
+    if (plannedProductionByProductId[productId] == null) plannedProductionByProductId[productId] = quantity;
+  }
+
+  return computeProductPlanningSuggestions({
+    products: products.map<ProductPlanningProduct>((product) => ({
+      productId: product.id,
+      productCode: product.productCode,
+      productName: product.officialName,
+      productionType: product.productionType as ProductPlanningProduct["productionType"],
+      unit: product.unit,
+      safetyStockQuantity: product.safetyStockQuantity,
+      standardProductionLotSize: product.standardProductionLotSize,
+    })),
+    onHandByProductId,
+    plannedProductionByProductId,
+    confirmedInboundByProductId,
+    unconfirmedInboundByProductId,
+    demands: demandRows.map<ProductPlanningDemand>((demand) => ({
+      productId: demand.productId,
+      dueDate: demand.dueDate.toISOString().slice(0, 10),
+      quantity: demand.quantity,
+      demandType: demand.demandType as ProductPlanningDemand["demandType"],
+    })),
+  });
+}
+
+export async function loadMonthlyProductionSchedulePreview({
+  dateFrom,
+  dateTo,
+  productionLeadDays = 1,
+  existingPlanStatuses = ["draft", "confirmed"],
+  planningBasis = "historical_actual",
+}: {
+  dateFrom: Date;
+  dateTo: Date;
+  productionLeadDays?: number;
+  existingPlanStatuses?: string[];
+  planningBasis?: MonthlyProductionPlanningBasis;
+}) {
+  const dateFromInput = toDateInput(dateFrom);
+  const targetMonth = yearMonthFromDateInput(dateFromInput);
+  const forecastReferenceMonths = getHistoricalForecastReferenceMonths(targetMonth);
+  const forecastMonths = Object.values(forecastReferenceMonths);
+
+  const [products, planRows, demandRows, monthlyActualRows, confirmedReportRows, specialDemandRows] =
+    await Promise.all([
+    prisma.product.findMany({ where: { active: true }, orderBy: { productCode: "asc" } }),
+    prisma.productionPlan.findMany({
+      where: {
+        date: { gte: dateFrom, lte: dateTo },
+        status: { in: existingPlanStatuses },
+      },
+      select: {
+        productId: true,
+        date: true,
+        plannedQuantity: true,
+      },
+      orderBy: [{ date: "asc" }],
+    }),
+    prisma.productDemand.findMany({
+      where: {
+        dueDate: { lte: dateTo },
+        status: "open",
+        product: { active: true },
+      },
+      orderBy: [{ dueDate: "asc" }],
+    }),
+    prisma.productMonthlyActual.findMany({
+      where: { yearMonth: { in: forecastMonths }, product: { active: true } },
+    }),
+    // 当月の確定実績累計: 日報蓄積(B=ProductionDailyReportEntry)の生産数量。
+    // A系統(DailyReport)は引退し在庫/実績の正は B。未完了予定 (draft/confirmed) とは分けて扱う。
+    prisma.productionDailyReportEntry.findMany({
+      where: {
+        active: true,
+        approvalStatus: "approved",
+        productId: { not: null },
+        reportDate: { gte: dateFrom, lte: dateTo },
+      },
+      select: {
+        productionQty: true,
+        productId: true,
+      },
+    }),
+    // 予測の参照月に紐づく特需イベント。通常予測から除外する設定(includeInNormalForecast=false)の
+    // ものは、過去実績(YoY基礎)から差し引いてから前年比を計算する。
+    prisma.specialDemandEvent.findMany({
+      where: { targetYearMonth: { in: forecastMonths }, product: { active: true } },
+      select: {
+        productId: true,
+        targetYearMonth: true,
+        qty: true,
+        active: true,
+        status: true,
+        includeInNormalForecast: true,
+      },
+    }),
+  ]);
+  const productInventory = await getInventoryFor(
+    "product",
+    products.map((product) => product.id),
+    dateFrom,
+  );
+
+  const onHandByProductId: Record<string, number> = {};
+  for (const product of products) onHandByProductId[product.id] = productInventory[product.id]?.onHand ?? 0;
+
+  const schedulePriorityByProductId = new Map(products.map((product) => [product.id, product.schedulePriority]));
+  const monthlyProducts = products.map<MonthlyPlanningProduct>((product) => ({
+    productId: product.id,
+    productCode: product.productCode,
+    productName: product.officialName,
+    productionType: product.productionType as MonthlyPlanningProduct["productionType"],
+    unit: product.unit,
+    safetyStockQuantity: product.safetyStockQuantity,
+    standardProductionLotSize: product.standardProductionLotSize,
+    schedulePriority: product.schedulePriority,
+  }));
+  // 通常予測から除外する特需イベントを (productId, yearMonth) ごとに合算する。
+  // YoY 基礎の過去実績からこの量を差し引く（実績が負にならないよう0でクランプ）。
+  const excludedSpecialDemandByKey: Record<string, number> = {};
+  for (const event of specialDemandRows) {
+    if (!isExcludedFromNormalForecast(event)) continue;
+    const key = `${event.productId}:${event.targetYearMonth}`;
+    excludedSpecialDemandByKey[key] = (excludedSpecialDemandByKey[key] ?? 0) + (event.qty ?? 0);
+  }
+  const normalizedActuals = monthlyActualRows.map<MonthlyProductionActualQuantity>((actual) => {
+    const excluded = excludedSpecialDemandByKey[`${actual.productId}:${actual.yearMonth}`] ?? 0;
+    return {
+      productId: actual.productId,
+      yearMonth: actual.yearMonth,
+      actualQuantity: Math.max(0, actual.actualQuantity - excluded),
+    };
+  });
+  const historicalForecast = computeHistoricalMonthlyProductionForecasts({
+    targetMonth,
+    products: products.map<MonthlyProductionForecastProduct>((product) => ({
+      productId: product.id,
+      productCode: product.productCode,
+      productName: product.officialName,
+      productionType: product.productionType as MonthlyProductionForecastProduct["productionType"],
+      unit: product.unit,
+      standardProductionLotSize: product.standardProductionLotSize,
+      forecastMethod: product.forecastMethod as ProductForecastMethod,
+    })),
+    actuals: normalizedActuals,
+  });
+  const forecastActualProductIds = new Set(monthlyActualRows.map((actual) => actual.productId));
+  const visibleHistoricalForecasts = historicalForecast.forecasts.filter((forecast) =>
+    forecastActualProductIds.has(forecast.productId),
+  );
+
+  // 未完了 (draft/confirmed) の予定数量。完了プランは confirmedReportRows 側で実績として扱う。
+  const openPlannedByProductId: Record<string, number> = {};
+  for (const plan of planRows) {
+    openPlannedByProductId[plan.productId] = (openPlannedByProductId[plan.productId] ?? 0) + plan.plannedQuantity;
+  }
+  // 当月の確定実績累計 (日報蓄積 B)。完了プランの寄与はここに集約する。
+  const cumulativeActualByProductId: Record<string, number> = {};
+  for (const report of confirmedReportRows) {
+    const productId = report.productId;
+    if (!productId) continue;
+    cumulativeActualByProductId[productId] =
+      (cumulativeActualByProductId[productId] ?? 0) + (report.productionQty ?? 0);
+  }
+
+  // 当月の予実・過不足 read-model（予測 + 未完了予定 vs 確定実績累計）。
+  const reconciliation: MonthlyVarianceRow[] = computeMonthlyVariance({
+    forecasts: visibleHistoricalForecasts,
+    cumulativeActualByProductId,
+    openPlannedByProductId,
+  }).sort((a, b) => a.productCode.localeCompare(b.productCode, "ja"));
+
+  if (planningBasis === "historical_actual") {
+    const suggestions: MonthlyProductionSuggestion[] = [];
+    const productSummaries: MonthlyProductionProductSummary[] = [];
+
+    for (const forecast of visibleHistoricalForecasts) {
+      const startingOnHand = onHandByProductId[forecast.productId] ?? 0;
+      const openPlanned = round4(openPlannedByProductId[forecast.productId] ?? 0);
+      const cumulativeActual = round4(cumulativeActualByProductId[forecast.productId] ?? 0);
+      // 残目標 = max(0, 予測 - 確定実績累計 - 未完了予定)。
+      // 完了プラン分は cumulativeActual に入るため、二重計上せず候補が膨らまない。
+      const remainingTarget =
+        forecast.status === "forecasted"
+          ? round4(Math.max(0, forecast.forecastQuantity - cumulativeActual - openPlanned))
+          : 0;
+      const suggestedQuantity = remainingTarget;
+      // 期間末見込: 在庫 + 実績 + 未完了予定 + 追加候補 - 月次予測(需要)。
+      const endingProjected = round4(
+        startingOnHand + cumulativeActual + openPlanned + suggestedQuantity - forecast.forecastQuantity,
+      );
+
+      if (forecast.status === "forecasted" && suggestedQuantity > 0) {
+        suggestions.push({
+          productId: forecast.productId,
+          productCode: forecast.productCode,
+          productName: forecast.productName,
+          productionType: forecast.productionType,
+          unit: forecast.unit,
+          dueDate: dateFromInput,
+          scheduleDate: dateFromInput,
+          demandQuantity: round4(forecast.forecastQuantity),
+          existingProductionQuantity: round4(cumulativeActual + openPlanned),
+          safetyStockQuantity: 0,
+          startingOnHandQuantity: round4(startingOnHand),
+          projectedOnHandBeforeDemand: round4(startingOnHand + cumulativeActual + openPlanned),
+          projectedOnHandBeforeSuggestion: round4(
+            startingOnHand + cumulativeActual + openPlanned - forecast.forecastQuantity,
+          ),
+          projectedOnHandAfterSuggestion: endingProjected,
+          shortageQuantity: round4(suggestedQuantity),
+          suggestedQuantity,
+          schedulePriority: schedulePriorityByProductId.get(forecast.productId) ?? null,
+          reason: `${forecast.reason} 当月の確定実績 ${cumulativeActual}${forecast.unit} と未完了予定 ${openPlanned}${forecast.unit} を差し引き、残目標 ${suggestedQuantity}${forecast.unit} を仮予定候補にします。`,
+        });
+      }
+
+      productSummaries.push({
+        productId: forecast.productId,
+        productCode: forecast.productCode,
+        productName: forecast.productName,
+        unit: forecast.unit,
+        schedulePriority: schedulePriorityByProductId.get(forecast.productId) ?? null,
+        startingOnHandQuantity: round4(startingOnHand),
+        openDemandQuantity: round4(forecast.forecastQuantity),
+        existingProductionQuantity: round4(cumulativeActual + openPlanned),
+        suggestedQuantity: round4(suggestedQuantity),
+        endingProjectedOnHandQuantity: endingProjected,
+        minProjectedOnHandQuantity: Math.min(round4(startingOnHand), endingProjected),
+      });
+    }
+
+    return {
+      dateFrom: dateFromInput,
+      dateTo: toDateInput(dateTo),
+      productionLeadDays,
+      planningBasis,
+      forecastReferenceMonths: historicalForecast.referenceMonths,
+      historicalForecasts: visibleHistoricalForecasts,
+      reconciliation,
+      suggestions: suggestions.sort(
+        (a, b) =>
+          a.scheduleDate.localeCompare(b.scheduleDate) ||
+          schedulePriorityKey(a.schedulePriority) - schedulePriorityKey(b.schedulePriority) ||
+          a.productCode.localeCompare(b.productCode, "ja") ||
+          a.dueDate.localeCompare(b.dueDate),
+      ),
+      productSummaries: productSummaries.sort(
+        (a, b) =>
+          schedulePriorityKey(a.schedulePriority) - schedulePriorityKey(b.schedulePriority) ||
+          a.productCode.localeCompare(b.productCode, "ja"),
+      ),
+    };
+  }
+
+  const shortagePreview = computeMonthlyProductionSchedule({
+    dateFrom: dateFromInput,
+    dateTo: toDateInput(dateTo),
+    productionLeadDays,
+    products: monthlyProducts,
+    onHandByProductId,
+    demands: demandRows.map<MonthlyPlanningDemand>((demand) => ({
+      productId: demand.productId,
+      dueDate: toDateInput(demand.dueDate),
+      quantity: demand.quantity,
+      demandType: demand.demandType as MonthlyPlanningDemand["demandType"],
+    })),
+    existingProductions: planRows.map<MonthlyPlanningExistingProduction>((plan) => ({
+      productId: plan.productId,
+      date: toDateInput(plan.date),
+      quantity: plan.plannedQuantity,
+    })),
+  });
+
+  return {
+    ...shortagePreview,
+    planningBasis,
+    forecastReferenceMonths: historicalForecast.referenceMonths,
+    historicalForecasts: historicalForecast.forecasts,
+    reconciliation,
+  };
+}
+
+function toDateInput(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function round4(n: number) {
+  return Math.round(n * 10000) / 10000;
+}
