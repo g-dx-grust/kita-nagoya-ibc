@@ -75,7 +75,10 @@ export async function getCapacity(productId: string, workAreaId: string) {
   });
 }
 
-export async function recalculateProductionPlan(planId: string) {
+export async function recalculateProductionPlan(
+  planId: string,
+  options: { refreshMaterialForecast?: boolean } = {},
+) {
   const plan = await prisma.productionPlan.findUnique({ where: { id: planId } });
   if (!plan) throw new Error("plan_not_found");
 
@@ -172,14 +175,16 @@ export async function recalculateProductionPlan(planId: string) {
     });
   });
 
-  const horizonEnd = new Date(plan.date);
-  horizonEnd.setDate(horizonEnd.getDate() + 90);
-  const today = startOfDay(new Date());
-  const planDay = startOfDay(plan.date);
-  await refreshCumulativeMaterialRequirements({
-    dateFrom: planDay < today ? planDay : today,
-    dateTo: horizonEnd,
-  });
+  if (options.refreshMaterialForecast ?? true) {
+    const horizonEnd = new Date(plan.date);
+    horizonEnd.setDate(horizonEnd.getDate() + 90);
+    const today = startOfDay(new Date());
+    const planDay = startOfDay(plan.date);
+    await refreshCumulativeMaterialRequirements({
+      dateFrom: planDay < today ? planDay : today,
+      dateTo: horizonEnd,
+    });
+  }
 
   return {
     duration,

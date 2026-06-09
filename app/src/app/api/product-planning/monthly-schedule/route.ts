@@ -1,6 +1,9 @@
+import { randomUUID } from "node:crypto";
+
 import { audit } from "@/lib/audit";
 import { loadActiveBreakWindows } from "@/lib/break-windows";
 import { created, handleError, parseJson } from "@/lib/http";
+import { refreshCumulativeMaterialRequirements } from "@/lib/material-forecast";
 import { aggregateMonthlySuggestions } from "@/lib/monthly-production-schedule";
 import { simulateMonthlyShiftSchedule } from "@/lib/monthly-shift-simulation";
 import { recalculateProductionPlan } from "@/lib/plan-engine";
@@ -164,66 +167,82 @@ export async function POST(req: Request) {
       breakWindows,
     });
 
-    await prisma.$transaction(async (tx) => {
-      if (body.replaceExistingDrafts) {
-        await tx.productionPlan.deleteMany({
-          where: {
-            date: { gte: dateFrom, lte: dateTo },
-            status: "draft",
-          },
-        });
-      }
+    const plansToCreate = simulation.plans.map((simulated) => ({
+      id: randomUUID(),
+      simulated,
+    }));
 
-      for (const simulated of simulation.plans) {
-        const plan = await tx.productionPlan.create({
-          data: {
-            date: new Date(simulated.date),
-            productId: simulated.productId,
-            productionType: simulated.productionType,
-            plannedQuantity: ceilDisplayQuantity(simulated.quantity) ?? 0,
-            unit: simulated.unit,
-            workAreaId: simulated.workAreaId,
-            plannedStartTime: simulated.startTime,
-            plannedEndTime: simulated.endTime,
-            desiredEndTime: baselineEndTime,
-            breakMinutes: simulated.breakMinutes,
-            plannedPeopleCount: simulated.peopleCount,
-            status: "draft",
-            baselineEndTime,
-            overtimeMinutes: 0,
-            note: buildMonthlyNote(simulated.dueDates, simulated.reasons, simulated.warnings),
-          },
-        });
+    await prisma.$transaction(
+      async (tx) => {
+        if (body.replaceExistingDrafts) {
+          await tx.productionPlan.deleteMany({
+            where: {
+              date: { gte: dateFrom, lte: dateTo },
+              status: "draft",
+            },
+          });
+        }
 
-        if (simulated.assignedEmployees.length > 0) {
-          await tx.productionPlanAssignment.createMany({
-            data: simulated.assignedEmployees.map((employee) => ({
-              productionPlanId: plan.id,
-              employeeId: employee.employeeId,
-              startTime: simulated.startTime,
-              endTime: simulated.endTime,
+        if (plansToCreate.length > 0) {
+          await tx.productionPlan.createMany({
+            data: plansToCreate.map(({ id, simulated }) => ({
+              id,
+              date: new Date(simulated.date),
+              productId: simulated.productId,
+              productionType: simulated.productionType,
+              plannedQuantity: ceilDisplayQuantity(simulated.quantity) ?? 0,
+              unit: simulated.unit,
+              workAreaId: simulated.workAreaId,
+              plannedStartTime: simulated.startTime,
+              plannedEndTime: simulated.endTime,
+              desiredEndTime: baselineEndTime,
+              breakMinutes: simulated.breakMinutes,
+              plannedPeopleCount: simulated.peopleCount,
+              status: "draft",
+              baselineEndTime,
+              overtimeMinutes: 0,
+              note: buildMonthlyNote(simulated.dueDates, simulated.reasons, simulated.warnings),
             })),
           });
         }
 
-        createdPlans.push({
-          id: plan.id,
-          date: simulated.date,
-          productCode: simulated.productCode,
-          productName: simulated.productName,
-          workAreaName: simulated.workAreaName,
-          startTime: simulated.startTime,
-          endTime: simulated.endTime,
-          quantity: simulated.quantity,
-          unit: simulated.unit,
-          assignedCount: simulated.assignedEmployees.length,
-          warnings: simulated.warnings,
-        });
-      }
-    });
+        const assignmentRows = plansToCreate.flatMap(({ id, simulated }) =>
+          simulated.assignedEmployees.map((employee) => ({
+            productionPlanId: id,
+            employeeId: employee.employeeId,
+            startTime: simulated.startTime,
+            endTime: simulated.endTime,
+          })),
+        );
+        if (assignmentRows.length > 0) await tx.productionPlanAssignment.createMany({ data: assignmentRows });
+      },
+      { timeout: 30_000 },
+    );
 
-    for (const plan of createdPlans) {
-      await recalculateProductionPlan(plan.id);
+    for (const { id, simulated } of plansToCreate) {
+      createdPlans.push({
+        id,
+        date: simulated.date,
+        productCode: simulated.productCode,
+        productName: simulated.productName,
+        workAreaName: simulated.workAreaName,
+        startTime: simulated.startTime,
+        endTime: simulated.endTime,
+        quantity: simulated.quantity,
+        unit: simulated.unit,
+        assignedCount: simulated.assignedEmployees.length,
+        warnings: simulated.warnings,
+      });
+      await recalculateProductionPlan(id, { refreshMaterialForecast: false });
+    }
+
+    if (createdPlans.length > 0) {
+      const horizonEnd = new Date(dateTo);
+      horizonEnd.setDate(horizonEnd.getDate() + 90);
+      await refreshCumulativeMaterialRequirements({
+        dateFrom: minDate(startOfDay(dateFrom), startOfDay(new Date())),
+        dateTo: horizonEnd,
+      });
     }
 
     await audit({
@@ -270,4 +289,12 @@ function buildMonthlyNote(dueDates: string[], reasons: string[], warnings: strin
 
 function toDateInput(date: Date) {
   return date.toISOString().slice(0, 10);
+}
+
+function startOfDay(date: Date) {
+  return new Date(date.toISOString().slice(0, 10));
+}
+
+function minDate(a: Date, b: Date) {
+  return a < b ? a : b;
 }
