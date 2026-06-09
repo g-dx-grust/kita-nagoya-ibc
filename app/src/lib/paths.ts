@@ -2,10 +2,22 @@ const DEFAULT_MODULE_BASE_PATH = "/manufacturing/kitanagoya";
 const DEFAULT_API_BASE_PATH = "/api/kitanagoya";
 
 function normalizeBasePath(value: string | undefined, fallback: string) {
-  const raw = (value ?? fallback).trim();
+  const raw = stripWrappingQuotes(value ?? fallback);
   if (!raw || raw === "/") return "";
   const withLeadingSlash = raw.startsWith("/") ? raw : `/${raw}`;
   return withLeadingSlash.replace(/\/+$/, "");
+}
+
+function stripWrappingQuotes(value: string) {
+  const trimmed = value.trim();
+  const first = trimmed[0];
+  const last = trimmed[trimmed.length - 1];
+
+  if ((first === `"` || first === "'") && first === last) {
+    return trimmed.slice(1, -1).trim();
+  }
+
+  return trimmed;
 }
 
 function splitSuffix(path: string) {
