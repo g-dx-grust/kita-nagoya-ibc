@@ -7,3 +7,4 @@ dist
 *.db-journal
 prisma/migrations/dev.db*
 .DS_Store
+.vercel

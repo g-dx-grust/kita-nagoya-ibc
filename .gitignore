@@ -33,3 +33,4 @@ docs/user_manual_assets/
 app/exports/
 app/tsconfig.tsbuildinfo
 .snapshots/
+.vercel
