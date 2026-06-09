@@ -1,4 +1,8 @@
 import { audit } from "@/lib/audit";
+import {
+  changedEmployeeDefaultWorkTimes,
+  updateEmployeeDefaultWorkTimes,
+} from "@/lib/employee-default-work-times";
 import { badRequest, handleError, ok, parseJson } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { isValidTimeRange } from "@/lib/schedule";
@@ -50,40 +54,33 @@ export async function PUT(req: Request) {
 
     const [start, end] = dayRange(body.date);
     const before = await prisma.shift.findMany({ where: { date: { gte: start, lt: end } } });
+    const changedEmployeeDefaults = changedEmployeeDefaultWorkTimes(employeeDefaults, employees);
 
-    const rows = await prisma.$transaction(async (tx) => {
-      await Promise.all(
-        employeeDefaults.map((defaults) =>
-          tx.employee.update({
-            where: { id: defaults.employeeId },
-            data: {
-              defaultStartTime: defaults.startTime,
-              defaultEndTime: defaults.endTime,
-              defaultBreakMinutes: defaults.breakMinutes,
-            },
-          }),
-        ),
-      );
-      await tx.shift.deleteMany({ where: { date: { gte: start, lt: end } } });
-      if (body.shifts.length > 0) {
-        await tx.shift.createMany({
-          data: body.shifts.map((shift) => ({
-            employeeId: shift.employeeId,
-            date: start,
-            startTime: shift.startTime,
-            endTime: shift.endTime,
-            breakMinutes: shift.breakMinutes,
-            status: shift.status,
-            shiftPatternId: shift.shiftPatternId ?? null,
-          })),
+    const rows = await prisma.$transaction(
+      async (tx) => {
+        await updateEmployeeDefaultWorkTimes(tx, changedEmployeeDefaults);
+        await tx.shift.deleteMany({ where: { date: { gte: start, lt: end } } });
+        if (body.shifts.length > 0) {
+          await tx.shift.createMany({
+            data: body.shifts.map((shift) => ({
+              employeeId: shift.employeeId,
+              date: start,
+              startTime: shift.startTime,
+              endTime: shift.endTime,
+              breakMinutes: shift.breakMinutes,
+              status: shift.status,
+              shiftPatternId: shift.shiftPatternId ?? null,
+            })),
+          });
+        }
+        return tx.shift.findMany({
+          where: { date: { gte: start, lt: end } },
+          include: { employee: true },
+          orderBy: [{ startTime: "asc" }, { employee: { name: "asc" } }],
         });
-      }
-      return tx.shift.findMany({
-        where: { date: { gte: start, lt: end } },
-        include: { employee: true },
-        orderBy: [{ startTime: "asc" }, { employee: { name: "asc" } }],
-      });
-    });
+      },
+      { timeout: 15_000 },
+    );
 
     await audit({
       action: "replace_shifts",

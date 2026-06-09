@@ -1,4 +1,8 @@
 import { audit } from "@/lib/audit";
+import {
+  changedEmployeeDefaultWorkTimes,
+  updateEmployeeDefaultWorkTimes,
+} from "@/lib/employee-default-work-times";
 import { badRequest, handleError, ok, parseJson } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { isValidTimeRange } from "@/lib/schedule";
@@ -33,8 +37,14 @@ export async function PUT(req: Request) {
       string,
       { defaultStartTime: string; defaultEndTime: string; defaultBreakMinutes: number }
     >();
+    let employees: {
+      id: string;
+      defaultStartTime: string;
+      defaultEndTime: string;
+      defaultBreakMinutes: number;
+    }[] = [];
     if (ids.length > 0) {
-      const employees = await prisma.employee.findMany({
+      employees = await prisma.employee.findMany({
         where: { id: { in: ids }, active: true },
       });
       if (employees.length !== ids.length) return badRequest("employee_not_found_or_inactive");
@@ -109,36 +119,29 @@ export async function PUT(req: Request) {
     // (employeeId, day) 重複排除: 後勝ち。
     const dedup = new Map<string, (typeof cells)[number]>();
     for (const c of cells) dedup.set(`${c.employeeId}#${c.day}`, c);
+    const changedEmployeeDefaults = changedEmployeeDefaultWorkTimes(employeeDefaults, employees);
 
-    const after = await prisma.$transaction(async (tx) => {
-      await Promise.all(
-        employeeDefaults.map((defaults) =>
-          tx.employee.update({
-            where: { id: defaults.employeeId },
-            data: {
-              defaultStartTime: defaults.startTime,
-              defaultEndTime: defaults.endTime,
-              defaultBreakMinutes: defaults.breakMinutes,
-            },
-          }),
-        ),
-      );
-      await tx.shift.deleteMany({ where: { date: { gte: start, lt: end } } });
-      const data = [...dedup.values()].map((c) => ({
-        employeeId: c.employeeId,
-        date: new Date(Date.UTC(year, month - 1, c.day)),
-        startTime: c.startTime,
-        endTime: c.endTime,
-        breakMinutes: c.breakMinutes,
-        status: c.status,
-        shiftPatternId: c.shiftPatternId,
-      }));
-      if (data.length > 0) await tx.shift.createMany({ data });
-      return tx.shift.findMany({
-        where: { date: { gte: start, lt: end } },
-        orderBy: [{ date: "asc" }, { employeeId: "asc" }],
-      });
-    });
+    const after = await prisma.$transaction(
+      async (tx) => {
+        await updateEmployeeDefaultWorkTimes(tx, changedEmployeeDefaults);
+        await tx.shift.deleteMany({ where: { date: { gte: start, lt: end } } });
+        const data = [...dedup.values()].map((c) => ({
+          employeeId: c.employeeId,
+          date: new Date(Date.UTC(year, month - 1, c.day)),
+          startTime: c.startTime,
+          endTime: c.endTime,
+          breakMinutes: c.breakMinutes,
+          status: c.status,
+          shiftPatternId: c.shiftPatternId,
+        }));
+        if (data.length > 0) await tx.shift.createMany({ data });
+        return tx.shift.findMany({
+          where: { date: { gte: start, lt: end } },
+          orderBy: [{ date: "asc" }, { employeeId: "asc" }],
+        });
+      },
+      { timeout: 15_000 },
+    );
 
     await audit({
       action: "replace_shifts_month",
