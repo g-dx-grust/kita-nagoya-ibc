@@ -5,6 +5,7 @@ import { CheckCircle, Image as ImageIcon, Pencil, Plus, RefreshCw, Save, Trash2,
 import { useRouter } from "next/navigation";
 
 import ProductCombobox, { type ProductComboOption } from "@/components/ui/product-combobox";
+import SearchableCombobox from "@/components/ui/searchable-combobox";
 import {
   DEFAULT_DAILY_REPORT_LABOR_HOURLY_RATE,
   computeProductDailyReportMetrics,
@@ -604,6 +605,17 @@ function MaterialsEditor({
   onChange: (rows: MaterialFormRow[]) => void;
   compact?: boolean;
 }) {
+  const materialComboboxOptions = useMemo(
+    () =>
+      materialOptions.map((option) => ({
+        value: option.id,
+        code: option.materialCode,
+        label: option.name,
+        description: `${option.unit}・標準単価 ${formatYen(option.standardUnitPrice)}`,
+      })),
+    [materialOptions],
+  );
+
   function update(index: number, patch: Partial<MaterialFormRow>) {
     onChange(materials.map((m, i) => (i === index ? { ...m, ...patch } : m)));
   }
@@ -632,14 +644,13 @@ function MaterialsEditor({
             {materials.map((m, index) => (
               <tr key={index}>
                 <td>
-                  <select value={m.materialId} onChange={(e) => selectMaterial(index, e.target.value)}>
-                    <option value="">（原料を選択）</option>
-                    {materialOptions.map((opt) => (
-                      <option key={opt.id} value={opt.id}>
-                        {opt.materialCode} {opt.name}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableCombobox
+                    value={m.materialId}
+                    options={materialComboboxOptions}
+                    emptyOptionLabel="（原料を選択）"
+                    placeholder="原料番号・名称で検索"
+                    onChange={(materialId) => selectMaterial(index, materialId)}
+                  />
                 </td>
                 <td className="right">
                   <input

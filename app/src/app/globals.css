@@ -271,7 +271,8 @@ table {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow), inset -14px 0 14px -16px rgba(31, 35, 41, 0.55);
+  scrollbar-gutter: stable;
 }
 
 .table-frame table {
@@ -554,6 +555,16 @@ button:disabled {
   min-height: 32px;
 }
 
+.menu-card-anchor:focus-visible {
+  border-radius: 8px;
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
+.menu-card-anchor:hover .menu-card-link {
+  background: var(--primary-hover);
+}
+
 .stat-label,
 .metric-label {
   display: flex;
@@ -712,6 +723,18 @@ form.toolbar {
 
 .spacer {
   flex: 1;
+}
+
+.toolbar .filter-search {
+  flex: 1 1 260px;
+  max-width: 460px;
+}
+
+.toolbar .filter-count {
+  color: var(--muted);
+  font-size: 0.85em;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .kbd {
@@ -1617,6 +1640,8 @@ tr.row-selected td {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel);
+  box-shadow: inset -14px 0 14px -16px rgba(31, 35, 41, 0.55);
+  scrollbar-gutter: stable;
 }
 .month-grid {
   border-collapse: collapse;
@@ -1869,6 +1894,16 @@ button.mini {
   border-radius: 6px;
   background: var(--surface);
 }
+.filter-bar .combobox {
+  flex: 0 1 260px;
+  width: auto;
+  min-width: 220px;
+  max-width: 280px;
+}
+.filter-bar .combobox-input {
+  min-height: 36px;
+  font-size: 0.95em;
+}
 .filter-bar label.filter-check {
   display: inline-flex;
   flex-direction: row;
@@ -1909,6 +1944,7 @@ mark.search-hit {
 @media (max-width: 760px) {
   .filter-bar .filter-search,
   .filter-bar select,
+  .filter-bar .combobox,
   .filter-bar label.filter-check,
   .filter-bar > button,
   .filter-bar .filter-count {
@@ -1981,7 +2017,9 @@ mark.search-hit {
   border: 1px solid #9aa5a0;
   border-radius: 4px;
   background: var(--surface);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow), inset -14px 0 14px -16px rgba(31, 35, 41, 0.55);
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .excel-inventory-table {
@@ -2146,7 +2184,9 @@ mark.search-hit {
   border: 1px solid #9aa5a0;
   border-radius: 4px;
   background: var(--surface);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow), inset -14px 0 14px -16px rgba(31, 35, 41, 0.55);
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .excel-production-table {
@@ -2356,12 +2396,14 @@ mark.search-hit {
   background: var(--popover, #fff);
   border: 1px solid var(--border-strong);
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 14px 32px rgba(31, 35, 41, 0.18);
 }
 .combobox-option {
   display: flex;
   align-items: baseline;
   gap: 8px;
+  min-width: 0;
+  min-height: 34px;
   padding: 6px 8px;
   border-radius: 4px;
   cursor: pointer;
@@ -2374,6 +2416,14 @@ mark.search-hit {
 .combobox-option.is-selected {
   outline: 1px solid var(--primary);
 }
+.combobox-option.is-disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.combobox-option.is-disabled.is-active {
+  background: transparent;
+}
 .combobox-code {
   flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
@@ -2383,10 +2433,18 @@ mark.search-hit {
 }
 .combobox-name {
   flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 600;
 }
 .combobox-sub {
   flex: 0 0 auto;
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--muted);
   font-size: 12px;
 }
@@ -2394,6 +2452,9 @@ mark.search-hit {
   padding: 8px;
   color: var(--muted);
   font-size: 13px;
+}
+td .combobox {
+  min-width: 260px;
 }
 
 /* --- 在庫の手入力(管理者・Excelライク セル編集) --- */

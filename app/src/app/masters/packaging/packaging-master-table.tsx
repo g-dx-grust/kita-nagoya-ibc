@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
+import SearchableCombobox from "@/components/ui/searchable-combobox";
 import { packagingKindLabel } from "@/lib/labels";
 import { kitagoyaApiPath } from "@/lib/paths";
 import { matchesQuery, normalizeForSearch } from "@/lib/search";
@@ -89,14 +90,13 @@ export default function PackagingMasterTable({
             </option>
           ))}
         </select>
-        <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-          <option value="">仕入先(すべて)</option>
-          {supplierOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        <SearchableCombobox
+          value={supplierId}
+          options={supplierOptions}
+          emptyOptionLabel="仕入先(すべて)"
+          placeholder="仕入先で絞り込み"
+          onChange={setSupplierId}
+        />
         <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
           条件クリア
         </button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Menu, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
+import { Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
@@ -47,15 +47,8 @@ export function Header({
         <span className="absolute h-px w-px overflow-hidden whitespace-nowrap border-0 p-0">{title}</span>
       </div>
 
-      <div className="flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-1 py-1">
-        <Button variant="ghost" size="icon" className="h-9 w-9 text-[var(--muted)]" aria-label="通知">
-          <Bell className="h-5 w-5" />
-        </Button>
-        <div className="mx-1 h-5 w-px bg-[var(--border)]" />
-        <Button variant="ghost" size="icon" className="h-9 w-9 text-[var(--muted)]" aria-label="設定">
-          <Settings className="h-5 w-5" />
-        </Button>
-        <div className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--primary)] text-xs font-bold text-white">
+      <div className="flex items-center rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-1.5 py-1">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--primary)] text-xs font-bold text-white">
           KS
         </div>
       </div>

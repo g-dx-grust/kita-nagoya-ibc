@@ -1,6 +1,5 @@
-// 実績在庫の正は日報蓄積(B=ProductionDailyReportEntry)。保存時に ACTUAL_* を発行し、
-// 同一(商品×生産日)の予定を完了化して PLANNED 予約を実績で置換する(二重計上防止)。
-// A系統(DailyReport)の確定はもう在庫台帳へ書かない。
+// 日報実績は生産予定連動(A=DailyReport)の確定、または日報蓄積(B=ProductionDailyReportEntry)
+// の保存で ACTUAL_* を発行する。完了済み予定の PLANNED 予約は計算層で実績に置換する(二重計上防止)。
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { cleanupAll } from "../helpers/cleanup";
@@ -57,6 +56,47 @@ describe("Pipeline E3: 日報蓄積(B) → ACTUAL_* と予定完了", () => {
       where: { sourceType: "daily_report" },
     });
     expect(actualMovements).toBe(0);
+  });
+
+  it("A系統の日報確定で ACTUAL_MATERIAL_USE と ACTUAL_PRODUCTION_IN を発行する", async () => {
+    const material = await createTestMaterial(prisma);
+    const workArea = await createTestWorkArea(prisma);
+    const product = await createTestProduct(prisma, { defaultWorkAreaId: workArea.id });
+    const plan = await createTestProductionPlan(prisma, {
+      productId: product.id,
+      workAreaId: workArea.id,
+      plannedQuantity: 10,
+      date: PLAN_DATE,
+    });
+
+    const report = await prisma.dailyReport.create({
+      data: {
+        productionPlanId: plan.id,
+        actualQuantity: 8,
+        status: "draft",
+        consumptions: {
+          create: [{ itemType: "raw_material", itemId: material.id, actualQuantity: 3, unitPriceSnapshot: 100 }],
+        },
+      },
+    });
+
+    const { confirmDailyReport } = await import("@/lib/daily-report-service");
+    await confirmDailyReport(report.id, { skipForecastRefresh: true });
+
+    const movements = await prisma.stockMovement.findMany({
+      where: { sourceType: "daily_report", status: "CONFIRMED" } as any,
+      orderBy: { movementType: "asc" },
+    });
+    expect(movements.map((m) => m.movementType)).toEqual(["ACTUAL_MATERIAL_USE", "ACTUAL_PRODUCTION_IN"]);
+    expect(movements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ itemType: "raw_material", itemId: material.id, quantity: -3 }),
+        expect.objectContaining({ itemType: "product", itemId: product.id, quantity: 8 }),
+      ]),
+    );
+
+    const updatedPlan = await prisma.productionPlan.findUnique({ where: { id: plan.id } });
+    expect(updatedPlan?.status).toBe("completed");
   });
 
   it("B日報の保存で ACTUAL_MATERIAL_USE と ACTUAL_PRODUCTION_IN を発行する", async () => {

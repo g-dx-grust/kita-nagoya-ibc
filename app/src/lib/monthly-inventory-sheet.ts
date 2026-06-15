@@ -55,6 +55,7 @@ export function buildMonthlyInventorySheet(input: {
   const dateFrom = `${input.month}-01`;
   const dateTo = endOfMonth(input.month);
   const days = eachDay(dateFrom, dateTo);
+  const openingByItemId = new Map<string, number>();
   const movementMap = new Map<
     string,
     { usage: number; inbound: number; expiry: string | null; shipping: string | null }
@@ -63,10 +64,17 @@ export function buildMonthlyInventorySheet(input: {
   for (const movement of input.movements) {
     const date = movement.effectiveDate.slice(0, 10);
     if (date > dateTo) continue;
+    if (date < dateFrom) {
+      openingByItemId.set(
+        movement.itemId,
+        round4((openingByItemId.get(movement.itemId) ?? 0) + movement.quantity),
+      );
+      continue;
+    }
     const key = `${movement.itemId}:${date}`;
     const cell = movementMap.get(key) ?? { usage: 0, inbound: 0, expiry: null, shipping: null };
     if (movement.quantity < 0) cell.usage += Math.abs(movement.quantity);
-    if (movement.quantity > 0 && date >= dateFrom) cell.inbound += movement.quantity;
+    if (movement.quantity > 0) cell.inbound += movement.quantity;
     // 同日に複数ロットが入った場合は、最も近い(早い)期限を残す＝制約が一番きつい日付。
     if (movement.expiryDate) cell.expiry = earlierDate(cell.expiry, movement.expiryDate.slice(0, 10));
     if (movement.shippingDeadline)
@@ -77,11 +85,7 @@ export function buildMonthlyInventorySheet(input: {
   const rows = [...input.items]
     .sort((a, b) => a.code.localeCompare(b.code, "ja") || a.name.localeCompare(b.name, "ja"))
     .map((item, index) => {
-      let balance = round4(
-        input.movements
-          .filter((movement) => movement.itemId === item.id && movement.effectiveDate.slice(0, 10) < dateFrom)
-          .reduce((sum, movement) => sum + movement.quantity, 0),
-      );
+      let balance = openingByItemId.get(item.id) ?? 0;
       const openingQuantity = balance;
       let usageTotalQuantity = 0;
       let inboundTotalQuantity = 0;

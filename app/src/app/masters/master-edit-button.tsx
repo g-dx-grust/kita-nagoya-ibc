@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import SearchableCombobox from "@/components/ui/searchable-combobox";
 import type { MasterField, MasterFormValue } from "./master-form";
 
 type InitialValues = Record<string, string | number | boolean | null | undefined>;
@@ -122,6 +123,19 @@ function FieldInput({
   onChange: (value: MasterFormValue) => void;
 }) {
   if (field.type === "select") {
+    if (field.searchable) {
+      return (
+        <SearchableCombobox
+          required={field.required}
+          value={String(value ?? "")}
+          options={(field.options ?? []).filter((option) => option.value !== "")}
+          emptyOptionLabel={(field.options ?? []).find((option) => option.value === "")?.label}
+          placeholder={field.searchPlaceholder ?? `${field.label}を検索`}
+          onChange={onChange}
+        />
+      );
+    }
+
     return (
       <select
         required={field.required}

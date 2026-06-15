@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import SearchableCombobox from "@/components/ui/searchable-combobox";
 import { kitagoyaApiPath } from "@/lib/paths";
 
 type EmployeeOption = {
@@ -37,6 +38,16 @@ export default function AssignmentEditor({
   const [error, setError] = useState<string | null>(null);
 
   const selectedEmployeeIds = useMemo(() => new Set(rows.map((r) => r.employeeId)), [rows]);
+  const employeeOptions = useMemo(
+    () =>
+      employees.map((employee) => ({
+        value: employee.id,
+        label: employee.name,
+        description: employee.affiliation || employmentTypeLabel(employee.employmentType),
+        searchText: `${employee.name} ${employee.affiliation ?? ""} ${employmentTypeLabel(employee.employmentType)}`,
+      })),
+    [employees],
+  );
 
   function updateRow(index: number, patch: Partial<AssignmentRow>) {
     const copy = [...rows];
@@ -83,22 +94,16 @@ export default function AssignmentEditor({
             {rows.map((row, index) => (
               <tr key={`${row.employeeId}-${index}`}>
                 <td>
-                  <select
+                  <SearchableCombobox
                     value={row.employeeId}
-                    onChange={(e) => updateRow(index, { employeeId: e.target.value })}
-                  >
-                    <option value="">選択</option>
-                    {employees.map((employee) => {
-                      const disabled =
-                        selectedEmployeeIds.has(employee.id) && employee.id !== row.employeeId;
-                      return (
-                        <option key={employee.id} value={employee.id} disabled={disabled}>
-                          {employee.name}
-                          {employee.affiliation ? ` (${employee.affiliation})` : ""}
-                        </option>
-                      );
-                    })}
-                  </select>
+                    options={employeeOptions.map((option) => ({
+                      ...option,
+                      disabled: selectedEmployeeIds.has(option.value) && option.value !== row.employeeId,
+                    }))}
+                    emptyOptionLabel="選択"
+                    placeholder="スタッフ名・所属で検索"
+                    onChange={(employeeId) => updateRow(index, { employeeId })}
+                  />
                 </td>
                 <td>
                   <input
@@ -182,4 +187,11 @@ function errorLabel(error: string | undefined, details: unknown) {
     } (${d?.otherPlan?.startTime ?? ""}-${d?.otherPlan?.endTime ?? ""}) に配置済みです。`;
   }
   return "スタッフ配置の保存に失敗しました。";
+}
+
+function employmentTypeLabel(value: string) {
+  if (value === "full_time") return "社員";
+  if (value === "part_time") return "パート";
+  if (value === "temporary") return "派遣";
+  return value;
 }

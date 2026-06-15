@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
+import { matchesQuery } from "@/lib/search";
 
 type Employee = {
   id: string;
@@ -73,6 +74,7 @@ export default function ShiftMonthEditor({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   const days = useMemo(() => {
     const list: { day: number; weekday: string; isWeekend: boolean }[] = [];
@@ -176,6 +178,13 @@ export default function ShiftMonthEditor({
         0,
       ),
     [grid, employees, days],
+  );
+  const visibleEmployees = useMemo(
+    () =>
+      employees.filter((employee) =>
+        matchesQuery(query, [employee.name, employee.affiliation, employee.defaultStartTime, employee.defaultEndTime]),
+      ),
+    [employees, query],
   );
 
   async function save() {
@@ -286,6 +295,17 @@ export default function ShiftMonthEditor({
         <span className="muted">
           出勤セル {presentCount} / {totalCells}
         </span>
+        <input
+          className="filter-search"
+          type="search"
+          placeholder="スタッフ名・所属で検索"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          aria-label="シフトスタッフを検索"
+        />
+        <span className="filter-count">
+          表示 {visibleEmployees.length} / {employees.length} 人
+        </span>
         <div className="spacer" />
         <button type="button" className="secondary" onClick={fillAllWeekdays}>
           全員の平日を出勤
@@ -322,7 +342,7 @@ export default function ShiftMonthEditor({
             </tr>
           </thead>
           <tbody>
-            {employees.map((e) => {
+            {visibleEmployees.map((e) => {
               const row = grid[e.id];
               const defaults = employeeDefaults[e.id];
               const dayCount = days.reduce(
@@ -407,6 +427,13 @@ export default function ShiftMonthEditor({
                 </tr>
               );
             })}
+            {visibleEmployees.length === 0 && (
+              <tr>
+                <td colSpan={lastDay + 5} className="muted">
+                  条件に一致するスタッフがいません。
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

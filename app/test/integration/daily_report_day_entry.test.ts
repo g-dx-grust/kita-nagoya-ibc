@@ -86,7 +86,7 @@ describe("daily-report day-entry (当日一括入力)", () => {
     expect(mv).toBe(0);
   });
 
-  it("confirm:true で確定し予定が完了になる(在庫差引はB系統へ移管したためA確定では台帳を動かさない)", async () => {
+  it("confirm:true で確定し予定が完了になり実績在庫を台帳へ反映する", async () => {
     const { plan, material } = await setup();
     const res = await callDayEntry({
       confirm: true,
@@ -106,9 +106,20 @@ describe("daily-report day-entry (当日一括入力)", () => {
     const updatedPlan = await prisma.productionPlan.findUnique({ where: { id: plan.id } });
     expect(updatedPlan?.status).toBe("completed");
 
-    // 在庫差引・実績は日報蓄積(B)が正。A系統の確定では daily_report の在庫行を作らない。
-    const mv = await prisma.stockMovement.count({ where: { sourceType: "daily_report" } });
-    expect(mv).toBe(0);
+    const movements = await prisma.stockMovement.findMany({
+      where: { sourceType: "daily_report", status: "CONFIRMED" } as any,
+      orderBy: { movementType: "asc" },
+    });
+    expect(movements.map((m) => m.movementType)).toEqual([
+      "ACTUAL_MATERIAL_USE",
+      "ACTUAL_PRODUCTION_IN",
+    ]);
+    expect(movements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ itemType: "raw_material", itemId: material.id, quantity: -10 }),
+        expect.objectContaining({ itemType: "product", itemId: plan.productId, quantity: 80 }),
+      ]),
+    );
   });
 
   it("確定済みの予定は再確定せずスキップ(値を上書きしない)", async () => {

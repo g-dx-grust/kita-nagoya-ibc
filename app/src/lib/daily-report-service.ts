@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { audit } from "./audit";
 import { computeDailyReportActualCost } from "./daily-report-cost";
 import { HttpError } from "./http";
+import { replaceDailyReportActualMovements } from "./inventory-ledger";
 import { refreshCumulativeMaterialRequirements } from "./material-forecast";
 import { getCurrentBillingUnitPrice } from "./plan-engine";
 import { prisma } from "./prisma";
@@ -121,8 +122,6 @@ export async function confirmDailyReport(
   });
 
   const after = await prisma.$transaction(async (tx) => {
-    // 在庫差引・月次実績の正は日報蓄積(B=ProductionDailyReportEntry)へ移管。
-    // A系統の確定では在庫台帳へ書き込まない(B と二重計上しないため)。PLANNED 行は計算層で除外される。
     const updated = await tx.dailyReport.update({
       where: { id: reportId },
       include: { consumptions: true },
@@ -135,6 +134,7 @@ export async function confirmDailyReport(
         actualTotalCost: actualCost.actualTotalCost,
       },
     });
+    await replaceDailyReportActualMovements(tx, updated, plan);
     await tx.productionPlan.update({ where: { id: plan.id }, data: { status: "completed" } });
     return updated;
   });

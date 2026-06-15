@@ -12,6 +12,7 @@ import { planStatusClass, planStatusLabel } from "@/lib/labels";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 import { ceilDisplayQuantity, formatCases } from "@/lib/units";
 import ProductCombobox from "@/components/ui/product-combobox";
+import SearchableCombobox from "@/components/ui/searchable-combobox";
 
 type ProductOption = {
   id: string;
@@ -58,7 +59,7 @@ export default function PlanForm({
   planId?: string;
 }) {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("max_quantity");
+  const [mode, setMode] = useState<Mode>("duration");
   const today = new Date().toISOString().slice(0, 10);
 
   const [date, setDate] = useState(initial?.date ?? today);
@@ -77,6 +78,10 @@ export default function PlanForm({
   const [serverError, setServerError] = useState<string | null>(null);
 
   const product = useMemo(() => products.find((p) => p.id === productId), [products, productId]);
+  const workAreaOptions = useMemo(
+    () => workAreas.map((workArea) => ({ value: workArea.id, label: workArea.name })),
+    [workAreas],
+  );
   const quantityPreview = formatCases(quantity, { casePackQty: product?.casePackQty ?? null, baseUnit: unit });
 
   // Default work area + unit when product changes (only for create).
@@ -195,14 +200,14 @@ export default function PlanForm({
           </label>
           <label>
             <span>作業場所</span>
-            <select value={workAreaId} onChange={(e) => setWorkAreaId(e.target.value)} required>
-              <option value="">選択</option>
-              {workAreas.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
+            <SearchableCombobox
+              required
+              value={workAreaId}
+              options={workAreaOptions}
+              emptyOptionLabel="選択"
+              placeholder="作業場所名で検索"
+              onChange={setWorkAreaId}
+            />
           </label>
         </div>
 

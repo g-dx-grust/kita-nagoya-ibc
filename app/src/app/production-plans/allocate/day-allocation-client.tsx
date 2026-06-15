@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, type CSSProperties, type ReactNode } from "react";
+import SearchableCombobox from "@/components/ui/searchable-combobox";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 
 type IdleReason = "no_remaining_work" | "room_capacity_full";
@@ -645,19 +646,17 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
                         <td>
                           <div className="alloc-room-cell">
                             <span className="gantt-legend-swatch" style={{ background: colorOf(job.workAreaId) }} />
-                            <select
-                              className="alloc-room-select"
-                              aria-label={`${job.productName}の作業場所`}
+                            <SearchableCombobox
+                              ariaLabel={`${job.productName}の作業場所`}
                               value={selectedWorkAreaId}
-                              onChange={(e) => changeJobWorkArea(job, e.target.value)}
+                              options={options.map((option) => ({
+                                value: option.workAreaId,
+                                label: option.workAreaName,
+                              }))}
+                              placeholder="作業場所名で検索"
+                              onChange={(workAreaId) => changeJobWorkArea(job, workAreaId)}
                               disabled={loading || options.length <= 1}
-                            >
-                              {options.map((option) => (
-                                <option key={option.workAreaId} value={option.workAreaId}>
-                                  {option.workAreaName}
-                                </option>
-                              ))}
-                            </select>
+                            />
                             {moved && job.originalWorkAreaName && (
                               <span className="badge info">元: {job.originalWorkAreaName}</span>
                             )}

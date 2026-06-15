@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import SearchableCombobox from "@/components/ui/searchable-combobox";
 import { kitagoyaApiPath } from "@/lib/paths";
 
 type Product = {
@@ -127,6 +128,12 @@ export default function ProductEditor({
   const [bomRows, setBomRows] = useState<BomRow[]>(bom);
   const [capRows, setCapRows] = useState<CapacityRow[]>(capacities);
   const [billingRows, setBillingRows] = useState<BillingPriceRow[]>(billingPrices);
+  const materialComboboxOptions = useMemo(() => itemRefComboboxOptions(materials), [materials]);
+  const packagingComboboxOptions = useMemo(() => itemRefComboboxOptions(packaging), [packaging]);
+  const workAreaOptions = useMemo(
+    () => workAreas.map((workArea) => ({ value: workArea.id, label: workArea.name })),
+    [workAreas],
+  );
 
   async function saveMeta() {
     setSavingMeta(true);
@@ -419,14 +426,13 @@ export default function ProductEditor({
           </label>
           <label>
             <span>標準作業場所</span>
-            <select value={defaultWorkAreaId} onChange={(e) => setDefaultWorkAreaId(e.target.value)}>
-              <option value="">未設定</option>
-              {workAreas.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
+            <SearchableCombobox
+              value={defaultWorkAreaId}
+              options={workAreaOptions}
+              emptyOptionLabel="未設定"
+              placeholder="作業場所名で検索"
+              onChange={setDefaultWorkAreaId}
+            />
           </label>
           <label>
             <span>請求対象</span>
@@ -630,6 +636,7 @@ export default function ProductEditor({
           <tbody>
             {bomRows.map((r, idx) => {
               const options = r.itemType === "raw_material" ? materials : packaging;
+              const comboboxOptions = r.itemType === "raw_material" ? materialComboboxOptions : packagingComboboxOptions;
               return (
                 <tr key={idx}>
                   <td>
@@ -646,22 +653,18 @@ export default function ProductEditor({
                     </select>
                   </td>
                   <td>
-                    <select
+                    <SearchableCombobox
                       value={r.itemId}
-                      onChange={(e) => {
+                      options={comboboxOptions}
+                      emptyOptionLabel="選択"
+                      placeholder={r.itemType === "raw_material" ? "原料番号・名称で検索" : "資材番号・名称で検索"}
+                      onChange={(itemId) => {
                         const copy = [...bomRows];
-                        const ref = options.find((o) => o.id === e.target.value);
-                        copy[idx] = { ...r, itemId: e.target.value, unit: ref?.unit ?? r.unit };
+                        const ref = options.find((o) => o.id === itemId);
+                        copy[idx] = { ...r, itemId, unit: ref?.unit ?? r.unit };
                         setBomRows(copy);
                       }}
-                    >
-                      <option value="">選択</option>
-                      {options.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.code} · {o.name}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </td>
                   <td>
                     <input
@@ -746,22 +749,18 @@ export default function ProductEditor({
             {capRows.map((r, idx) => (
               <tr key={idx}>
                 <td>
-                  <select
+                  <SearchableCombobox
                     value={r.workAreaId}
                     disabled={!!r.id}
-                    onChange={(e) => {
+                    options={workAreaOptions}
+                    emptyOptionLabel="選択"
+                    placeholder="作業場所名で検索"
+                    onChange={(workAreaId) => {
                       const copy = [...capRows];
-                      copy[idx] = { ...r, workAreaId: e.target.value };
+                      copy[idx] = { ...r, workAreaId };
                       setCapRows(copy);
                     }}
-                  >
-                    <option value="">選択</option>
-                    {workAreas.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.name}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </td>
                 <td>
                   <input
@@ -823,4 +822,13 @@ export default function ProductEditor({
       </div>
     </>
   );
+}
+
+function itemRefComboboxOptions(items: ItemRef[]) {
+  return items.map((item) => ({
+    value: item.id,
+    code: item.code,
+    label: item.name,
+    description: item.unit,
+  }));
 }

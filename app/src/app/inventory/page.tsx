@@ -2,18 +2,31 @@ import type { StockMovement } from "@prisma/client";
 import {
   buildMonthlyInventorySheet,
   type MonthlyInventoryMovement,
+  type MonthlyInventorySheet,
 } from "@/lib/monthly-inventory-sheet";
 import {
   buildEditableGrid,
+  type EditableGrid,
   type EditableGridItem,
   type EditableGridKind,
   type EditableGridMovement,
 } from "@/lib/inventory-editable-grid";
 import { INVENTORY_LEDGER_STATUS, MANUAL_INVENTORY_SOURCE_TYPE } from "@/lib/inventory-types";
 import { prisma } from "@/lib/prisma";
-import { InventoryTabs } from "./inventory-tabs";
+import { InventoryTabs, type InventoryTabKey, type InventoryTabMeta } from "./inventory-tabs";
+import type { EditableGridItemType } from "./inventory-editable-grid";
 
 export const dynamic = "force-dynamic";
+
+type ActiveInventoryData = {
+  title: string;
+  sheet: MonthlyInventorySheet;
+  itemType: EditableGridItemType;
+  caseByItemId?: Record<string, number | null>;
+  productScope: "kitagoya" | "all";
+  editableGrid: EditableGrid | null;
+  secondaryHeader: string;
+};
 
 function toIsoDate(value: Date | null): string | null {
   return value ? value.toISOString().slice(0, 10) : null;
@@ -66,131 +79,29 @@ export default async function InventoryPage({
 }) {
   const sp = await searchParams;
   const month = normalizeMonth(sp.month ?? sp.date?.slice(0, 7) ?? new Date().toISOString().slice(0, 7));
+  const active = normalizeTab(sp.tab);
+  const productScope = sp.scope === "all" ? "all" : "kitagoya";
+  const adminMode = sp.admin === "1";
   const monthEnd = endOfMonth(month);
 
-  const [products, materials, packaging] = await Promise.all([
-    prisma.product.findMany({
-      where: { active: true },
-      orderBy: { productCode: "asc" },
-      select: { id: true, productCode: true, officialName: true, displayName: true, unit: true, casePackQty: true, usedAtKitagoya: true },
-    }),
-    prisma.material.findMany({
-      where: { active: true },
-      include: { supplier: true },
-      orderBy: { materialCode: "asc" },
-    }),
-    prisma.packagingMaterial.findMany({
-      where: { active: true },
-      include: { supplier: true },
-      orderBy: { materialCode: "asc" },
-    }),
+  const [productCount, rawCount, packagingCount, activeData] = await Promise.all([
+    prisma.product.count({ where: { active: true } }),
+    prisma.material.count({ where: { active: true } }),
+    prisma.packagingMaterial.count({ where: { active: true } }),
+    loadActiveInventoryData(active, month, monthEnd, { adminMode, productScope }),
   ]);
 
-  const [productMovements, rawMovements, packagingMovements] = await Promise.all([
-    prisma.stockMovement.findMany({
-      where: {
-        itemType: "product",
-        itemId: { in: products.map((p) => p.id) },
-        status: INVENTORY_LEDGER_STATUS.CONFIRMED,
-        effectiveDate: { lte: new Date(monthEnd) },
-      },
-      orderBy: [{ itemId: "asc" }, { effectiveDate: "asc" }],
-    }),
-    prisma.stockMovement.findMany({
-      where: {
-        itemType: "raw_material",
-        itemId: { in: materials.map((material) => material.id) },
-        status: INVENTORY_LEDGER_STATUS.CONFIRMED,
-        effectiveDate: { lte: new Date(monthEnd) },
-      },
-      orderBy: [{ itemId: "asc" }, { effectiveDate: "asc" }],
-    }),
-    prisma.stockMovement.findMany({
-      where: {
-        itemType: "packaging",
-        itemId: { in: packaging.map((material) => material.id) },
-        status: INVENTORY_LEDGER_STATUS.CONFIRMED,
-        effectiveDate: { lte: new Date(monthEnd) },
-      },
-      orderBy: [{ itemId: "asc" }, { effectiveDate: "asc" }],
-    }),
-  ]);
-
-  // 商品在庫: 確定在庫トランザクション(期首＋確定生産)から、原料/資材と同じ日次台帳を作る。
-  // 入荷=生産入庫(プラス), 使用量=出荷/出庫(マイナス), 残=理論在庫。
-  const productSheet = buildMonthlyInventorySheet({
-    month,
-    items: products.map((p) => ({
-      id: p.id,
-      code: p.productCode,
-      name: p.displayName || p.officialName,
-      supplierName: "",
-      unit: p.unit,
-    })),
-    movements: productMovements.map(toSheetMovement),
-  });
-
-  const rawSheet = buildMonthlyInventorySheet({
-    month,
-    items: materials.map((material) => ({
-      id: material.id,
-      code: material.materialCode,
-      name: material.name,
-      supplierName: material.supplier?.name ?? "",
-      unit: material.unit,
-    })),
-    movements: rawMovements.map(toSheetMovement),
-  });
-
-  const packagingSheet = buildMonthlyInventorySheet({
-    month,
-    items: packaging.map((material) => ({
-      id: material.id,
-      code: material.materialCode,
-      name: material.name,
-      supplierName: material.supplier?.name ?? "",
-      unit: material.unit,
-    })),
-    movements: packagingMovements.map(toSheetMovement),
-  });
-
-  const productCases = Object.fromEntries(products.map((p) => [p.id, p.casePackQty]));
-  const packagingCases = Object.fromEntries(packaging.map((p) => [p.id, p.casePackQty]));
-  const productKitagoya = Object.fromEntries(products.map((p) => [p.id, p.usedAtKitagoya]));
-
-  // Excelライク・セル編集(管理者)用の編集グリッド。auto/手入力(grid)に分けて保持する。
-  const productItems: EditableGridItem[] = products.map((p) => ({
-    id: p.id,
-    code: p.productCode,
-    name: p.displayName || p.officialName,
-    supplierName: "",
-    unit: p.unit,
-  }));
-  const rawItems: EditableGridItem[] = materials.map((m) => ({
-    id: m.id,
-    code: m.materialCode,
-    name: m.name,
-    supplierName: m.supplier?.name ?? "",
-    unit: m.unit,
-  }));
-  const packagingItems: EditableGridItem[] = packaging.map((m) => ({
-    id: m.id,
-    code: m.materialCode,
-    name: m.name,
-    supplierName: m.supplier?.name ?? "",
-    unit: m.unit,
-  }));
-
-  const editableGrids = {
-    product: buildEditableGrid({ month, items: productItems, movements: productMovements.map(toGridMovement) }),
-    raw_material: buildEditableGrid({ month, items: rawItems, movements: rawMovements.map(toGridMovement) }),
-    packaging: buildEditableGrid({ month, items: packagingItems, movements: packagingMovements.map(toGridMovement) }),
-  };
+  const tabs: InventoryTabMeta[] = [
+    { key: "product", label: "商品", count: productCount, href: inventoryTabHref(month, "product", { adminMode, productScope }) },
+    { key: "raw", label: "原料", count: rawCount, href: inventoryTabHref(month, "raw", { adminMode, productScope }) },
+    { key: "packaging", label: "資材", count: packagingCount, href: inventoryTabHref(month, "packaging", { adminMode, productScope }) },
+  ];
 
   return (
     <>
       <h1>在庫</h1>
       <form className="panel toolbar" method="GET">
+        <input type="hidden" name="tab" value={active} />
         <label>
           <span>対象月</span>
           <input type="month" name="month" defaultValue={month} />
@@ -201,16 +112,188 @@ export default async function InventoryPage({
       </form>
 
       <InventoryTabs
-        product={productSheet}
-        raw={rawSheet}
-        packaging={packagingSheet}
-        productCases={productCases}
-        packagingCases={packagingCases}
-        productKitagoya={productKitagoya}
-        editableGrids={editableGrids}
+        active={active}
+        tabs={tabs}
+        adminMode={adminMode}
+        adminModeHref={inventoryTabHref(month, active, { adminMode: !adminMode, productScope })}
+        productScopeHref={inventoryTabHref(month, active, {
+          adminMode,
+          productScope: productScope === "all" ? "kitagoya" : "all",
+        })}
+        {...activeData}
       />
     </>
   );
+}
+
+async function loadActiveInventoryData(
+  active: InventoryTabKey,
+  month: string,
+  monthEnd: string,
+  options: { adminMode: boolean; productScope: "kitagoya" | "all" },
+): Promise<ActiveInventoryData> {
+  if (active === "raw") return loadRawInventory(month, monthEnd, options.adminMode, options.productScope);
+  if (active === "packaging") return loadPackagingInventory(month, monthEnd, options.adminMode, options.productScope);
+  return loadProductInventory(month, monthEnd, options.adminMode, options.productScope);
+}
+
+async function loadProductInventory(
+  month: string,
+  monthEnd: string,
+  adminMode: boolean,
+  productScope: "kitagoya" | "all",
+): Promise<ActiveInventoryData> {
+  const products = await prisma.product.findMany({
+    where: { active: true, ...(productScope === "kitagoya" ? { usedAtKitagoya: true } : {}) },
+    orderBy: { productCode: "asc" },
+    select: {
+      id: true,
+      productCode: true,
+      officialName: true,
+      displayName: true,
+      unit: true,
+      casePackQty: true,
+      usedAtKitagoya: true,
+    },
+  });
+  const movements = await loadMovements("product", products.map((p) => p.id), monthEnd);
+  const items: EditableGridItem[] = products.map((p) => ({
+    id: p.id,
+    code: p.productCode,
+    name: p.displayName || p.officialName,
+    supplierName: "",
+    unit: p.unit,
+  }));
+
+  return {
+    title: "商品在庫表",
+    itemType: "product",
+    secondaryHeader: "区分",
+    productScope,
+    caseByItemId: Object.fromEntries(products.map((p) => [p.id, p.casePackQty])),
+    sheet: buildMonthlyInventorySheet({
+      month,
+      items,
+      movements: movements.map(toSheetMovement),
+    }),
+    editableGrid: adminMode
+      ? buildEditableGrid({
+          month,
+          items,
+          movements: movements.map(toGridMovement),
+        })
+      : null,
+  };
+}
+
+async function loadRawInventory(
+  month: string,
+  monthEnd: string,
+  adminMode: boolean,
+  productScope: "kitagoya" | "all",
+): Promise<ActiveInventoryData> {
+  const materials = await prisma.material.findMany({
+    where: { active: true },
+    include: { supplier: true },
+    orderBy: { materialCode: "asc" },
+  });
+  const movements = await loadMovements("raw_material", materials.map((m) => m.id), monthEnd);
+  const items: EditableGridItem[] = materials.map((m) => ({
+    id: m.id,
+    code: m.materialCode,
+    name: m.name,
+    supplierName: m.supplier?.name ?? "",
+    unit: m.unit,
+  }));
+
+  return {
+    title: "原料在庫表",
+    itemType: "raw_material",
+    secondaryHeader: "仕入先",
+    productScope,
+    sheet: buildMonthlyInventorySheet({
+      month,
+      items,
+      movements: movements.map(toSheetMovement),
+    }),
+    editableGrid: adminMode
+      ? buildEditableGrid({
+          month,
+          items,
+          movements: movements.map(toGridMovement),
+        })
+      : null,
+  };
+}
+
+async function loadPackagingInventory(
+  month: string,
+  monthEnd: string,
+  adminMode: boolean,
+  productScope: "kitagoya" | "all",
+): Promise<ActiveInventoryData> {
+  const packaging = await prisma.packagingMaterial.findMany({
+    where: { active: true },
+    include: { supplier: true },
+    orderBy: { materialCode: "asc" },
+  });
+  const movements = await loadMovements("packaging", packaging.map((m) => m.id), monthEnd);
+  const items: EditableGridItem[] = packaging.map((m) => ({
+    id: m.id,
+    code: m.materialCode,
+    name: m.name,
+    supplierName: m.supplier?.name ?? "",
+    unit: m.unit,
+  }));
+
+  return {
+    title: "資材在庫表",
+    itemType: "packaging",
+    secondaryHeader: "仕入先",
+    productScope,
+    caseByItemId: Object.fromEntries(packaging.map((p) => [p.id, p.casePackQty])),
+    sheet: buildMonthlyInventorySheet({
+      month,
+      items,
+      movements: movements.map(toSheetMovement),
+    }),
+    editableGrid: adminMode
+      ? buildEditableGrid({
+          month,
+          items,
+          movements: movements.map(toGridMovement),
+        })
+      : null,
+  };
+}
+
+async function loadMovements(itemType: EditableGridItemType, itemIds: string[], monthEnd: string) {
+  if (itemIds.length === 0) return [];
+  return prisma.stockMovement.findMany({
+    where: {
+      itemType,
+      itemId: { in: itemIds },
+      status: INVENTORY_LEDGER_STATUS.CONFIRMED,
+      effectiveDate: { lte: new Date(monthEnd) },
+    },
+    orderBy: [{ itemId: "asc" }, { effectiveDate: "asc" }],
+  });
+}
+
+function normalizeTab(value: string | undefined): InventoryTabKey {
+  if (value === "raw" || value === "packaging") return value;
+  return "product";
+}
+
+function inventoryTabHref(
+  month: string,
+  tab: InventoryTabKey,
+  options: { adminMode: boolean; productScope: "kitagoya" | "all" },
+) {
+  const params = new URLSearchParams({ month, tab });
+  if (options.adminMode) params.set("admin", "1");
+  if (options.productScope === "all") params.set("scope", "all");
+  return `?${params.toString()}`;
 }
 
 function normalizeMonth(value: string) {

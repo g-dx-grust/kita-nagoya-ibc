@@ -1,26 +1,19 @@
 "use client";
 
 import { Fragment, type CSSProperties, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
-
 import { matchesQuery } from "@/lib/search";
 
-export type ProductComboOption = {
-  id: string;
-  productCode: string;
-  officialName: string;
-  displayName?: string | null;
-  aliases?: string[];
-  specification?: string | null;
-  brandName?: string | null;
-  unit?: string;
+export type SearchableComboboxOption = {
+  key?: string;
+  value: string;
+  label: string;
+  code?: string;
+  description?: string | null;
+  searchText?: string;
+  disabled?: boolean;
 };
 
-/**
- * 生のクエリで素直に部分一致した箇所を <mark> でハイライトするための分割ヘルパ。
- * 大文字小文字を無視した raw indexOf で照合し、ヒットしなければ元テキストをそのまま返す
- * (カナ畳み込み経由のヒットなど、生の一致が無い場合はプレーン表示)。
- */
-export function highlightMatch(text: string, rawQuery: string): ReactNode {
+export function highlightSearchMatch(text: string, rawQuery: string): ReactNode {
   const q = rawQuery.trim();
   if (!q || !text) return text;
   const lowerText = text.toLowerCase();
@@ -44,34 +37,28 @@ export function highlightMatch(text: string, rawQuery: string): ReactNode {
   return parts;
 }
 
-/**
- * 商品選択用の検索付きコンボボックス（要望C）。
- * 管理コード・正式名称・表示名・別名の部分一致で絞り込める。外部依存なし。
- * 既存の素の <select> を置換するための最小実装。
- */
-export default function ProductCombobox({
-  products,
+export default function SearchableCombobox({
+  options,
   value,
   onChange,
-  placeholder = "商品を検索（管理コード・名称・別名）",
+  placeholder = "検索して選択",
+  emptyOptionLabel,
   name,
   required,
   disabled,
-  emptyOptionLabel,
   ariaLabel,
-  autoFocus,
+  maxVisible = 80,
 }: {
-  products: ProductComboOption[];
+  options: SearchableComboboxOption[];
   value: string;
-  onChange: (id: string) => void;
+  onChange: (value: string) => void;
   placeholder?: string;
+  emptyOptionLabel?: string;
   name?: string;
   required?: boolean;
   disabled?: boolean;
-  /** 指定すると「未選択に戻す」候補を先頭に出す。 */
-  emptyOptionLabel?: string;
   ariaLabel?: string;
-  autoFocus?: boolean;
+  maxVisible?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -81,44 +68,33 @@ export default function ProductCombobox({
   const listRef = useRef<HTMLUListElement>(null);
   const listId = useId();
 
-  const selected = useMemo(() => products.find((p) => p.id === value) ?? null, [products, value]);
-  const label = selected ? `${selected.productCode} · ${selected.officialName}` : "";
+  const selected = useMemo(() => options.find((option) => option.value === value) ?? null, [options, value]);
+  const selectedLabel = selected ? optionDisplayLabel(selected) : "";
   const hasEmptyOption = Boolean(emptyOptionLabel);
 
   const filtered = useMemo(() => {
     const q = query.trim();
-    // 共有の matchesQuery で全角/半角カナ・カナ↔ひらがな・全角英数を畳み込んで照合する
-    // (例:「するめ」で「するめｿｰﾒﾝ」、「ｿｰﾒﾝ」で「するめソーメン」が相互ヒット)。空白区切りは AND。
     const list = q
-      ? products.filter((p) =>
-          matchesQuery(q, [
-            p.productCode,
-            p.officialName,
-            p.displayName ?? "",
-            p.specification ?? "",
-            p.brandName ?? "",
-            ...(p.aliases ?? []),
-          ]),
+      ? options.filter((option) =>
+          matchesQuery(q, [option.code ?? "", option.label, option.description ?? "", option.searchText ?? ""]),
         )
-      : products;
-    let sliced = list.slice(0, 80);
-    // 商品が80件を超える場合でも、選択中の商品は必ずリストに出す（ネイティブselect同等の発見性）。
-    if (!q && selected && !sliced.some((p) => p.id === selected.id)) {
-      sliced = [selected, ...sliced].slice(0, 80);
+      : options;
+    let sliced = list.slice(0, maxVisible);
+    if (!q && selected && !sliced.some((option) => option.value === selected.value)) {
+      sliced = [selected, ...sliced].slice(0, maxVisible);
     }
     return sliced;
-  }, [products, query, selected]);
+  }, [maxVisible, options, query, selected]);
   const optionCount = filtered.length + (hasEmptyOption ? 1 : 0);
 
   useEffect(() => {
-    function onDoc(e: MouseEvent) {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    function onDoc(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     }
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
-  // アクティブ行を可視範囲へスクロール
   useEffect(() => {
     if (!open || !listRef.current) return;
     const el = listRef.current.querySelector<HTMLElement>(`[data-idx="${active}"]`);
@@ -165,8 +141,8 @@ export default function ProductCombobox({
     };
   }, [open]);
 
-  function choose(id: string) {
-    onChange(id);
+  function choose(nextValue: string) {
+    onChange(nextValue);
     setOpen(false);
     setQuery("");
     setActive(0);
@@ -178,7 +154,7 @@ export default function ProductCombobox({
       return;
     }
     const option = filtered[active - (hasEmptyOption ? 1 : 0)];
-    if (option) choose(option.id);
+    if (option && !option.disabled) choose(option.value);
   }
 
   return (
@@ -188,10 +164,9 @@ export default function ProductCombobox({
         className="combobox-input"
         type="text"
         autoComplete="off"
-        autoFocus={autoFocus}
         disabled={disabled}
-        placeholder={selected ? label : placeholder}
-        value={open ? query : label}
+        placeholder={selected ? selectedLabel : placeholder}
+        value={open ? query : selectedLabel}
         aria-required={required}
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
@@ -203,25 +178,25 @@ export default function ProductCombobox({
           setQuery("");
           setActive(0);
         }}
-        onChange={(e) => {
-          setQuery(e.target.value);
+        onChange={(event) => {
+          setQuery(event.target.value);
           setOpen(true);
           setActive(hasEmptyOption ? 1 : 0);
         }}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowDown") {
-            e.preventDefault();
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
             setOpen(true);
-            setActive((a) => Math.min(a + 1, Math.max(optionCount - 1, 0)));
-          } else if (e.key === "ArrowUp") {
-            e.preventDefault();
-            setActive((a) => Math.max(a - 1, 0));
-          } else if (e.key === "Enter") {
+            setActive((current) => Math.min(current + 1, Math.max(optionCount - 1, 0)));
+          } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            setActive((current) => Math.max(current - 1, 0));
+          } else if (event.key === "Enter") {
             if (open && optionCount > 0) {
-              e.preventDefault();
+              event.preventDefault();
               chooseActive();
             }
-          } else if (e.key === "Escape") {
+          } else if (event.key === "Escape") {
             setOpen(false);
           }
         }}
@@ -236,45 +211,44 @@ export default function ProductCombobox({
               aria-selected={!value}
               className={`combobox-option ${active === 0 ? "is-active" : ""} ${!value ? "is-selected" : ""}`}
               onMouseEnter={() => setActive(0)}
-              onMouseDown={(e) => {
-                e.preventDefault();
+              onMouseDown={(event) => {
+                event.preventDefault();
                 choose("");
               }}
             >
               <span className="combobox-name muted">{emptyOptionLabel}</span>
             </li>
           )}
-          {filtered.length === 0 && <li className="combobox-empty">該当する商品がありません</li>}
-          {filtered.map((p, i) => (
+          {filtered.length === 0 && <li className="combobox-empty">該当する候補がありません</li>}
+          {filtered.map((option, index) => (
             <li
-              key={p.id}
-              id={`${listId}-option-${i + (hasEmptyOption ? 1 : 0)}`}
-              data-idx={i + (hasEmptyOption ? 1 : 0)}
+              key={option.key ?? option.value}
+              id={`${listId}-option-${index + (hasEmptyOption ? 1 : 0)}`}
+              data-idx={index + (hasEmptyOption ? 1 : 0)}
               role="option"
-              aria-selected={p.id === value}
-              className={`combobox-option ${i + (hasEmptyOption ? 1 : 0) === active ? "is-active" : ""} ${
-                p.id === value ? "is-selected" : ""
-              }`}
-              onMouseEnter={() => setActive(i + (hasEmptyOption ? 1 : 0))}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                choose(p.id);
+              aria-selected={option.value === value}
+              aria-disabled={option.disabled}
+              className={`combobox-option ${index + (hasEmptyOption ? 1 : 0) === active ? "is-active" : ""} ${
+                option.value === value ? "is-selected" : ""
+              } ${option.disabled ? "is-disabled" : ""}`}
+              onMouseEnter={() => setActive(index + (hasEmptyOption ? 1 : 0))}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                if (option.disabled) return;
+                choose(option.value);
               }}
             >
-              <span className="combobox-code">{highlightMatch(p.productCode, query)}</span>
-              <span className="combobox-name">{highlightMatch(p.officialName, query)}</span>
-              {((p.displayName && p.displayName !== p.officialName) || p.specification || p.brandName || p.unit) && (
-                <span className="combobox-sub">
-                  {p.displayName && p.displayName !== p.officialName ? p.displayName : null}
-                  {p.specification ? `・${p.specification}` : null}
-                  {p.brandName ? `・${p.brandName}` : null}
-                  {p.unit ? `・${p.unit}` : null}
-                </span>
-              )}
+              {option.code && <span className="combobox-code">{highlightSearchMatch(option.code, query)}</span>}
+              <span className="combobox-name">{highlightSearchMatch(option.label, query)}</span>
+              {option.description && <span className="combobox-sub">{option.description}</span>}
             </li>
           ))}
         </ul>
       )}
     </div>
   );
+}
+
+function optionDisplayLabel(option: SearchableComboboxOption): string {
+  return option.code ? `${option.code} · ${option.label}` : option.label;
 }

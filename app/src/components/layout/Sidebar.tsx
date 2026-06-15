@@ -33,7 +33,7 @@ type MenuItem = {
 };
 
 const menuItems: MenuItem[] = [
-  { href: kitagoyaPath("/"), label: "HOME", icon: Home, iconColor: "text-blue-600" },
+  { href: kitagoyaPath("/"), label: "ホーム", icon: Home, iconColor: "text-blue-600" },
   { href: kitagoyaPath("/production-plans"), label: "生産予定", icon: ClipboardList, iconColor: "text-emerald-600" },
   { href: kitagoyaPath("/production-plans/monthly"), label: "月間予定", icon: CalendarDays, iconColor: "text-purple-600" },
   { href: kitagoyaPath("/production-plans/allocate"), label: "当日割り当て", icon: Users, iconColor: "text-fuchsia-600" },

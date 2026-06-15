@@ -4,7 +4,8 @@ import {
   summarizeProductDailyReportTotals,
   type ProductDailyReportSummaryRow,
 } from "@/lib/product-daily-report-calculations";
-import { loadProductDailyReportSnapshots } from "@/lib/product-daily-report-service";
+import { loadProductDailyReportSnapshotsForProducts } from "@/lib/product-daily-report-service";
+import ProductReportFilter from "./product-report-filter";
 import ProductDailyReportClient, {
   type ProductDailyReportLaborRateOption,
   type ProductDailyReportLabelPhoto,
@@ -80,26 +81,30 @@ export default async function ProductionDailyReportsPage({
     bomByProduct.set(b.productId, list);
   }
 
-  const productOptions: ProductDailyReportProductOption[] = await Promise.all(
-    products.map(async (product) => {
-      const snapshot = await loadProductDailyReportSnapshots(product.id, monthStart);
-      return {
-        id: product.id,
-        productCode: product.productCode,
-        officialName: product.officialName,
-        displayName: product.displayName,
-        aliases: product.aliases.map((alias) => alias.aliasName),
-        specification: product.specification,
-        brandName: product.brandName,
-        unit: product.unit,
-        capacityG: snapshot.capacityG,
-        materialUnitCostPerKg: snapshot.materialUnitCostPerKg,
-        packageCostPerUnit: snapshot.packageCostPerUnit,
-        unitPrice: snapshot.unitPrice,
-        bomMaterials: bomByProduct.get(product.id) ?? [],
-      };
-    }),
-  );
+  const snapshotsByProduct = await loadProductDailyReportSnapshotsForProducts(products, monthStart);
+  const productOptions: ProductDailyReportProductOption[] = products.map((product) => {
+    const snapshot = snapshotsByProduct.get(product.id) ?? {
+      capacityG: product.packSizeG,
+      materialUnitCostPerKg: 0,
+      packageCostPerUnit: 0,
+      unitPrice: 0,
+    };
+    return {
+      id: product.id,
+      productCode: product.productCode,
+      officialName: product.officialName,
+      displayName: product.displayName,
+      aliases: product.aliases.map((alias) => alias.aliasName),
+      specification: product.specification,
+      brandName: product.brandName,
+      unit: product.unit,
+      capacityG: snapshot.capacityG,
+      materialUnitCostPerKg: snapshot.materialUnitCostPerKg,
+      packageCostPerUnit: snapshot.packageCostPerUnit,
+      unitPrice: snapshot.unitPrice,
+      bomMaterials: bomByProduct.get(product.id) ?? [],
+    };
+  });
   const unitPriceByProduct = new Map(productOptions.map((p) => [p.id, p.unitPrice]));
 
   const materialOptions: ProductDailyReportMaterialOption[] = materialMaster.map((m) => ({
@@ -208,14 +213,7 @@ export default async function ProductionDailyReportsPage({
         </label>
         <label>
           <span>商品</span>
-          <select name="productId" defaultValue={productId}>
-            <option value="">すべて</option>
-            {productOptions.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.productCode} {product.displayName || product.officialName}
-              </option>
-            ))}
-          </select>
+          <ProductReportFilter products={productOptions} initialProductId={productId} />
         </label>
         <button type="submit" className="secondary">
           表示

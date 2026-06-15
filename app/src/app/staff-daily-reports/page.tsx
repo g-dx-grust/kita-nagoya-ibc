@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { loadProductDailyReportSnapshots } from "@/lib/product-daily-report-service";
+import { loadProductDailyReportSnapshotsForProducts } from "@/lib/product-daily-report-service";
 import StaffDailyReportForm, {
   type StaffDailyReportLaborRateOption,
   type StaffDailyReportMaterialOption,
@@ -71,26 +71,30 @@ export default async function StaffDailyReportsPage({
     bomByProduct.set(row.productId, list);
   }
 
-  const productOptions: StaffDailyReportProductOption[] = await Promise.all(
-    products.map(async (product) => {
-      const snapshot = await loadProductDailyReportSnapshots(product.id, dayStart);
-      return {
-        id: product.id,
-        productCode: product.productCode,
-        officialName: product.officialName,
-        displayName: product.displayName,
-        aliases: product.aliases.map((alias) => alias.aliasName),
-        specification: product.specification,
-        brandName: product.brandName,
-        unit: product.unit,
-        capacityG: snapshot.capacityG,
-        materialUnitCostPerKg: snapshot.materialUnitCostPerKg,
-        packageCostPerUnit: snapshot.packageCostPerUnit,
-        unitPrice: snapshot.unitPrice,
-        bomMaterials: bomByProduct.get(product.id) ?? [],
-      };
-    }),
-  );
+  const snapshotsByProduct = await loadProductDailyReportSnapshotsForProducts(products, dayStart);
+  const productOptions: StaffDailyReportProductOption[] = products.map((product) => {
+    const snapshot = snapshotsByProduct.get(product.id) ?? {
+      capacityG: product.packSizeG,
+      materialUnitCostPerKg: 0,
+      packageCostPerUnit: 0,
+      unitPrice: 0,
+    };
+    return {
+      id: product.id,
+      productCode: product.productCode,
+      officialName: product.officialName,
+      displayName: product.displayName,
+      aliases: product.aliases.map((alias) => alias.aliasName),
+      specification: product.specification,
+      brandName: product.brandName,
+      unit: product.unit,
+      capacityG: snapshot.capacityG,
+      materialUnitCostPerKg: snapshot.materialUnitCostPerKg,
+      packageCostPerUnit: snapshot.packageCostPerUnit,
+      unitPrice: snapshot.unitPrice,
+      bomMaterials: bomByProduct.get(product.id) ?? [],
+    };
+  });
 
   const materialOptions: StaffDailyReportMaterialOption[] = materialMaster.map((m) => ({
     id: m.id,

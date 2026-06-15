@@ -32,6 +32,8 @@ function buildPackagingFields(
       label: "仕入先",
       type: "select",
       nullable: true,
+      searchable: true,
+      searchPlaceholder: "仕入先名で検索",
       options: [{ value: "", label: "未設定" }, ...supplierOptions],
     },
     { key: "leadTimeDays", label: "リードタイム(日)", type: "number", default: 0 },

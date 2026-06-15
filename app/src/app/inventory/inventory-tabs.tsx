@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import SearchableCombobox from "@/components/ui/searchable-combobox";
 import type { MonthlyInventorySheet, MonthlyInventorySheetRow } from "@/lib/monthly-inventory-sheet";
 import { formatCases } from "@/lib/units";
 import { matchesQuery } from "@/lib/search";
@@ -8,114 +10,84 @@ import type { EditableGrid } from "@/lib/inventory-editable-grid";
 import { InventoryEditableGrid, type EditableGridItemType } from "./inventory-editable-grid";
 
 const rowLabels = ["使用量", "入荷", "残", "賞味期限", "出荷期限"] as const;
+type InventoryRowLabel = (typeof rowLabels)[number];
 
-const ADMIN_MODE_KEY = "kitagoya:inventory:adminMode";
+export type InventoryTabKey = "product" | "raw" | "packaging";
 
-type TabKey = "product" | "raw" | "packaging";
-
-type SheetTab = {
-  key: TabKey;
+export type InventoryTabMeta = {
+  key: InventoryTabKey;
   label: string;
-  title: string;
-  sheet: MonthlyInventorySheet;
-  // 台帳の itemType。セル編集の登録先を決める。
-  itemType: EditableGridItemType;
-  // ケース入数 (itemId -> 1ケースの基本単位数)。商品・資材で併記する。
-  caseByItemId?: Record<string, number | null>;
-  // 区分(3列目)の見出し。商品は仕入先を持たないので切り替える。
-  secondaryHeader: string;
+  count: number;
+  href: string;
 };
 
-export type EditableGridsByType = Record<EditableGridItemType, EditableGrid>;
-
 export function InventoryTabs({
-  product,
-  raw,
-  packaging,
-  productCases,
-  packagingCases,
-  productKitagoya,
-  editableGrids,
+  active,
+  tabs,
+  title,
+  sheet,
+  itemType,
+  caseByItemId,
+  productScope,
+  productScopeHref,
+  adminMode,
+  adminModeHref,
+  editableGrid,
+  secondaryHeader,
 }: {
-  product: MonthlyInventorySheet;
-  raw: MonthlyInventorySheet;
-  packaging: MonthlyInventorySheet;
-  productCases: Record<string, number | null>;
-  packagingCases: Record<string, number | null>;
-  productKitagoya: Record<string, boolean>;
-  editableGrids: EditableGridsByType;
+  active: InventoryTabKey;
+  tabs: InventoryTabMeta[];
+  title: string;
+  sheet: MonthlyInventorySheet;
+  itemType: EditableGridItemType;
+  caseByItemId?: Record<string, number | null>;
+  productScope: "kitagoya" | "all";
+  productScopeHref: string;
+  adminMode: boolean;
+  adminModeHref: string;
+  editableGrid: EditableGrid | null;
+  secondaryHeader: string;
 }) {
-  const tabs: SheetTab[] = [
-    { key: "product", label: "商品", title: "商品在庫表", sheet: product, itemType: "product", caseByItemId: productCases, secondaryHeader: "区分" },
-    { key: "raw", label: "原料", title: "原料在庫表", sheet: raw, itemType: "raw_material", secondaryHeader: "仕入先" },
-    { key: "packaging", label: "資材", title: "資材在庫表", sheet: packaging, itemType: "packaging", caseByItemId: packagingCases, secondaryHeader: "仕入先" },
-  ];
-  const [active, setActive] = useState<TabKey>("product");
-  const current = tabs.find((t) => t.key === active) ?? tabs[0];
-
-  // 管理者モード(手入力UIの表示切替)。ローカルに保持し、再訪問時も維持する。
-  // 「画面トグルのみ」方式: サーバ検証はなく、社内利用前提で手入力UIの出し分けに使う。
-  const [adminMode, setAdminMode] = useState(false);
-  useEffect(() => {
-    setAdminMode(window.localStorage.getItem(ADMIN_MODE_KEY) === "1");
-  }, []);
-  function toggleAdminMode(next: boolean) {
-    setAdminMode(next);
-    window.localStorage.setItem(ADMIN_MODE_KEY, next ? "1" : "0");
-  }
-
-  const currentGrid = editableGrids[current.itemType];
-
   // 仕入先を持つのは原料・資材のみ(商品は持たない)。
-  const hasSupplier = current.secondaryHeader === "仕入先";
+  const hasSupplier = secondaryHeader === "仕入先";
 
-  // フィルタ状態はタブ間で共有しつつ、タブ切り替え時にリセットする(下の useEffect)。
+  // タブ切り替えはURL遷移で行うため、検索条件はタブごとに初期化される。
   const [query, setQuery] = useState("");
   const [supplier, setSupplier] = useState("");
   const [inStockOnly, setInStockOnly] = useState(false);
   const [negativeOnly, setNegativeOnly] = useState(false);
   // 商品タブは既定で北名古屋使用のみ表示(暫定スコープ)。
-  const [kitagoyaOnly, setKitagoyaOnly] = useState(true);
+  const kitagoyaOnly = productScope !== "all";
 
   // 北名古屋フィルタは商品タブのみ対象。
   const hasKitagoyaFilter = active === "product";
-
-  useEffect(() => {
-    setQuery("");
-    setSupplier("");
-    setInStockOnly(false);
-    setNegativeOnly(false);
-    setKitagoyaOnly(true);
-  }, [active]);
 
   // 当該シートに存在する仕入先の一覧(重複排除・空除外)。
   const suppliers = useMemo(() => {
     if (!hasSupplier) return [] as string[];
     const set = new Set<string>();
-    for (const row of current.sheet.rows) {
+    for (const row of sheet.rows) {
       if (row.supplierName) set.add(row.supplierName);
     }
     return [...set].sort((a, b) => a.localeCompare(b, "ja"));
-  }, [hasSupplier, current.sheet.rows]);
+  }, [hasSupplier, sheet.rows]);
 
   // 検索・仕入先・在庫トグルを AND で適用。
   const filteredRows = useMemo(() => {
-    return current.sheet.rows.filter((row) => {
-      if (hasKitagoyaFilter && kitagoyaOnly && !productKitagoya[row.itemId]) return false;
+    return sheet.rows.filter((row) => {
       if (!matchesQuery(query, [row.code, row.name, row.supplierName, row.unit])) return false;
       if (hasSupplier && supplier && row.supplierName !== supplier) return false;
       if (inStockOnly && row.monthEndQuantity === 0) return false;
       if (negativeOnly && !(row.monthEndQuantity < 0)) return false;
       return true;
     });
-  }, [current.sheet.rows, query, hasSupplier, supplier, inStockOnly, negativeOnly, hasKitagoyaFilter, kitagoyaOnly, productKitagoya]);
+  }, [sheet.rows, query, hasSupplier, supplier, inStockOnly, negativeOnly]);
 
   const hasActiveFilters = !!(
     query ||
     supplier ||
     inStockOnly ||
-    negativeOnly ||
-    (hasKitagoyaFilter && !kitagoyaOnly)
+    negativeOnly
   );
 
   function resetFilters() {
@@ -123,24 +95,22 @@ export function InventoryTabs({
     setSupplier("");
     setInStockOnly(false);
     setNegativeOnly(false);
-    setKitagoyaOnly(true);
   }
 
   return (
     <section>
       <div className="inv-tabs" role="tablist" aria-label="在庫の種類">
         {tabs.map((tab) => (
-          <button
+          <Link
             key={tab.key}
-            type="button"
             role="tab"
             aria-selected={active === tab.key}
             className={`inv-tab${active === tab.key ? " is-active" : ""}`}
-            onClick={() => setActive(tab.key)}
+            href={tab.href}
           >
             {tab.label}
-            <span className="inv-tab-count">{tab.sheet.rows.length}</span>
-          </button>
+            <span className="inv-tab-count">{tab.count}</span>
+          </Link>
         ))}
       </div>
       <div className="filter-bar">
@@ -153,18 +123,24 @@ export function InventoryTabs({
           aria-label="在庫を検索"
         />
         {hasSupplier && (
-          <select value={supplier} onChange={(e) => setSupplier(e.target.value)} aria-label="仕入先で絞り込み">
-            <option value="">すべての仕入先</option>
-            {suppliers.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
+          <SearchableCombobox
+            value={supplier}
+            options={suppliers.map((name) => ({ value: name, label: name }))}
+            emptyOptionLabel="すべての仕入先"
+            placeholder="仕入先で絞り込み"
+            ariaLabel="仕入先で絞り込み"
+            onChange={setSupplier}
+          />
         )}
         {hasKitagoyaFilter && (
           <label className="filter-check">
-            <input type="checkbox" checked={kitagoyaOnly} onChange={(e) => setKitagoyaOnly(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={kitagoyaOnly}
+              onChange={() => {
+                window.location.href = productScopeHref;
+              }}
+            />
             北名古屋のみ
           </label>
         )}
@@ -177,36 +153,43 @@ export function InventoryTabs({
           マイナス在庫のみ
         </label>
         <label className="filter-check filter-admin">
-          <input type="checkbox" checked={adminMode} onChange={(e) => toggleAdminMode(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={adminMode}
+            onChange={() => {
+              window.location.href = adminModeHref;
+            }}
+          />
           管理者モード（手入力）
         </label>
         <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
           条件クリア
         </button>
         <span className="filter-count">
-          {filteredRows.length} / {current.sheet.rows.length} 件
+          {filteredRows.length} / {sheet.rows.length} 件
         </span>
       </div>
-      {adminMode ? (
+      {adminMode && editableGrid ? (
         <InventoryEditableGrid
-          key={current.itemType}
-          itemType={current.itemType}
-          month={currentGrid.month}
-          monthLabel={currentGrid.monthLabel}
-          dateFrom={currentGrid.dateFrom}
-          dateTo={currentGrid.dateTo}
-          days={currentGrid.days}
-          rows={currentGrid.rows}
+          key={itemType}
+          itemType={itemType}
+          month={editableGrid.month}
+          monthLabel={editableGrid.monthLabel}
+          dateFrom={editableGrid.dateFrom}
+          dateTo={editableGrid.dateTo}
+          days={editableGrid.days}
+          rows={editableGrid.rows}
           visibleItemIds={filteredRows.map((r) => r.itemId)}
-          secondaryHeader={current.secondaryHeader}
+          secondaryHeader={secondaryHeader}
         />
       ) : (
         <InventoryExcelTable
-          title={current.title}
-          sheet={current.sheet}
+          title={title}
+          sheet={sheet}
           rows={filteredRows}
-          secondaryHeader={current.secondaryHeader}
-          caseByItemId={current.caseByItemId}
+          secondaryHeader={secondaryHeader}
+          caseByItemId={caseByItemId}
+          showShelfLifeRows={itemType !== "product"}
         />
       )}
     </section>
@@ -219,17 +202,20 @@ function InventoryExcelTable({
   rows,
   secondaryHeader,
   caseByItemId,
+  showShelfLifeRows,
 }: {
   title: string;
   sheet: MonthlyInventorySheet;
   rows: MonthlyInventorySheetRow[];
   secondaryHeader: string;
   caseByItemId?: Record<string, number | null>;
+  showShelfLifeRows: boolean;
 }) {
   const hasCaseRows =
     caseByItemId != null && rows.some((row) => (caseByItemId[row.itemId] ?? 0) > 0);
   const emptyMessage =
     sheet.rows.length === 0 ? "表示する在庫マスターがありません。" : "該当する在庫がありません。";
+  const visibleRowLabels: InventoryRowLabel[] = showShelfLifeRows ? [...rowLabels] : ["使用量", "入荷", "残"];
   return (
     <section className="inventory-sheet-section">
       <h2>{title}</h2>
@@ -273,7 +259,12 @@ function InventoryExcelTable({
             </thead>
             <tbody>
               {rows.map((row) => (
-                <InventoryItemRows key={row.itemId} row={row} casePackQty={caseByItemId?.[row.itemId] ?? null} />
+                <InventoryItemRows
+                  key={row.itemId}
+                  row={row}
+                  casePackQty={caseByItemId?.[row.itemId] ?? null}
+                  rowLabels={visibleRowLabels}
+                />
               ))}
             </tbody>
           </table>
@@ -286,9 +277,11 @@ function InventoryExcelTable({
 function InventoryItemRows({
   row,
   casePackQty,
+  rowLabels,
 }: {
   row: MonthlyInventorySheetRow;
   casePackQty?: number | null;
+  rowLabels: InventoryRowLabel[];
 }) {
   const inCases = casePackQty != null && casePackQty > 0;
   // ケース入数があれば基本単位とケース数を併記。小数の数量は表示時に切り上げる。
@@ -339,7 +332,7 @@ function InventoryItemRows({
 }
 
 function valueForLabel(
-  label: (typeof rowLabels)[number],
+  label: InventoryRowLabel,
   day: MonthlyInventorySheetRow["days"][number],
   fmt: (value: number, blankZero?: boolean) => string,
 ) {
@@ -350,13 +343,13 @@ function valueForLabel(
   return day.shippingDeadline ?? "";
 }
 
-function cellClass(label: (typeof rowLabels)[number], value: number) {
+function cellClass(label: InventoryRowLabel, value: number) {
   const classes = ["right"];
   if (label === "残" && value < 0) classes.push("negative-stock");
   return classes.join(" ");
 }
 
-function labelClass(label: (typeof rowLabels)[number]) {
+function labelClass(label: InventoryRowLabel) {
   switch (label) {
     case "使用量":
       return "usage";

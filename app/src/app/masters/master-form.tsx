@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
+import SearchableCombobox from "@/components/ui/searchable-combobox";
 
 export type MasterField = {
   key: string;
@@ -12,6 +13,8 @@ export type MasterField = {
   options?: { value: string; label: string }[];
   default?: string | number | boolean;
   nullable?: boolean;
+  searchable?: boolean;
+  searchPlaceholder?: string;
 };
 
 export type MasterFormValue = string | number | boolean;
@@ -82,7 +85,21 @@ export default function MasterForm({
                 {f.label} {f.required && "*"}
               </span>
             )}
-            {f.type === "select" ? (
+            {f.type === "select" && f.searchable ? (
+              <SearchableCombobox
+                required={f.required}
+                value={String(values[f.key] ?? "")}
+                options={(f.options ?? []).filter((option) => option.value !== "")}
+                emptyOptionLabel={(f.options ?? []).find((option) => option.value === "")?.label}
+                placeholder={f.searchPlaceholder ?? `${f.label}を検索`}
+                onChange={(value) =>
+                  setValues({
+                    ...values,
+                    [f.key]: value,
+                  })
+                }
+              />
+            ) : f.type === "select" ? (
               <select
                 required={f.required}
                 value={String(values[f.key] ?? "")}
@@ -157,7 +174,7 @@ function initialValues(fields: MasterField[]): Record<string, MasterFormValue> {
   return Object.fromEntries(
     fields.map((field) => [
       field.key,
-      field.default ?? (field.type === "number" ? 0 : field.type === "checkbox" ? false : ""),
+      field.default ?? (field.nullable ? "" : field.type === "number" ? 0 : field.type === "checkbox" ? false : ""),
     ]),
   );
 }

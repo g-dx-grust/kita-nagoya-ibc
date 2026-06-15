@@ -1,4 +1,5 @@
 import Link from "next/link";
+import FormSearchableCombobox from "@/components/ui/form-searchable-combobox";
 import { prisma } from "@/lib/prisma";
 import { kitagoyaPath } from "@/lib/paths";
 import PlanListTable from "./plan-list-table";
@@ -78,14 +79,14 @@ export default async function ProductionPlansPage({
         </label>
         <label>
           <span>作業場所</span>
-          <select name="workAreaId" defaultValue={workAreaId}>
-            <option value="">すべて</option>
-            {workAreas.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </select>
+          <FormSearchableCombobox
+            name="workAreaId"
+            initialValue={workAreaId ?? ""}
+            options={workAreas.map((workArea) => ({ value: workArea.id, label: workArea.name }))}
+            emptyOptionLabel="すべて"
+            placeholder="作業場所名で検索"
+            ariaLabel="作業場所で絞り込み"
+          />
         </label>
         <button type="submit" className="secondary">
           絞り込み

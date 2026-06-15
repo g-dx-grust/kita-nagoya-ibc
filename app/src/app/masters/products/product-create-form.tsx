@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
+import SearchableCombobox from "@/components/ui/searchable-combobox";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -64,6 +65,10 @@ export default function ProductCreateForm({
   const [billingUnitPrice, setBillingUnitPrice] = useState("");
   const [billingUnit, setBillingUnit] = useState("");
   const [billingEffectiveFrom, setBillingEffectiveFrom] = useState("");
+  const workAreaOptions = useMemo(
+    () => workAreas.map((workArea) => ({ value: workArea.id, label: workArea.name })),
+    [workAreas],
+  );
 
   function resetForm() {
     setProductCode("");
@@ -71,6 +76,7 @@ export default function ProductCreateForm({
     setDisplayName("");
     setProductionType("stock");
     setCategory("");
+    setUsedAtKitagoya(true);
     setAliases("");
     setSpecification("");
     setBrandName("");
@@ -435,14 +441,13 @@ export default function ProductCreateForm({
         <div className="row">
           <label>
             <span>標準作業場所</span>
-            <select value={defaultWorkAreaId} onChange={(e) => setDefaultWorkAreaId(e.target.value)}>
-              <option value="">未設定</option>
-              {workAreas.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
+            <SearchableCombobox
+              value={defaultWorkAreaId}
+              options={workAreaOptions}
+              emptyOptionLabel="未設定"
+              placeholder="作業場所名で検索"
+              onChange={setDefaultWorkAreaId}
+            />
           </label>
         </div>
       </fieldset>
@@ -453,14 +458,13 @@ export default function ProductCreateForm({
         <div className="row">
           <label>
             <span>作業場所</span>
-            <select value={capWorkAreaId} onChange={(e) => setCapWorkAreaId(e.target.value)}>
-              <option value="">未設定</option>
-              {workAreas.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
+            <SearchableCombobox
+              value={capWorkAreaId}
+              options={workAreaOptions}
+              emptyOptionLabel="未設定"
+              placeholder="作業場所名で検索"
+              onChange={setCapWorkAreaId}
+            />
           </label>
           <label>
             <span>1人時生産量</span>

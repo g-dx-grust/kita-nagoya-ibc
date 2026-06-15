@@ -7,6 +7,7 @@ import { DAILY_BREAK_LABEL } from "@/lib/calculations";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 import { formatCases } from "@/lib/units";
 import ProductCombobox from "@/components/ui/product-combobox";
+import SearchableCombobox from "@/components/ui/searchable-combobox";
 
 type ProductOption = {
   id: string;
@@ -116,6 +117,19 @@ export default function AutoScheduleForm({
   const [previewRequest, setPreviewRequest] = useState<AutoScheduleRequest | null>(null);
 
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
+  const workAreaOptions = useMemo(
+    () => workAreas.map((workArea) => ({ value: workArea.id, label: workArea.name })),
+    [workAreas],
+  );
+  const availableStaffOptions = useMemo(
+    () =>
+      (result?.availableStaff ?? []).map((staff) => ({
+        value: staff.employeeId,
+        label: staff.employeeName,
+        description: `${staff.startTime}-${staff.endTime}`,
+      })),
+    [result?.availableStaff],
+  );
 
   useEffect(() => {
     if (!autoLoadSuggestions || initialSuggestionsLoaded) return;
@@ -444,23 +458,19 @@ export default function AutoScheduleForm({
                     {result.persisted ? (
                       plan.workAreaName
                     ) : (
-                      <select
-                        style={{ width: "auto", minWidth: "7em", maxWidth: "11em" }}
+                      <SearchableCombobox
                         value={plan.workAreaId}
-                        onChange={(e) => {
-                          const workArea = workAreas.find((candidate) => candidate.id === e.target.value);
+                        options={workAreaOptions}
+                        placeholder="作業場所名で検索"
+                        ariaLabel={`${plan.productName}の作業場所`}
+                        onChange={(workAreaId) => {
+                          const workArea = workAreas.find((candidate) => candidate.id === workAreaId);
                           updateResultPlan(planIndex, {
-                            workAreaId: e.target.value,
+                            workAreaId,
                             workAreaName: workArea?.name ?? plan.workAreaName,
                           });
                         }}
-                      >
-                        {workAreas.map((workArea) => (
-                          <option key={workArea.id} value={workArea.id}>
-                            {workArea.name}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     )}
                   </td>
                   <td>
@@ -480,23 +490,20 @@ export default function AutoScheduleForm({
                     ) : (
                       <div className="stacked-fields">
                         {plan.assignedStaff.map((staff, staffIndex) => (
-                          <select
+                          <SearchableCombobox
                             key={`${plan.tempId}-${staffIndex}`}
                             value={staff.employeeId}
-                            onChange={(e) => updateAssignedStaff(planIndex, staffIndex, e.target.value)}
-                          >
-                            {(result.availableStaff ?? []).map((candidate) => {
-                              const duplicate = plan.assignedStaff.some(
+                            options={availableStaffOptions.map((option) => ({
+                              ...option,
+                              disabled: plan.assignedStaff.some(
                                 (selected, selectedIndex) =>
-                                  selectedIndex !== staffIndex && selected.employeeId === candidate.employeeId,
-                              );
-                              return (
-                                <option key={candidate.employeeId} value={candidate.employeeId} disabled={duplicate}>
-                                  {candidate.employeeName}
-                                </option>
-                              );
-                            })}
-                          </select>
+                                  selectedIndex !== staffIndex && selected.employeeId === option.value,
+                              ),
+                            }))}
+                            placeholder="スタッフ名で検索"
+                            ariaLabel={`${plan.productName}の配置スタッフ`}
+                            onChange={(employeeId) => updateAssignedStaff(planIndex, staffIndex, employeeId)}
+                          />
                         ))}
                       </div>
                     )}

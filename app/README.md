@@ -42,6 +42,8 @@ npm run production:seed:import -- --confirm-production-reset
 npm run rebuild:products:classification          # ドライラン
 npm run link:products:classification             # 紐づけのドライラン
 npm run import:labor-capacities -- --dry-run  # 最新手間賃表の更新内容を事前確認
+npm run import:lead-times                     # 入荷予定一覧.xlsx の原料リードタイム照合
+npm run import:lead-times -- --apply          # 照合結果を Material.leadTimeDays に反映
 npm run import:all                            # 商品分類表と紐づけはここで --apply されます
 ```
 
@@ -51,6 +53,8 @@ npm run import:all                            # 商品分類表と紐づけは�
 
 `import:labor-capacities` は `../docs/手間賃集計 最新.xlsx` の「1袋の手間賃」から `1500円 ÷ 1袋手間賃` で `袋/人時` を計算し、手間賃単価・生産能力・未確定/下書き生産予定の見積もりを更新します。商品分類表に無い商品はデフォルトでは新規作成せず未マッチとして出します。
 
+`import:lead-times` は `../docs/入荷予定一覧.xlsx` の「原料」シートから `中5日`・`2週間`・`1か月` のように日数化できるリードタイムだけを読み取り、既存の原料マスターへ照合します。`北名古屋` や `本社→北名古屋` のような拠点メモは0日扱いにせずスキップします。資材も同時に照合したい場合は `--include-packaging` を追加します。
+
 ## テスト・ビルド
 
 ```bash
@@ -58,6 +62,13 @@ npm test         # 計算ロジック+CSVのユニットテスト
 npm run typecheck
 npm run build
 ```
+
+## 本番運用メモ
+
+- Vercel の Root Directory は `app` です。`app/vercel.json` で Functions を東京リージョン `hnd1` に固定しています。
+- 本番 Node.js は `package.json` の `engines.node=22.x` に合わせます。ローカルとの差を減らすため、Vercel Project Settings 側だけで 24.x にしないでください。
+- Supabase/PostgreSQL の `DATABASE_URL` はランタイム用のプール接続を使ってください。Prisma の `connection_limit` を大きくしすぎると、Vercel の並列実行時にプール枯渇しやすくなります。
+- 日報入力/集計画面は商品ごとの単価スナップショットを一括取得します。商品数に比例して DB 接続を大量に開く実装へ戻さないでください。
 
 ## ks-c 連携前提のマウント設定
 

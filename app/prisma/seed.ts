@@ -223,6 +223,7 @@ async function main() {
       casePackQty: 24, // 24袋/ケース
       defaultWorkAreaId: general.id,
       billingEnabled: true,
+      usedAtKitagoya: true,
       validFrom: new Date("2026-01-01"),
       validTo: null,
       aliases: { create: [{ aliasName: "旧A" }] },
@@ -239,6 +240,7 @@ async function main() {
       standardProductionLotSize: 0,
       unit: "袋",
       defaultWorkAreaId: machine.id,
+      usedAtKitagoya: true,
       validFrom: new Date("2026-01-01"),
       validTo: null,
     },

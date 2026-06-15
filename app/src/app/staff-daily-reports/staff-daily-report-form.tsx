@@ -5,6 +5,7 @@ import { Camera, Check, ChevronDown, Plus, Search, Send, X } from "lucide-react"
 import { useRouter } from "next/navigation";
 
 import type { ProductComboOption } from "@/components/ui/product-combobox";
+import SearchableCombobox from "@/components/ui/searchable-combobox";
 import {
   DEFAULT_DAILY_REPORT_LABOR_HOURLY_RATE,
   computeProductDailyReportMetrics,
@@ -113,6 +114,17 @@ export default function StaffDailyReportForm({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const preview = usePreview(form, products, materialOptions, laborRates);
+  const staffComboboxOptions = useMemo(
+    () =>
+      staffOptions.map((staff) => ({
+        key: `${staff.id}-${staff.startTime}`,
+        value: staff.name,
+        label: staff.name,
+        description: `${staff.startTime}-${staff.endTime}`,
+        searchText: `${staff.name} ${staff.startTime} ${staff.endTime}`,
+      })),
+    [staffOptions],
+  );
 
   function applyProduct(productId: string) {
     const product = products.find((p) => p.id === productId);
@@ -242,18 +254,14 @@ export default function StaffDailyReportForm({
           </label>
           <label>
             <span>入力者</span>
-            <select
+            <SearchableCombobox
               required
               value={form.submittedBy}
-              onChange={(e) => setFormValue(setForm, "submittedBy", e.target.value)}
-            >
-              <option value="">シフトメンバーを選択</option>
-              {staffOptions.map((staff) => (
-                <option key={`${staff.id}-${staff.startTime}`} value={staff.name}>
-                  {staff.name}（{staff.startTime}〜{staff.endTime}）
-                </option>
-              ))}
-            </select>
+              options={staffComboboxOptions}
+              emptyOptionLabel="シフトメンバーを選択"
+              placeholder="名前で検索"
+              onChange={(value) => setFormValue(setForm, "submittedBy", value)}
+            />
           </label>
           <label className="staff-product-field">
             <span>商品</span>

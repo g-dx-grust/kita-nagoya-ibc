@@ -12,7 +12,7 @@ import {
   type ProductionDailyReportConsumption,
 } from "./inventory-ledger";
 import { syncMonthlyActualFromProductionDailyReports, yearMonthFromDate } from "./monthly-actual-aggregation";
-import { getCurrentBillingUnitPrice, loadProductBom } from "./plan-engine";
+import { loadProductBom } from "./plan-engine";
 import { prisma } from "./prisma";
 import { normalizeForSearch } from "./search";
 
@@ -84,6 +84,13 @@ type ProductMatch = {
   productName: string;
   normalizedProductName: string;
   productMatchStatus: "product_id" | "exact" | "alias" | "fuzzy" | "unmatched";
+};
+
+export type ProductDailyReportSnapshots = {
+  capacityG: number | null;
+  materialUnitCostPerKg: number;
+  packageCostPerUnit: number;
+  unitPrice: number;
 };
 
 const entryInclude = {
@@ -564,48 +571,110 @@ function matchedProduct(
 export async function loadProductDailyReportSnapshots(productId: string, reportDate: Date) {
   const product = await prisma.product.findUnique({
     where: { id: productId },
-    include: {
-      bomItems: {
-        where: {
-          active: true,
-          OR: [{ validFrom: null }, { validFrom: { lte: reportDate } }],
-          AND: [{ OR: [{ validTo: null }, { validTo: { gt: reportDate } }] }],
-        },
-      },
-    },
+    select: { id: true, packSizeG: true },
   });
   if (!product) return emptySnapshots();
 
-  const rawItems = product.bomItems.filter((item) => item.itemType === "raw_material");
-  const packageItems = product.bomItems.filter((item) => item.itemType === "packaging");
-  const [materials, packagingMaterials, unitPrice] = await Promise.all([
-    rawItems.length
-      ? prisma.material.findMany({ where: { id: { in: rawItems.map((item) => item.itemId) } } })
+  const snapshots = await loadProductDailyReportSnapshotsForProducts([product], reportDate);
+  return snapshots.get(productId) ?? emptySnapshots();
+}
+
+export async function loadProductDailyReportSnapshotsForProducts(
+  products: Array<Pick<Product, "id" | "packSizeG">>,
+  reportDate: Date,
+): Promise<Map<string, ProductDailyReportSnapshots>> {
+  const productIds = [...new Set(products.map((product) => product.id))];
+  const result = new Map<string, ProductDailyReportSnapshots>();
+  for (const product of products) {
+    result.set(product.id, { ...emptySnapshots(), capacityG: product.packSizeG });
+  }
+  if (productIds.length === 0) return result;
+
+  const [bomRows, billingPrices] = await Promise.all([
+    prisma.productBomItem.findMany({
+      where: {
+        productId: { in: productIds },
+        active: true,
+        OR: [{ validFrom: null }, { validFrom: { lte: reportDate } }],
+        AND: [{ OR: [{ validTo: null }, { validTo: { gt: reportDate } }] }],
+      },
+      select: {
+        productId: true,
+        itemType: true,
+        itemId: true,
+        quantityPerUnit: true,
+        lossRate: true,
+        mixRatio: true,
+      },
+    }),
+    prisma.billingPrice.findMany({
+      where: {
+        productId: { in: productIds },
+        effectiveFrom: { lte: reportDate },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: reportDate } }],
+      },
+      orderBy: [{ productId: "asc" }, { effectiveFrom: "desc" }],
+      select: { productId: true, unitPrice: true },
+    }),
+  ]);
+
+  const rawItemIds = uniqueItemIds(bomRows, "raw_material");
+  const packagingItemIds = uniqueItemIds(bomRows, "packaging");
+
+  const [materials, packagingMaterials] = await Promise.all([
+    rawItemIds.length
+      ? prisma.material.findMany({
+          where: { id: { in: rawItemIds } },
+          select: { id: true, standardUnitPrice: true },
+        })
       : Promise.resolve([]),
-    packageItems.length
-      ? prisma.packagingMaterial.findMany({ where: { id: { in: packageItems.map((item) => item.itemId) } } })
+    packagingItemIds.length
+      ? prisma.packagingMaterial.findMany({
+          where: { id: { in: packagingItemIds } },
+          select: { id: true, standardUnitPrice: true },
+        })
       : Promise.resolve([]),
-    getCurrentBillingUnitPrice(productId, reportDate),
   ]);
 
   const materialPriceMap = new Map(materials.map((material) => [material.id, material.standardUnitPrice]));
   const packagingPriceMap = new Map(packagingMaterials.map((material) => [material.id, material.standardUnitPrice]));
+  const unitPriceByProduct = new Map<string, number>();
+  for (const price of billingPrices) {
+    if (!unitPriceByProduct.has(price.productId)) unitPriceByProduct.set(price.productId, price.unitPrice);
+  }
+  const bomByProduct = new Map<string, typeof bomRows>();
+  for (const row of bomRows) {
+    const rows = bomByProduct.get(row.productId) ?? [];
+    rows.push(row);
+    bomByProduct.set(row.productId, rows);
+  }
 
-  return {
-    capacityG: product.packSizeG,
-    materialUnitCostPerKg: computeMaterialUnitCostPerKg(
-      rawItems.map((item) => ({
-        unitPrice: materialPriceMap.get(item.itemId) ?? 0,
-        quantityPerUnit: item.quantityPerUnit,
-        mixRatio: item.mixRatio,
-      })),
-    ),
-    packageCostPerUnit: packageItems.reduce(
-      (acc, item) => acc + item.quantityPerUnit * (1 + (item.lossRate ?? 0)) * (packagingPriceMap.get(item.itemId) ?? 0),
-      0,
-    ),
-    unitPrice,
-  };
+  const productById = new Map(products.map((product) => [product.id, product]));
+  for (const productId of productIds) {
+    const product = productById.get(productId);
+    const rows = bomByProduct.get(productId) ?? [];
+    const rawItems = rows.filter((item) => item.itemType === "raw_material");
+    const packageItems = rows.filter((item) => item.itemType === "packaging");
+
+    result.set(productId, {
+      capacityG: product?.packSizeG ?? null,
+      materialUnitCostPerKg: computeMaterialUnitCostPerKg(
+        rawItems.map((item) => ({
+          unitPrice: materialPriceMap.get(item.itemId) ?? 0,
+          quantityPerUnit: item.quantityPerUnit,
+          mixRatio: item.mixRatio,
+        })),
+      ),
+      packageCostPerUnit: packageItems.reduce(
+        (acc, item) =>
+          acc + item.quantityPerUnit * (1 + (item.lossRate ?? 0)) * (packagingPriceMap.get(item.itemId) ?? 0),
+        0,
+      ),
+      unitPrice: unitPriceByProduct.get(productId) ?? 0,
+    });
+  }
+
+  return result;
 }
 
 function computeMaterialUnitCostPerKg(
@@ -649,7 +718,11 @@ function emptySnapshots() {
     materialUnitCostPerKg: 0,
     packageCostPerUnit: 0,
     unitPrice: 0,
-  };
+  } satisfies ProductDailyReportSnapshots;
+}
+
+function uniqueItemIds<T extends { itemType: string; itemId: string }>(rows: T[], itemType: string) {
+  return [...new Set(rows.filter((row) => row.itemType === itemType).map((row) => row.itemId))];
 }
 
 function normalizeProductName(value: string | null | undefined) {

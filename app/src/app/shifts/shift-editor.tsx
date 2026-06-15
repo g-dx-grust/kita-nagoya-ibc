@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { kitagoyaApiPath } from "@/lib/paths";
+import { matchesQuery } from "@/lib/search";
 
 type EmployeeRow = {
   employee: {
@@ -61,10 +62,24 @@ export default function ShiftEditor({ date, rows }: { date: string; rows: Employ
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   const presentCount = useMemo(
     () => items.filter((item) => item.enabled && item.status !== "off").length,
     [items],
+  );
+  const filteredRows = useMemo(
+    () =>
+      rows
+        .map((row, index) => ({ row, index }))
+        .filter(({ row }) =>
+          matchesQuery(query, [
+            row.employee.name,
+            row.employee.affiliation,
+            employmentTypeLabel(row.employee.employmentType),
+          ]),
+        ),
+    [rows, query],
   );
 
   function update(index: number, patch: Partial<ShiftRow>) {
@@ -124,6 +139,14 @@ export default function ShiftEditor({ date, rows }: { date: string; rows: Employ
     <div className="panel">
       <div className="toolbar">
         <strong>出勤者 {presentCount}人</strong>
+        <input
+          className="filter-search"
+          type="search"
+          placeholder="スタッフ名・所属で検索"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          aria-label="シフトスタッフを検索"
+        />
         <div className="spacer" />
         <button type="button" onClick={save} disabled={busy}>
           {busy ? "保存中..." : "シフトを保存"}
@@ -149,7 +172,7 @@ export default function ShiftEditor({ date, rows }: { date: string; rows: Employ
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, index) => {
+          {filteredRows.map(({ row, index }) => {
             const item = items[index];
             const defaults = employeeDefaults[index];
             return (
@@ -240,8 +263,22 @@ export default function ShiftEditor({ date, rows }: { date: string; rows: Employ
               </tr>
             );
           })}
+          {filteredRows.length === 0 && (
+            <tr>
+              <td colSpan={10} className="muted">
+                条件に一致するスタッフがいません。
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>
   );
+}
+
+function employmentTypeLabel(value: string) {
+  if (value === "full_time") return "社員";
+  if (value === "part_time") return "パート";
+  if (value === "temporary") return "派遣";
+  return value;
 }
