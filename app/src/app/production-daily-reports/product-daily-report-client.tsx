@@ -174,6 +174,7 @@ export default function ProductDailyReportClient({
   );
   const pendingApproval = useMemo(() => rows.filter((row) => row.approvalStatus === "submitted"), [rows]);
   const preview = usePreview(form, products, materialOptions, laborRates);
+  const selectedProduct = useMemo(() => products.find((p) => p.id === form.productId) ?? null, [form.productId, products]);
 
   function onSelectProduct(setter: Dispatch<SetStateAction<EntryFormState>>, productId: string) {
     const product = products.find((p) => p.id === productId);
@@ -312,24 +313,41 @@ export default function ProductDailyReportClient({
             count: pendingApproval.length > 0 ? `未計上 ${pendingApproval.length}` : rows.length,
             content: (
               <section>
-                <h2>日報確認</h2>
-                <div className="table-frame">
-                  <table>
+                <div className="daily-report-heading">
+                  <h2>月別製造日報</h2>
+                  <div className="column-legend" aria-label="列種別">
+                    <span className="column-kind input">入力</span>
+                    <span className="column-kind auto">自動計算</span>
+                  </div>
+                </div>
+                <div className="table-frame daily-report-frame">
+                  <table className="daily-report-table">
                     <thead>
                       <tr>
-                        <th>日付</th>
-                        <th>商品</th>
-                        <th>賞味期限</th>
-                        <th>時間</th>
-                        <th className="right">人数</th>
-                        <th className="right">生産数</th>
-                        <th>使用原料</th>
-                        <th>提出/写真</th>
-                        <th className="right">1人1h</th>
-                        <th className="right">1袋手間賃</th>
-                        <th className="right">ロス率</th>
-                        <th className="right">売値</th>
-                        <th className="right">利率</th>
+                        <th className="sticky-date">日付 <ColumnKind kind="input" /></th>
+                        <th className="sticky-product">商品名 <ColumnKind kind="input" /></th>
+                        <th className="right">入り数(g) <ColumnKind kind="auto" /></th>
+                        <th>商品名合算 <ColumnKind kind="auto" /></th>
+                        <th>賞味期限 <ColumnKind kind="input" /></th>
+                        <th>開始時間 <ColumnKind kind="input" /></th>
+                        <th>終了時間 <ColumnKind kind="input" /></th>
+                        <th>休憩時間 <ColumnKind kind="input" /></th>
+                        <th className="right">稼動時間（M） <ColumnKind kind="auto" /></th>
+                        <th className="right">作業人数 <ColumnKind kind="input" /></th>
+                        <th className="right">生産数 <ColumnKind kind="input" /></th>
+                        <th className="right">使用原料（kg） <ColumnKind kind="input" /></th>
+                        <th className="right">合計稼動時間（M） <ColumnKind kind="auto" /></th>
+                        <th className="right">1人当たりの1hの生産数(個) <ColumnKind kind="auto" /></th>
+                        <th className="right">1個の生産時間（M） <ColumnKind kind="auto" /></th>
+                        <th className="right">1袋の手間賃（円） <ColumnKind kind="auto" /></th>
+                        <th className="right">1袋の量（g） <ColumnKind kind="auto" /></th>
+                        <th className="right">ロス率（％） <ColumnKind kind="auto" /></th>
+                        <th className="right">原料原価 <ColumnKind kind="auto" /></th>
+                        <th className="right">資材原価 <ColumnKind kind="auto" /></th>
+                        <th className="right">合計原価 <ColumnKind kind="auto" /></th>
+                        <th className="right">売値 <ColumnKind kind="auto" /></th>
+                        <th className="right">利率 <ColumnKind kind="auto" /></th>
+                        <th>備考 <ColumnKind kind="input" /></th>
                         <th>確認</th>
                         <th></th>
                       </tr>
@@ -356,19 +374,24 @@ export default function ProductDailyReportClient({
                           />
                         ) : (
                           <tr key={row.id}>
-                            <td>{row.reportDate}</td>
-                            <td>
-                              <div>{displayProductName(row)}</div>
+                            <td className="sticky-date">{row.reportDate}</td>
+                            <td className="sticky-product product-name-cell">
+                              <div>{row.productName}</div>
                               {row.productCode && <div className="subtext">{row.productCode}</div>}
                             </td>
-                            <td>{row.expiryDate || "—"}</td>
+                            <td className="right">{formatOptionalNumber(row.capacityGSnapshot)}</td>
                             <td>
-                              {row.startTime}〜{row.endTime}
-                              <div className="subtext">休憩 {row.breakMinutes}分 / 稼動 {formatNumber(row.operatingMinutes)}分</div>
+                              <div>{consolidatedProductName(row)}</div>
+                              {row.productMatchStatus === "unmatched" && <div className="subtext">商品未照合</div>}
                             </td>
+                            <td>{row.expiryDate || "—"}</td>
+                            <td>{row.startTime}</td>
+                            <td>{row.endTime}</td>
+                            <td>{formatDuration(row.breakMinutes)}</td>
+                            <td className="right">{formatNumber(row.operatingMinutes, 0)}</td>
                             <td className="right">{formatNumber(row.workerCount)}</td>
                             <td className="right">{formatNumber(row.productionQty)}</td>
-                            <td>
+                            <td className="right material-summary-cell">
                               <div>{formatNumber(row.materialUsedKg)} kg</div>
                               {row.materials.length > 0 && (
                                 <div className="subtext">
@@ -378,16 +401,21 @@ export default function ProductDailyReportClient({
                                 </div>
                               )}
                             </td>
-                            <td>
-                              <SubmissionInfo row={row} />
-                            </td>
+                            <td className="right">{formatNumber(row.totalOperatingMinutes, 0)}</td>
                             <td className="right">{formatNumber(row.perHourQty)}</td>
+                            <td className="right">{formatNumber(row.perUnitTimeMinutes)}</td>
                             <td className="right">{formatYen(row.laborFeePerUnit)}</td>
+                            <td className="right">{formatNumber(row.bagWeightG)}</td>
                             <td className="right">{formatPercent(row.lossRate)}</td>
+                            <td className="right">{formatYen(row.materialCost)}</td>
+                            <td className="right">{formatYen(row.packageCost)}</td>
+                            <td className="right">{formatYen(row.totalCost)}</td>
                             <td className="right">{formatYen(row.sales)}</td>
                             <td className="right">{formatPercent(row.profitRate)}</td>
+                            <td className="note-cell">{row.note || "—"}</td>
                             <td>
                               <StatusBadges row={row} />
+                              <SubmissionInfo row={row} />
                             </td>
                             <td>
                               <div className="table-actions">
@@ -419,7 +447,7 @@ export default function ProductDailyReportClient({
                       )}
                       {rows.length === 0 && (
                         <tr>
-                          <td colSpan={15} className="muted">
+                          <td colSpan={26} className="muted">
                             対象月の日報はありません。
                           </td>
                         </tr>
@@ -438,129 +466,146 @@ export default function ProductDailyReportClient({
               <section className="panel">
                 <h2>日報入力</h2>
                 <form onSubmit={createEntry}>
-                  <div className="grid grid-4">
-                    <label>
-                      <span>日付</span>
-                      <input
-                        type="date"
-                        required
-                        value={form.reportDate}
-                        onChange={(e) => setFormValue(setForm, "reportDate", e.target.value)}
-                      />
-                    </label>
-                    <label className="min-w-[260px]">
-                      <span>商品</span>
-                      <ProductCombobox
-                        products={products}
-                        value={form.productId}
-                        onChange={(value) => onSelectProduct(setForm, value)}
-                        emptyOptionLabel="商品名を直接入力"
-                      />
-                    </label>
-                    {!form.productId && (
-                      <label>
-                        <span>商品名</span>
-                        <input
-                          type="text"
-                          value={form.productName}
-                          onChange={(e) => setFormValue(setForm, "productName", e.target.value)}
-                        />
-                      </label>
-                    )}
-                    <label>
-                      <span>賞味期限</span>
-                      <input
-                        type="date"
-                        value={form.expiryDate}
-                        onChange={(e) => setFormValue(setForm, "expiryDate", e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      <span>開始時間</span>
-                      <input
-                        type="time"
-                        required
-                        value={form.startTime}
-                        onChange={(e) => setFormValue(setForm, "startTime", e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      <span>終了時間</span>
-                      <input
-                        type="time"
-                        required
-                        value={form.endTime}
-                        onChange={(e) => setFormValue(setForm, "endTime", e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      <span>休憩(分)</span>
-                      <input
-                        type="number"
-                        min={0}
-                        step={1}
-                        value={form.breakMinutes}
-                        onChange={(e) => setFormValue(setForm, "breakMinutes", e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      <span>作業人数</span>
-                      <input
-                        type="number"
-                        required
-                        min={0.1}
-                        step={0.1}
-                        value={form.workerCount}
-                        onChange={(e) => setFormValue(setForm, "workerCount", e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      <span>生産数</span>
-                      <input
-                        type="number"
-                        required
-                        min={0}
-                        step="any"
-                        value={form.productionQty}
-                        onChange={(e) => setFormValue(setForm, "productionQty", e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      <span>手間賃区分</span>
-                      <select
-                        value={form.laborFeeRateId}
-                        onChange={(e) => setFormValue(setForm, "laborFeeRateId", e.target.value)}
-                      >
-                        {laborRates.length === 0 && <option value="">標準</option>}
-                        {laborRates.map((rate) => (
-                          <option key={rate.id} value={rate.id}>
-                            {rate.name}（{formatYen(rate.hourlyRate)}/時）
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="min-w-[220px]">
-                      <span>備考</span>
-                      <input
-                        type="text"
-                        value={form.note}
-                        onChange={(e) => setFormValue(setForm, "note", e.target.value)}
-                      />
-                    </label>
-                  </div>
+                  <div className="daily-report-form-layout">
+                    <div className="entry-card">
+                      <h3>入力項目</h3>
+                      <div className="grid grid-4">
+                        <label>
+                          <span>日付</span>
+                          <input
+                            type="date"
+                            required
+                            value={form.reportDate}
+                            onChange={(e) => setFormValue(setForm, "reportDate", e.target.value)}
+                          />
+                        </label>
+                        <label className="min-w-[260px]">
+                          <span>商品名</span>
+                          <ProductCombobox
+                            products={products}
+                            value={form.productId}
+                            onChange={(value) => onSelectProduct(setForm, value)}
+                            emptyOptionLabel="商品名を直接入力"
+                          />
+                        </label>
+                        {!form.productId && (
+                          <label>
+                            <span>商品名（直接入力）</span>
+                            <input
+                              type="text"
+                              value={form.productName}
+                              onChange={(e) => setFormValue(setForm, "productName", e.target.value)}
+                            />
+                          </label>
+                        )}
+                        <label>
+                          <span>賞味期限</span>
+                          <input
+                            type="date"
+                            value={form.expiryDate}
+                            onChange={(e) => setFormValue(setForm, "expiryDate", e.target.value)}
+                          />
+                        </label>
+                        <label>
+                          <span>開始時間</span>
+                          <input
+                            type="time"
+                            required
+                            value={form.startTime}
+                            onChange={(e) => setFormValue(setForm, "startTime", e.target.value)}
+                          />
+                        </label>
+                        <label>
+                          <span>終了時間</span>
+                          <input
+                            type="time"
+                            required
+                            value={form.endTime}
+                            onChange={(e) => setFormValue(setForm, "endTime", e.target.value)}
+                          />
+                        </label>
+                        <label>
+                          <span>休憩時間（M）</span>
+                          <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={form.breakMinutes}
+                            onChange={(e) => setFormValue(setForm, "breakMinutes", e.target.value)}
+                          />
+                        </label>
+                        <label>
+                          <span>作業人数</span>
+                          <input
+                            type="number"
+                            required
+                            min={0.1}
+                            step={0.1}
+                            value={form.workerCount}
+                            onChange={(e) => setFormValue(setForm, "workerCount", e.target.value)}
+                          />
+                        </label>
+                        <label>
+                          <span>生産数</span>
+                          <input
+                            type="number"
+                            required
+                            min={0}
+                            step="any"
+                            value={form.productionQty}
+                            onChange={(e) => setFormValue(setForm, "productionQty", e.target.value)}
+                          />
+                        </label>
+                        <label>
+                          <span>手間賃区分</span>
+                          <select
+                            value={form.laborFeeRateId}
+                            onChange={(e) => setFormValue(setForm, "laborFeeRateId", e.target.value)}
+                          >
+                            {laborRates.length === 0 && <option value="">標準</option>}
+                            {laborRates.map((rate) => (
+                              <option key={rate.id} value={rate.id}>
+                                {rate.name}（{formatYen(rate.hourlyRate)}/時）
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="min-w-[220px]">
+                          <span>備考</span>
+                          <input
+                            type="text"
+                            value={form.note}
+                            onChange={(e) => setFormValue(setForm, "note", e.target.value)}
+                          />
+                        </label>
+                      </div>
 
-                  <MaterialsEditor
-                    materials={form.materials}
-                    materialOptions={materialOptions}
-                    onChange={(next) => setForm((prev) => ({ ...prev, materials: next }))}
-                  />
+                      <MaterialsEditor
+                        materials={form.materials}
+                        materialOptions={materialOptions}
+                        onChange={(next) => setForm((prev) => ({ ...prev, materials: next }))}
+                      />
+                    </div>
 
-                  <div className="stat-grid mt-4">
-                    <Metric label="使用原料合計" value={`${formatNumber(preview.totalMaterialKg)} kg`} />
-                    <Metric label="1人1h生産数" value={formatNumber(preview.perHourQty)} />
-                    <Metric label="1袋手間賃" value={formatYen(preview.laborFeePerUnit)} />
-                    <Metric label="原料原価" value={formatYen(preview.materialCost)} />
-                    <Metric label="利率" value={formatPercent(preview.profitRate)} />
+                    <div className="entry-card calculated">
+                      <h3>自動計算</h3>
+                      <div className="stat-grid compact-metrics">
+                        <Metric label="入り数(g)" value={formatOptionalNumber(selectedProduct?.capacityG ?? null)} />
+                        <Metric label="商品名合算" value={selectedProductDisplayName(selectedProduct)} />
+                        <Metric label="稼動時間（M）" value={formatNumber(preview.operatingMinutes, 0)} />
+                        <Metric label="合計稼動時間（M）" value={formatNumber(preview.totalOperatingMinutes, 0)} />
+                        <Metric label="1人当たりの1hの生産数(個)" value={formatNumber(preview.perHourQty)} />
+                        <Metric label="1個の生産時間（M）" value={formatNumber(preview.perUnitTimeMinutes)} />
+                        <Metric label="1袋の手間賃（円）" value={formatYen(preview.laborFeePerUnit)} />
+                        <Metric label="1袋の量（g）" value={formatNumber(preview.bagWeightG)} />
+                        <Metric label="ロス率（％）" value={formatPercent(preview.lossRate)} />
+                        <Metric label="原料原価" value={formatYen(preview.materialCost)} />
+                        <Metric label="資材原価" value={formatYen(preview.packageCost)} />
+                        <Metric label="合計原価" value={formatYen(preview.totalCost)} />
+                        <Metric label="売値" value={formatYen(preview.sales)} />
+                        <Metric label="利率" value={formatPercent(preview.profitRate)} />
+                      </div>
+                    </div>
                   </div>
 
                   <div className="row form-actions mt-4">
@@ -865,10 +910,10 @@ function EditRow({
 }) {
   return (
     <tr>
-      <td>
+      <td className="sticky-date">
         <input type="date" value={form.reportDate} onChange={(e) => onChange("reportDate", e.target.value)} />
       </td>
-      <td className="min-w-[260px]">
+      <td className="sticky-product min-w-[260px]">
         <ProductCombobox
           products={products}
           value={form.productId}
@@ -887,23 +932,21 @@ function EditRow({
           />
         )}
       </td>
+      <td className="right muted">自動</td>
+      <td className="muted">照合後</td>
       <td>
         <input type="date" value={form.expiryDate} onChange={(e) => onChange("expiryDate", e.target.value)} />
       </td>
       <td>
-        <div className="flex gap-2">
-          <input type="time" value={form.startTime} onChange={(e) => onChange("startTime", e.target.value)} />
-          <input type="time" value={form.endTime} onChange={(e) => onChange("endTime", e.target.value)} />
-        </div>
-        <input
-          className="mt-2"
-          type="number"
-          min={0}
-          step={1}
-          value={form.breakMinutes}
-          onChange={(e) => onChange("breakMinutes", e.target.value)}
-        />
+        <input type="time" value={form.startTime} onChange={(e) => onChange("startTime", e.target.value)} />
       </td>
+      <td>
+        <input type="time" value={form.endTime} onChange={(e) => onChange("endTime", e.target.value)} />
+      </td>
+      <td>
+        <input type="number" min={0} step={1} value={form.breakMinutes} onChange={(e) => onChange("breakMinutes", e.target.value)} />
+      </td>
+      <td className="right muted">自動</td>
       <td className="right">
         <input type="number" min={0.1} step={0.1} value={form.workerCount} onChange={(e) => onChange("workerCount", e.target.value)} />
       </td>
@@ -913,21 +956,26 @@ function EditRow({
       <td>
         <MaterialsEditor materials={form.materials} materialOptions={materialOptions} onChange={onChangeMaterials} compact />
       </td>
+      <td colSpan={11}>
+        <div className="edit-auto-note">
+          <span className="column-kind auto">自動計算</span>
+          <select value={form.laborFeeRateId} onChange={(e) => onChange("laborFeeRateId", e.target.value)}>
+            {laborRates.length === 0 && <option value="">標準</option>}
+            {laborRates.map((rate) => (
+              <option key={rate.id} value={rate.id}>
+                {rate.name}（{formatYen(rate.hourlyRate)}/時）
+              </option>
+            ))}
+          </select>
+        </div>
+      </td>
+      <td>
+        <input type="text" value={form.note} onChange={(e) => onChange("note", e.target.value)} />
+      </td>
       <td>
         <span className="muted">状態保持</span>
       </td>
-      <td colSpan={4}>
-        <select value={form.laborFeeRateId} onChange={(e) => onChange("laborFeeRateId", e.target.value)}>
-          {laborRates.length === 0 && <option value="">標準</option>}
-          {laborRates.map((rate) => (
-            <option key={rate.id} value={rate.id}>
-              {rate.name}（{formatYen(rate.hourlyRate)}/時）
-            </option>
-          ))}
-        </select>
-        <input className="mt-2" type="text" value={form.note} onChange={(e) => onChange("note", e.target.value)} />
-      </td>
-      <td colSpan={3}>
+      <td>
         <div className="table-actions">
           <button type="button" className="gap-2" onClick={onSave} disabled={busy}>
             <Save className="h-4 w-4" />
@@ -997,6 +1045,10 @@ function StatusBadges({ row }: { row: ProductDailyReportRow }) {
       {row.calculationWarnings.includes("missing_capacity_g") && <span className="badge warn">入り数未設定</span>}
     </>
   );
+}
+
+function ColumnKind({ kind }: { kind: "input" | "auto" }) {
+  return <span className={`column-kind ${kind}`}>{kind === "input" ? "入力" : "自動"}</span>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -1121,17 +1173,36 @@ function displayProductName(row: ProductDailyReportRow) {
   return row.displayName || row.officialName || row.productName;
 }
 
+function consolidatedProductName(row: ProductDailyReportRow) {
+  return row.productId ? displayProductName(row) : "未照合";
+}
+
+function selectedProductDisplayName(product: ProductDailyReportProductOption | null) {
+  return product ? product.displayName || product.officialName : "—";
+}
+
 function toNumber(value: string) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
 }
 
-function formatNumber(value: number) {
-  return Number.isFinite(value) ? value.toLocaleString("ja-JP", { maximumFractionDigits: 2 }) : "0";
+function formatOptionalNumber(value: number | null | undefined, maximumFractionDigits = 2) {
+  return value == null ? "—" : formatNumber(value, maximumFractionDigits);
+}
+
+function formatNumber(value: number, maximumFractionDigits = 2) {
+  return Number.isFinite(value) ? value.toLocaleString("ja-JP", { maximumFractionDigits }) : "0";
 }
 
 function formatYen(value: number) {
   return `¥${formatNumber(value)}`;
+}
+
+function formatDuration(minutes: number) {
+  const safeMinutes = Math.max(0, Math.round(Number.isFinite(minutes) ? minutes : 0));
+  const hours = Math.floor(safeMinutes / 60);
+  const rest = safeMinutes % 60;
+  return `${hours}:${String(rest).padStart(2, "0")}`;
 }
 
 function formatPercent(value: number) {

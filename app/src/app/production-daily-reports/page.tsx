@@ -5,6 +5,7 @@ import {
   type ProductDailyReportSummaryRow,
 } from "@/lib/product-daily-report-calculations";
 import { loadProductDailyReportSnapshotsForProducts } from "@/lib/product-daily-report-service";
+import { matchesQuery } from "@/lib/search";
 import ProductReportFilter from "./product-report-filter";
 import ProductDailyReportClient, {
   type ProductDailyReportLaborRateOption,
@@ -25,6 +26,7 @@ export default async function ProductionDailyReportsPage({
   const sp = await searchParams;
   const month = normalizeMonth(sp.month ?? new Date().toISOString().slice(0, 7));
   const productId = sp.productId ?? "";
+  const q = (sp.q ?? "").trim();
   const monthStart = new Date(`${month}-01T00:00:00.000Z`);
   const monthEnd = new Date(monthStart);
   monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1);
@@ -37,7 +39,7 @@ export default async function ProductionDailyReportsPage({
         ...(productId ? { productId } : {}),
       },
       include: { product: true, laborFeeRate: true, materials: { orderBy: { sortOrder: "asc" } } },
-      orderBy: [{ reportDate: "desc" }, { createdAt: "desc" }],
+      orderBy: [{ reportDate: "asc" }, { sourceRowNumber: "asc" }, { createdAt: "asc" }],
     }),
     prisma.product.findMany({
       where: { active: true },
@@ -115,7 +117,19 @@ export default async function ProductionDailyReportsPage({
     unit: m.unit,
   }));
 
-  const rows: ProductDailyReportRow[] = entries.map((entry) => ({
+  const filteredEntries = q
+    ? entries.filter((entry) =>
+        matchesQuery(q, [
+          entry.productName,
+          entry.product?.productCode,
+          entry.product?.officialName,
+          entry.product?.displayName,
+          entry.note,
+        ]),
+      )
+    : entries;
+
+  const rows: ProductDailyReportRow[] = filteredEntries.map((entry) => ({
     id: entry.id,
     reportDate: formatDate(entry.reportDate),
     productId: entry.productId,
@@ -165,7 +179,7 @@ export default async function ProductionDailyReportsPage({
     calculationWarnings: parseWarnings(entry.calculationWarnings),
   }));
 
-  const approvedEntries = entries.filter((entry) => entry.approvalStatus === "approved");
+  const approvedEntries = filteredEntries.filter((entry) => entry.approvalStatus === "approved");
   const summaries = aggregateProductDailyReports(
     approvedEntries.map((entry) => ({
       productId: entry.productId,
@@ -214,6 +228,10 @@ export default async function ProductionDailyReportsPage({
         <label>
           <span>商品</span>
           <ProductReportFilter products={productOptions} initialProductId={productId} />
+        </label>
+        <label className="filter-search">
+          <span>商品検索</span>
+          <input name="q" type="search" defaultValue={q} placeholder="商品名・管理コード" />
         </label>
         <button type="submit" className="secondary">
           表示

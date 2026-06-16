@@ -15,6 +15,7 @@
 // すべて純関数。DB/HTTP はここに持ち込まない。
 
 import { DAILY_BREAK_WINDOWS, computeBreakMinutesInTimeWindow, type BreakWindow } from "./calculations";
+import { assignBalancedRooms } from "./auto-schedule-allocation";
 import { allocateDayStaff, type AllocationJob, type AllocationStaff } from "./staff-allocation";
 import { formatHM, parseHM } from "./time";
 
@@ -113,6 +114,7 @@ export type ShiftSimulationResult = {
 };
 
 type ItemState = {
+  id: string;
   item: ShiftSimulationItem;
   productionType: "stock" | "make_to_order";
   capacities: ShiftSimulationCapacity[];
@@ -154,6 +156,7 @@ export function simulateMonthlyShiftSchedule(input: {
       continue;
     }
     states.push({
+      id: `item-${states.length + 1}`,
       item,
       productionType: item.productionType === "make_to_order" ? "make_to_order" : "stock",
       capacities,
@@ -172,12 +175,11 @@ export function simulateMonthlyShiftSchedule(input: {
     shiftsByDate.set(shift.date, arr);
   }
 
-  // 既存予定による部屋占有（部屋が空く時刻）と、既存割当によるスタッフ不在時間帯。
+  // 既存予定による部屋占有と、既存割当によるスタッフ不在時間帯。
   // 自分が作った仮予定の消費分も同じ Map に積み増し、同一日の後続パスで二重割当を防ぐ。
-  const roomFreeAt = new Map<string, number>(); // `${date}__${workAreaId}` -> minute
+  const roomBusy = new Map<string, { start: number; end: number }[]>(); // `${date}__${workAreaId}` -> ranges
   for (const plan of input.existingPlans) {
-    const key = roomKey(plan.date, plan.workAreaId);
-    roomFreeAt.set(key, Math.max(roomFreeAt.get(key) ?? 0, parseHM(plan.endTime)));
+    pushBusyWindow(roomBusy, roomKey(plan.date, plan.workAreaId), parseHM(plan.startTime), parseHM(plan.endTime));
   }
   const staffBusy = new Map<string, { start: number; end: number }[]>(); // `${date}__${employeeId}`
   for (const assignment of input.existingAssignments) {
@@ -187,17 +189,36 @@ export function simulateMonthlyShiftSchedule(input: {
     staffBusy.set(key, arr);
   }
 
-  const stateById = new Map(states.map((s) => [s.item.productId, s]));
+  const stateById = new Map(states.map((s) => [s.id, s]));
 
   const runDay = (date: string, eligible: ItemState[]) => {
     const dayShifts = shiftsByDate.get(date) ?? [];
     if (dayShifts.length === 0 || eligible.length === 0) return;
 
-    const jobs: AllocationJob[] = eligible.map((state) => {
-      const capacity = state.capacities[0];
-      const freeAt = roomFreeAt.get(roomKey(date, capacity.workAreaId));
+    const capacitiesByStateId = new Map<string, ShiftSimulationCapacity[]>();
+    for (const state of eligible) {
+      const usableCapacities = state.capacities.filter((capacity) =>
+        hasUsableRoomWindow({
+          date,
+          capacity,
+          dayStartTime: input.defaultStartTime,
+          dayEndTime: input.baselineEndTime,
+          roomBusy,
+        }),
+      );
+      capacitiesByStateId.set(state.id, usableCapacities.length > 0 ? usableCapacities : state.capacities);
+    }
+
+    const chosenCapacities = assignBalancedRooms(
+      eligible.map((state) => ({ tempId: state.id })),
+      capacitiesByStateId,
+    );
+
+    const jobs: AllocationJob[] = eligible.flatMap((state) => {
+      const capacity = chosenCapacities.get(state.id);
+      if (!capacity) return [];
       return {
-        jobId: state.item.productId,
+        jobId: state.id,
         productId: state.item.productId,
         productName: state.item.productName,
         workAreaId: capacity.workAreaId,
@@ -210,7 +231,13 @@ export function simulateMonthlyShiftSchedule(input: {
           1,
           Math.floor(capacity.workAreaMaxPeopleCount || capacity.standardPeople || 1),
         ),
-        earliestStart: freeAt != null ? formatHM(freeAt) : undefined,
+        unavailableWindows: roomUnavailableWindowsForJob({
+          date,
+          capacity,
+          dayStartTime: input.defaultStartTime,
+          dayEndTime: input.baselineEndTime,
+          roomBusy,
+        }).map((w) => ({ startTime: formatHM(w.start), endTime: formatHM(w.end) })),
       } satisfies AllocationJob;
     });
 
@@ -270,8 +297,7 @@ export function simulateMonthlyShiftSchedule(input: {
       state.remaining = round4(state.remaining - quantity);
 
       // 後続パス（同一日の希望日前フォールバック）のために消費分を反映
-      const rk = roomKey(date, job.workAreaId);
-      roomFreeAt.set(rk, Math.max(roomFreeAt.get(rk) ?? 0, parseHM(job.endTime)));
+      pushBusyWindow(roomBusy, roomKey(date, job.workAreaId), parseHM(job.startTime), parseHM(job.endTime));
       for (const a of job.assignments) {
         const sk = staffKey(date, a.employeeId);
         const arr = staffBusy.get(sk) ?? [];
@@ -345,6 +371,87 @@ function chooseSchedulableCapacities(product: ShiftSimulationProduct) {
       a.workAreaName.localeCompare(b.workAreaName, "ja")
     );
   });
+}
+
+function hasUsableRoomWindow(input: {
+  date: string;
+  capacity: ShiftSimulationCapacity;
+  dayStartTime: string;
+  dayEndTime: string;
+  roomBusy: Map<string, { start: number; end: number }[]>;
+}) {
+  const dayStart = parseHM(input.dayStartTime);
+  const dayEnd = parseHM(input.dayEndTime);
+  if (dayEnd <= dayStart) return false;
+
+  const unavailable = roomUnavailableWindowsForJob(input);
+  let cursor = dayStart;
+  for (const window of unavailable) {
+    if (window.start > cursor) return true;
+    cursor = Math.max(cursor, window.end);
+    if (cursor >= dayEnd) return false;
+  }
+  return cursor < dayEnd;
+}
+
+function roomUnavailableWindowsForJob(input: {
+  date: string;
+  capacity: ShiftSimulationCapacity;
+  dayStartTime: string;
+  dayEndTime: string;
+  roomBusy: Map<string, { start: number; end: number }[]>;
+}) {
+  const dayStart = parseHM(input.dayStartTime);
+  const dayEnd = parseHM(input.dayEndTime);
+  const windows = [...(input.roomBusy.get(roomKey(input.date, input.capacity.workAreaId)) ?? [])];
+  const areaStart = input.capacity.workAreaDefaultStartTime
+    ? Math.max(dayStart, parseHM(input.capacity.workAreaDefaultStartTime))
+    : dayStart;
+  const areaEnd = input.capacity.workAreaDefaultEndTime
+    ? Math.min(dayEnd, parseHM(input.capacity.workAreaDefaultEndTime))
+    : dayEnd;
+
+  if (areaEnd <= areaStart) {
+    windows.push({ start: dayStart, end: dayEnd });
+  } else {
+    if (areaStart > dayStart) windows.push({ start: dayStart, end: areaStart });
+    if (areaEnd < dayEnd) windows.push({ start: areaEnd, end: dayEnd });
+  }
+
+  return mergeWindows(
+    windows
+      .map((window) => ({
+        start: Math.max(dayStart, window.start),
+        end: Math.min(dayEnd, window.end),
+      }))
+      .filter((window) => window.end > window.start),
+  );
+}
+
+function pushBusyWindow(
+  map: Map<string, { start: number; end: number }[]>,
+  key: string,
+  start: number,
+  end: number,
+) {
+  if (end <= start) return;
+  const windows = map.get(key) ?? [];
+  windows.push({ start, end });
+  map.set(key, mergeWindows(windows));
+}
+
+function mergeWindows(windows: { start: number; end: number }[]) {
+  const sorted = [...windows].sort((a, b) => a.start - b.start || a.end - b.end);
+  const merged: { start: number; end: number }[] = [];
+  for (const window of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && window.start <= last.end) {
+      last.end = Math.max(last.end, window.end);
+    } else {
+      merged.push({ ...window });
+    }
+  }
+  return merged;
 }
 
 function skip(

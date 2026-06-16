@@ -93,6 +93,9 @@ export default function MonthlyScheduleActions({
     router.refresh();
   }
 
+  const planWarningCount = result?.plans.reduce((sum, plan) => sum + plan.warnings.length, 0) ?? 0;
+  const hasResultWarnings = result ? planWarningCount > 0 || result.skipped.length > 0 : false;
+
   return (
     <div className="panel">
       <div className="row">
@@ -120,7 +123,14 @@ export default function MonthlyScheduleActions({
       {error && <div className="alert danger">{error}</div>}
       {result && (
         <div className="after-table">
-          <div className={result.createdCount > 0 ? "alert success" : "alert info"}>{result.message}</div>
+          <div className={hasResultWarnings ? "alert warn" : result.createdCount > 0 ? "alert success" : "alert info"}>
+            {result.message}
+          </div>
+          {hasResultWarnings && (
+            <div className="alert warn">
+              警告 {planWarningCount} 件 / 未配置 {result.skipped.length} 件。部屋変更、日付前倒し、残業、数量調整を確認してください。
+            </div>
+          )}
           {result.plans.length > 0 && (
             <>
               <table>
@@ -151,7 +161,9 @@ export default function MonthlyScheduleActions({
                         {plan.quantity.toLocaleString()} {plan.unit}
                       </td>
                       <td className="right">{plan.assignedCount}</td>
-                      <td>{plan.warnings.length > 0 ? plan.warnings.join(" / ") : "なし"}</td>
+                      <td>
+                        <WarningBadges warnings={plan.warnings} />
+                      </td>
                       <td>
                         <Link href={kitagoyaPath(`/production-plans/${plan.id}`)}>開く</Link>
                       </td>
@@ -203,4 +215,21 @@ export default function MonthlyScheduleActions({
       )}
     </div>
   );
+}
+
+function WarningBadges({ warnings }: { warnings: string[] }) {
+  if (warnings.length === 0) return <span className="badge success">なし</span>;
+  return (
+    <div className="stacked-list">
+      {warnings.map((warning, index) => (
+        <span key={`${warning}:${index}`} className={`badge ${warningBadgeClass(warning)}`}>
+          {warning}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function warningBadgeClass(warning: string) {
+  return /作りきれず|不足|未配置|配置できるスタッフがいません|未登録/.test(warning) ? "danger" : "warn";
 }

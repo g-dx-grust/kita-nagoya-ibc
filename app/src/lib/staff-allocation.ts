@@ -55,6 +55,11 @@ export type AllocationJob = {
   roomMaxPeople: number;
   /** この部屋が空く時刻（既存予定などで占有されている場合）HH:MM */
   earliestStart?: string;
+  /**
+   * このジョブの作業場所が使えない時間帯。
+   * 既存予定や部屋別の稼働時間外をここで塞ぎ、同じ部屋の空き時間だけを使う。
+   */
+  unavailableWindows?: { startTime: string; endTime: string }[];
 };
 
 /**
@@ -171,6 +176,7 @@ type JobState = {
   /** 投入済みの延べ作業分 */
   spentPersonMinutes: number;
   earliestStartMin: number;
+  unavailable: { start: number; end: number }[];
 };
 
 type RoomState = {
@@ -261,7 +267,14 @@ export function allocateDayStaff(input: AllocationInput): AllocationResult {
     // この時刻にアクティブな部屋（空いていて、未完ジョブがある）
     const activeRooms = rooms
       .map((room) => ({ room, active: activeJob(room) }))
-      .filter((r) => r.active != null && r.active!.earliestStartMin <= t)
+      .filter((r) => {
+        const jobState = r.active;
+        return (
+          jobState != null &&
+          jobState.earliestStartMin <= t &&
+          !overlapsAny(jobState.unavailable, t, t + step)
+        );
+      })
       .map((r) => ({ room: r.room, jobState: r.active! }));
 
     // 部屋ごとの希望人数: 部屋上限と「このステップで使い切れる最大人数」の小さい方
@@ -395,6 +408,9 @@ function buildRooms(jobs: AllocationJob[], dayStartMin: number): RoomState[] {
       neededPersonMinutes,
       spentPersonMinutes: 0,
       earliestStartMin: job.earliestStart ? Math.max(dayStartMin, parseHM(job.earliestStart)) : dayStartMin,
+      unavailable: (job.unavailableWindows ?? [])
+        .map((w) => ({ start: parseHM(w.startTime), end: parseHM(w.endTime) }))
+        .filter((w) => w.end > w.start),
     };
     const room =
       byRoom.get(job.workAreaId) ??
@@ -411,6 +427,10 @@ function buildRooms(jobs: AllocationJob[], dayStartMin: number): RoomState[] {
     byRoom.set(job.workAreaId, room);
   }
   return [...byRoom.values()].sort((a, b) => a.displayOrder - b.displayOrder || a.workAreaName.localeCompare(b.workAreaName, "ja"));
+}
+
+function overlapsAny(windows: { start: number; end: number }[], start: number, end: number) {
+  return windows.some((w) => start < w.end && w.start < end);
 }
 
 function activeJob(room: RoomState): JobState | null {

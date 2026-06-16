@@ -24,6 +24,43 @@ const product: ShiftSimulationProduct = {
   ],
 };
 
+function productWithTwoRooms(productId: string, productCode: string, productName: string): ShiftSimulationProduct {
+  return {
+    productId,
+    productCode,
+    productName,
+    productionType: "stock",
+    unit: "袋",
+    defaultWorkAreaId: "room1",
+    capacities: [
+      {
+        productId,
+        workAreaId: "room1",
+        workAreaName: "一般部屋",
+        workAreaDefaultStartTime: "09:00",
+        workAreaDefaultEndTime: "17:00",
+        workAreaMaxPeopleCount: 2,
+        workAreaDisplayOrder: 1,
+        unitsPerPersonHour: 100,
+        standardPeople: 2,
+        standardBreakMinutes: 0,
+      },
+      {
+        productId,
+        workAreaId: "room2",
+        workAreaName: "機械部屋",
+        workAreaDefaultStartTime: "09:00",
+        workAreaDefaultEndTime: "17:00",
+        workAreaMaxPeopleCount: 2,
+        workAreaDisplayOrder: 2,
+        unitsPerPersonHour: 100,
+        standardPeople: 2,
+        standardBreakMinutes: 0,
+      },
+    ],
+  };
+}
+
 describe("simulateMonthlyShiftSchedule", () => {
   it("実シフトの1日能力を超える数量を複数日の仮予定へ分割する", () => {
     const result = simulateMonthlyShiftSchedule({
@@ -265,5 +302,135 @@ describe("simulateMonthlyShiftSchedule", () => {
     });
 
     expect(result.plans[0]).toMatchObject({ startTime: "13:00", endTime: "14:30", quantity: 300 });
+  });
+
+  it("複数商品が同じ既定部屋を持つ場合でも候補部屋へ分散して同日並行配置する", () => {
+    const productA = productWithTwoRooms("p1", "P001", "商品A");
+    const productB = productWithTwoRooms("p2", "P002", "商品B");
+    const result = simulateMonthlyShiftSchedule({
+      dateFrom: "2026-05-01",
+      dateTo: "2026-05-01",
+      defaultStartTime: "09:00",
+      baselineEndTime: "10:00",
+      breakWindows: [],
+      products: [productA, productB],
+      items: [
+        {
+          productId: "p1",
+          productCode: "P001",
+          productName: "商品A",
+          productionType: "stock",
+          unit: "袋",
+          preferredDate: "2026-05-01",
+          dueDates: ["2026-05-01"],
+          quantity: 200,
+          reasons: ["月間予測"],
+        },
+        {
+          productId: "p2",
+          productCode: "P002",
+          productName: "商品B",
+          productionType: "stock",
+          unit: "袋",
+          preferredDate: "2026-05-01",
+          dueDates: ["2026-05-01"],
+          quantity: 200,
+          reasons: ["月間予測"],
+        },
+      ],
+      shifts: [
+        { employeeId: "e1", employeeName: "A", date: "2026-05-01", startTime: "09:00", endTime: "10:00" },
+        { employeeId: "e2", employeeName: "B", date: "2026-05-01", startTime: "09:00", endTime: "10:00" },
+        { employeeId: "e3", employeeName: "C", date: "2026-05-01", startTime: "09:00", endTime: "10:00" },
+        { employeeId: "e4", employeeName: "D", date: "2026-05-01", startTime: "09:00", endTime: "10:00" },
+      ],
+      existingPlans: [],
+      existingAssignments: [],
+    });
+
+    expect(result.skipped).toHaveLength(0);
+    expect(result.plans).toHaveLength(2);
+    expect(result.plans.map((plan) => plan.workAreaId).sort()).toEqual(["room1", "room2"]);
+    expect(result.plans.map((plan) => plan.quantity).sort((a, b) => a - b)).toEqual([200, 200]);
+  });
+
+  it("午後に既存予定がある部屋でも午前の空き枠へ配置する", () => {
+    const result = simulateMonthlyShiftSchedule({
+      dateFrom: "2026-05-01",
+      dateTo: "2026-05-01",
+      defaultStartTime: "09:00",
+      baselineEndTime: "17:00",
+      breakWindows: [],
+      products: [product],
+      items: [
+        {
+          productId: "p1",
+          productCode: "P001",
+          productName: "商品A",
+          productionType: "stock",
+          unit: "袋",
+          preferredDate: "2026-05-01",
+          dueDates: ["2026-05-01"],
+          quantity: 400,
+          reasons: ["月間予測"],
+        },
+      ],
+      shifts: [
+        { employeeId: "e1", employeeName: "A", date: "2026-05-01", startTime: "09:00", endTime: "17:00" },
+        { employeeId: "e2", employeeName: "B", date: "2026-05-01", startTime: "09:00", endTime: "17:00" },
+      ],
+      existingPlans: [{ date: "2026-05-01", workAreaId: "room1", startTime: "15:00", endTime: "17:00" }],
+      existingAssignments: [],
+    });
+
+    expect(result.skipped).toHaveLength(0);
+    expect(result.plans[0]).toMatchObject({ startTime: "09:00", endTime: "11:00", quantity: 400 });
+  });
+
+  it("同じ商品の複数日候補を内部IDで分けて、別日予定として扱う", () => {
+    const result = simulateMonthlyShiftSchedule({
+      dateFrom: "2026-05-01",
+      dateTo: "2026-05-02",
+      defaultStartTime: "09:00",
+      baselineEndTime: "10:00",
+      breakWindows: [],
+      products: [product],
+      items: [
+        {
+          productId: "p1",
+          productCode: "P001",
+          productName: "商品A",
+          productionType: "stock",
+          unit: "袋",
+          preferredDate: "2026-05-01",
+          dueDates: ["2026-05-01"],
+          quantity: 100,
+          reasons: ["5/1分"],
+        },
+        {
+          productId: "p1",
+          productCode: "P001",
+          productName: "商品A",
+          productionType: "stock",
+          unit: "袋",
+          preferredDate: "2026-05-02",
+          dueDates: ["2026-05-02"],
+          quantity: 100,
+          reasons: ["5/2分"],
+        },
+      ],
+      shifts: [
+        { employeeId: "e1", employeeName: "A", date: "2026-05-01", startTime: "09:00", endTime: "10:00" },
+        { employeeId: "e1", employeeName: "A", date: "2026-05-02", startTime: "09:00", endTime: "10:00" },
+      ],
+      existingPlans: [],
+      existingAssignments: [],
+    });
+
+    expect(result.skipped).toHaveLength(0);
+    expect(result.plans.map((plan) => ({ date: plan.date, dueDates: plan.dueDates }))).toEqual([
+      { date: "2026-05-01", dueDates: ["2026-05-01"] },
+      { date: "2026-05-02", dueDates: ["2026-05-02"] },
+    ]);
   });
 });

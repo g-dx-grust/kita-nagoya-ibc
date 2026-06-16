@@ -269,4 +269,49 @@ describe("allocateDayStaff", () => {
     // 在席480分 - 休憩60分 = 420分作業
     expect(emp.workingMinutes).toBe(420);
   });
+
+  it("部屋が使えない時間帯を避けて空き枠だけに割り当てる", () => {
+    const result = allocateDayStaff({
+      ...base,
+      staff: [staff("e1", "A")],
+      jobs: [
+        {
+          jobId: "j1",
+          productId: "p1",
+          productName: "商品A",
+          workAreaId: "room1",
+          workAreaName: "一般部屋",
+          quantity: 100000,
+          unit: "袋",
+          unitsPerPersonHour: 100,
+          roomMaxPeople: 1,
+          unavailableWindows: [{ startTime: "12:00", endTime: "13:00" }],
+        },
+      ],
+    });
+
+    expect(result.jobs[0].scheduledQuantity).toBe(700);
+    expect(result.jobs[0].peopleSegments).toEqual([
+      { startTime: "09:00", endTime: "12:00", peopleCount: 1 },
+      { startTime: "13:00", endTime: "17:00", peopleCount: 1 },
+    ]);
+    expect(result.employees[0].segments).toEqual([
+      {
+        jobId: "j1",
+        productName: "商品A",
+        workAreaId: "room1",
+        workAreaName: "一般部屋",
+        startTime: "09:00",
+        endTime: "12:00",
+      },
+      {
+        jobId: "j1",
+        productName: "商品A",
+        workAreaId: "room1",
+        workAreaName: "一般部屋",
+        startTime: "13:00",
+        endTime: "17:00",
+      },
+    ]);
+  });
 });

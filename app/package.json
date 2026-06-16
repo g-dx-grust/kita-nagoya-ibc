@@ -30,6 +30,7 @@
     "import:packaging": "tsx scripts/import-packaging.ts",
     "import:lead-times": "tsx scripts/import-lead-times.ts",
     "import:product-monthly-actuals": "tsx scripts/import-product-monthly-actuals.ts",
+    "import:kitanagoya-actuals": "tsx scripts/import-kitanagoya-production-actuals.ts",
     "import:shifts": "tsx scripts/import-shifts.ts",
     "import:work-areas": "tsx scripts/import-work-areas.ts",
     "import:capacities": "tsx scripts/import-capacities.ts",
