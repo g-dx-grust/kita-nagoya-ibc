@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import SectionTabs from "@/components/ui/section-tabs";
 import { prisma } from "@/lib/prisma";
 import { kitagoyaPath } from "@/lib/paths";
 import PlanForm from "../plan-form";
@@ -71,149 +72,199 @@ export default async function ProductionPlanDetail({
         <PlanActions planId={plan.id} status={plan.status} />
       </div>
 
-      <h2>登録内容</h2>
-      <PlanForm
-        products={productOptions}
-        workAreas={workAreas}
-        planId={plan.id}
-        initial={{
-          date: plan.date.toISOString().slice(0, 10),
-          productId: plan.productId,
-          productionType: plan.productionType,
-          plannedQuantity: plan.plannedQuantity,
-          unit: plan.unit,
-          workAreaId: plan.workAreaId,
-          plannedStartTime: plan.plannedStartTime,
-          desiredEndTime: plan.desiredEndTime,
-          plannedPeopleCount: plan.plannedPeopleCount,
-          baselineEndTime: plan.baselineEndTime,
-          note: plan.note,
-          status: plan.status,
-        }}
-      />
+      <SectionTabs
+        ariaLabel="生産予定詳細の表示切り替え"
+        initialTabId="detail"
+        items={[
+          {
+            id: "detail",
+            label: "登録内容",
+            content: (
+              <>
+                <h2>登録内容</h2>
+                <PlanForm
+                  products={productOptions}
+                  workAreas={workAreas}
+                  planId={plan.id}
+                  initial={{
+                    date: plan.date.toISOString().slice(0, 10),
+                    productId: plan.productId,
+                    productionType: plan.productionType,
+                    plannedQuantity: plan.plannedQuantity,
+                    unit: plan.unit,
+                    workAreaId: plan.workAreaId,
+                    plannedStartTime: plan.plannedStartTime,
+                    desiredEndTime: plan.desiredEndTime,
+                    plannedPeopleCount: plan.plannedPeopleCount,
+                    baselineEndTime: plan.baselineEndTime,
+                    note: plan.note,
+                    status: plan.status,
+                  }}
+                />
+              </>
+            ),
+          },
+          {
+            id: "assignments",
+            label: "スタッフ配置",
+            count: plan.assignments.length,
+            content: (
+              <>
+                <h2>スタッフ配置</h2>
+                <AssignmentEditor
+                  planId={plan.id}
+                  employees={employees.map((e) => ({
+                    id: e.id,
+                    name: e.name,
+                    employmentType: e.employmentType,
+                    affiliation: e.affiliation,
+                  }))}
+                  initialAssignments={plan.assignments.map((a) => ({
+                    employeeId: a.employeeId,
+                    startTime: a.startTime,
+                    endTime: a.endTime,
+                  }))}
+                  defaultStartTime={plan.plannedStartTime}
+                  defaultEndTime={plan.plannedEndTime ?? plan.desiredEndTime ?? plan.baselineEndTime}
+                />
+              </>
+            ),
+          },
+          {
+            id: "requirements",
+            label: "原料・資材",
+            count:
+              shortageHard.length + shortageDep.length > 0
+                ? `警告 ${shortageHard.length + shortageDep.length}`
+                : plan.requirements.length,
+            content: (
+              <>
+                <h2>原料・資材の予定使用量</h2>
+                {plan.requirements.length === 0 ? (
+                  <div className="empty-state">この商品にはBOMが登録されていません。</div>
+                ) : (
+                  <div className="table-frame">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>区分</th>
+                          <th>名称</th>
+                          <th>予定使用量</th>
+                          <th>使用前見込み</th>
+                          <th>確定入荷見込み</th>
+                          <th>未確定入荷見込み</th>
+                          <th>不足</th>
+                          <th>状態</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {plan.requirements.map((r) => (
+                          <tr key={r.id}>
+                            <td>{r.itemType === "raw_material" ? "原料" : "資材"}</td>
+                            <td>{r.itemName}</td>
+                            <td className="right">
+                              {r.plannedQuantity} {r.unit}
+                            </td>
+                            <td className="right">{r.onHandQuantity}</td>
+                            <td className="right">{r.confirmedInbound}</td>
+                            <td className="right">{r.unconfirmedInbound}</td>
+                            <td className="right">
+                              {r.shortageQuantity > 0 ? `${r.shortageQuantity} ${r.unit}` : "—"}
+                            </td>
+                            <td>
+                              {r.shortageType === "hard_shortage" && <span className="badge danger">不足</span>}
+                              {r.shortageType === "unconfirmed_dependency" && (
+                                <span className="badge warn">未確定依存</span>
+                              )}
+                              {r.shortageType === "none" && <span className="badge success">OK</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
 
-      <h2>スタッフ配置</h2>
-      <AssignmentEditor
-        planId={plan.id}
-        employees={employees.map((e) => ({
-          id: e.id,
-          name: e.name,
-          employmentType: e.employmentType,
-          affiliation: e.affiliation,
-        }))}
-        initialAssignments={plan.assignments.map((a) => ({
-          employeeId: a.employeeId,
-          startTime: a.startTime,
-          endTime: a.endTime,
-        }))}
-        defaultStartTime={plan.plannedStartTime}
-        defaultEndTime={plan.plannedEndTime ?? plan.desiredEndTime ?? plan.baselineEndTime}
-      />
-
-      <h2>原料・資材の予定使用量</h2>
-      {plan.requirements.length === 0 ? (
-        <div className="empty-state">この商品にはBOMが登録されていません。</div>
-      ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>区分</th>
-              <th>名称</th>
-              <th>予定使用量</th>
-              <th>使用前見込み</th>
-              <th>確定入荷見込み</th>
-              <th>未確定入荷見込み</th>
-              <th>不足</th>
-              <th>状態</th>
-            </tr>
-          </thead>
-          <tbody>
-            {plan.requirements.map((r) => (
-              <tr key={r.id}>
-                <td>{r.itemType === "raw_material" ? "原料" : "資材"}</td>
-                <td>{r.itemName}</td>
-                <td className="right">
-                  {r.plannedQuantity} {r.unit}
-                </td>
-                <td className="right">{r.onHandQuantity}</td>
-                <td className="right">{r.confirmedInbound}</td>
-                <td className="right">{r.unconfirmedInbound}</td>
-                <td className="right">
-                  {r.shortageQuantity > 0 ? `${r.shortageQuantity} ${r.unit}` : "—"}
-                </td>
-                <td>
-                  {r.shortageType === "hard_shortage" && <span className="badge danger">不足</span>}
-                  {r.shortageType === "unconfirmed_dependency" && (
-                    <span className="badge warn">未確定依存</span>
-                  )}
-                  {r.shortageType === "none" && <span className="badge success">OK</span>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {shortageHard.length > 0 && (
-        <div className="alert danger">
-          原料/資材が不足しています。発注候補:{" "}
-          {shortageHard.map((s) => `${s.itemName} ${s.shortageQuantity}${s.unit}`).join(", ")}
-        </div>
-      )}
-      {shortageDep.length > 0 && (
-        <div className="alert warn">
-          未確定発注の入荷に依存しています:{" "}
-          {shortageDep.map((s) => `${s.itemName} ${s.shortageQuantity}${s.unit}`).join(", ")}
-        </div>
-      )}
-
-      <h2>原価見積</h2>
-      <div className="panel grid grid-4">
-        <Stat label="作業費(手間賃)" value={plan.estLaborCost} suffix="円" />
-        <Stat label="原料原価" value={plan.estMaterialCost} suffix="円" />
-        <Stat label="資材原価" value={plan.estPackagingCost} suffix="円" />
-        <Stat label="総原価" value={plan.estTotalCost} suffix="円" />
-      </div>
-
-      <h2>日報（実績入力）</h2>
-      <DailyReportForm
-        planId={plan.id}
-        planStatus={plan.status}
-        planned={{
-          quantity: plan.plannedQuantity,
-          unit: plan.unit,
-          casePackQty: plan.product.casePackQty,
-          peopleCount: plan.plannedPeopleCount,
-          startTime: plan.plannedStartTime,
-          endTime: plan.plannedEndTime ?? plan.desiredEndTime ?? plan.baselineEndTime,
-        }}
-        requirements={plan.requirements.map((r) => ({
-          itemType: r.itemType as "raw_material" | "packaging",
-          itemId: r.itemId,
-          itemName: r.itemName,
-          unit: r.unit,
-          plannedQuantity: r.plannedQuantity,
-          unitPriceSnapshot: r.unitPriceSnapshot,
-        }))}
-        report={
-          dailyReport
-            ? {
-                id: dailyReport.id,
-                status: dailyReport.status,
-                actualStartTime: dailyReport.actualStartTime,
-                actualEndTime: dailyReport.actualEndTime,
-                actualBreakMinutes: dailyReport.actualBreakMinutes,
-                actualPeopleCount: dailyReport.actualPeopleCount,
-                actualQuantity: dailyReport.actualQuantity,
-                note: dailyReport.note,
-                consumptions: dailyReport.consumptions.map((c) => ({
-                  itemType: c.itemType,
-                  itemId: c.itemId,
-                  actualQuantity: c.actualQuantity,
-                })),
-              }
-            : null
-        }
+                {shortageHard.length > 0 && (
+                  <div className="alert danger">
+                    原料/資材が不足しています。発注候補:{" "}
+                    {shortageHard.map((s) => `${s.itemName} ${s.shortageQuantity}${s.unit}`).join(", ")}
+                  </div>
+                )}
+                {shortageDep.length > 0 && (
+                  <div className="alert warn">
+                    未確定発注の入荷に依存しています:{" "}
+                    {shortageDep.map((s) => `${s.itemName} ${s.shortageQuantity}${s.unit}`).join(", ")}
+                  </div>
+                )}
+              </>
+            ),
+          },
+          {
+            id: "cost",
+            label: "原価見積",
+            content: (
+              <>
+                <h2>原価見積</h2>
+                <div className="panel grid grid-4">
+                  <Stat label="作業費(手間賃)" value={plan.estLaborCost} suffix="円" />
+                  <Stat label="原料原価" value={plan.estMaterialCost} suffix="円" />
+                  <Stat label="資材原価" value={plan.estPackagingCost} suffix="円" />
+                  <Stat label="総原価" value={plan.estTotalCost} suffix="円" />
+                </div>
+              </>
+            ),
+          },
+          {
+            id: "daily-report",
+            label: "日報",
+            count: dailyReport?.status === "confirmed" ? "確定" : dailyReport ? "下書き" : "未入力",
+            content: (
+              <>
+                <h2>日報（実績入力）</h2>
+                <DailyReportForm
+                  planId={plan.id}
+                  planStatus={plan.status}
+                  planned={{
+                    quantity: plan.plannedQuantity,
+                    unit: plan.unit,
+                    casePackQty: plan.product.casePackQty,
+                    peopleCount: plan.plannedPeopleCount,
+                    startTime: plan.plannedStartTime,
+                    endTime: plan.plannedEndTime ?? plan.desiredEndTime ?? plan.baselineEndTime,
+                  }}
+                  requirements={plan.requirements.map((r) => ({
+                    itemType: r.itemType as "raw_material" | "packaging",
+                    itemId: r.itemId,
+                    itemName: r.itemName,
+                    unit: r.unit,
+                    plannedQuantity: r.plannedQuantity,
+                    unitPriceSnapshot: r.unitPriceSnapshot,
+                  }))}
+                  report={
+                    dailyReport
+                      ? {
+                          id: dailyReport.id,
+                          status: dailyReport.status,
+                          actualStartTime: dailyReport.actualStartTime,
+                          actualEndTime: dailyReport.actualEndTime,
+                          actualBreakMinutes: dailyReport.actualBreakMinutes,
+                          actualPeopleCount: dailyReport.actualPeopleCount,
+                          actualQuantity: dailyReport.actualQuantity,
+                          note: dailyReport.note,
+                          consumptions: dailyReport.consumptions.map((c) => ({
+                            itemType: c.itemType,
+                            itemId: c.itemId,
+                            actualQuantity: c.actualQuantity,
+                          })),
+                        }
+                      : null
+                  }
+                />
+              </>
+            ),
+          },
+        ]}
       />
     </>
   );

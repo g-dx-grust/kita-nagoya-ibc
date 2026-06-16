@@ -82,7 +82,7 @@ type DragChip = {
   endTime: string;
 };
 
-type View = "room" | "people";
+type View = "room" | "people" | "jobs" | "board";
 
 // 部屋ボックス（Kanban）用カード。人の作業セグメント=1カード、手すきは未割当ボックスへ。
 type WorkCard = {
@@ -502,24 +502,34 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
               <button type="button" className={view === "people" ? "is-active" : ""} onClick={() => setView("people")}>
                 人タイムライン
               </button>
+              <button type="button" className={view === "jobs" ? "is-active" : ""} onClick={() => setView("jobs")}>
+                商品ごとの割り当て
+              </button>
+              <button type="button" className={view === "board" ? "is-active" : ""} onClick={() => setView("board")}>
+                部屋ボックス
+              </button>
             </div>
-            <div className="spacer" />
-            <label className="gantt-control">
-              時間スケール
-              <input
-                type="range"
-                min={0}
-                max={300}
-                step={20}
-                value={pxPerHour}
-                onChange={(e) => setPxPerHour(Number(e.target.value))}
-              />
-              <span className="subtext">{pxPerHour === 0 ? "画面幅に合わせる" : `${pxPerHour}px/時・横スクロール`}</span>
-            </label>
-            <label className="gantt-control">
-              <input type="checkbox" checked={wrapLabels} onChange={(e) => setWrapLabels(e.target.checked)} />
-              ラベル折返し（2行）
-            </label>
+            {(view === "room" || view === "people") && (
+              <>
+                <div className="spacer" />
+                <label className="gantt-control">
+                  時間スケール
+                  <input
+                    type="range"
+                    min={0}
+                    max={300}
+                    step={20}
+                    value={pxPerHour}
+                    onChange={(e) => setPxPerHour(Number(e.target.value))}
+                  />
+                  <span className="subtext">{pxPerHour === 0 ? "画面幅に合わせる" : `${pxPerHour}px/時・横スクロール`}</span>
+                </label>
+                <label className="gantt-control">
+                  <input type="checkbox" checked={wrapLabels} onChange={(e) => setWrapLabels(e.target.checked)} />
+                  ラベル折返し（2行）
+                </label>
+              </>
+            )}
           </div>
 
           {view === "room" && (
@@ -608,170 +618,174 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
             </div>
           )}
 
-          <div className="card">
-            <div className="toolbar">
-              <h2 style={{ margin: 0 }}>商品ごとの割り当て</h2>
-              <div className="spacer" />
-              {workAreaOverrides.length > 0 && (
-                <>
-                  <span className="subtext">商品部屋変更 {workAreaOverrides.length}件</span>
-                  <button type="button" className="ghost-button" onClick={clearWorkAreaOverrides} disabled={loading}>
-                    商品の部屋変更を戻す
-                  </button>
-                </>
-              )}
+          {view === "jobs" && (
+            <div className="card">
+              <div className="toolbar">
+                <h2 style={{ margin: 0 }}>商品ごとの割り当て</h2>
+                <div className="spacer" />
+                {workAreaOverrides.length > 0 && (
+                  <>
+                    <span className="subtext">商品部屋変更 {workAreaOverrides.length}件</span>
+                    <button type="button" className="ghost-button" onClick={clearWorkAreaOverrides} disabled={loading}>
+                      商品の部屋変更を戻す
+                    </button>
+                  </>
+                )}
+              </div>
+              <div className="table-frame">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>商品</th>
+                      <th>作業場所（商品移動）</th>
+                      <th>時間</th>
+                      <th>人数推移</th>
+                      <th>予定数量</th>
+                      <th>見込み</th>
+                      <th>あふれ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allocation.jobs.map((job) => {
+                      const options = workAreaChoicesFor(job);
+                      const selectedWorkAreaId =
+                        workAreaOverrides.find((override) => override.planId === job.jobId)?.workAreaId ?? job.workAreaId;
+                      const moved = (job.originalWorkAreaId ?? job.workAreaId) !== job.workAreaId;
+                      return (
+                        <tr key={job.jobId}>
+                          <td>{job.productName}</td>
+                          <td>
+                            <div className="alloc-room-cell">
+                              <span className="gantt-legend-swatch" style={{ background: colorOf(job.workAreaId) }} />
+                              <SearchableCombobox
+                                ariaLabel={`${job.productName}の作業場所`}
+                                value={selectedWorkAreaId}
+                                options={options.map((option) => ({
+                                  value: option.workAreaId,
+                                  label: option.workAreaName,
+                                }))}
+                                placeholder="作業場所名で検索"
+                                onChange={(workAreaId) => changeJobWorkArea(job, workAreaId)}
+                                disabled={loading || options.length <= 1}
+                              />
+                              {moved && job.originalWorkAreaName && (
+                                <span className="badge info">元: {job.originalWorkAreaName}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td>
+                            {job.startTime ?? "—"}〜{job.endTime ?? "—"}
+                          </td>
+                          <td>
+                            {job.peopleSegments.map((s) => `${s.startTime}-${s.endTime}:${s.peopleCount}人`).join(" / ") || "未配置"}
+                          </td>
+                          <td>
+                            {job.requestedQuantity}
+                            {job.unit}
+                          </td>
+                          <td>
+                            {job.scheduledQuantity}
+                            {job.unit}
+                          </td>
+                          <td style={{ color: job.overflowQuantity > 0 ? "var(--warn)" : undefined }}>
+                            {job.overflowQuantity > 0 ? `${job.overflowQuantity}${job.unit}` : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <div className="table-frame">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>商品</th>
-                    <th>作業場所（商品移動）</th>
-                    <th>時間</th>
-                    <th>人数推移</th>
-                    <th>予定数量</th>
-                    <th>見込み</th>
-                    <th>あふれ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allocation.jobs.map((job) => {
-                    const options = workAreaChoicesFor(job);
-                    const selectedWorkAreaId =
-                      workAreaOverrides.find((override) => override.planId === job.jobId)?.workAreaId ?? job.workAreaId;
-                    const moved = (job.originalWorkAreaId ?? job.workAreaId) !== job.workAreaId;
-                    return (
-                      <tr key={job.jobId}>
-                        <td>{job.productName}</td>
-                        <td>
-                          <div className="alloc-room-cell">
-                            <span className="gantt-legend-swatch" style={{ background: colorOf(job.workAreaId) }} />
-                            <SearchableCombobox
-                              ariaLabel={`${job.productName}の作業場所`}
-                              value={selectedWorkAreaId}
-                              options={options.map((option) => ({
-                                value: option.workAreaId,
-                                label: option.workAreaName,
-                              }))}
-                              placeholder="作業場所名で検索"
-                              onChange={(workAreaId) => changeJobWorkArea(job, workAreaId)}
-                              disabled={loading || options.length <= 1}
-                            />
-                            {moved && job.originalWorkAreaName && (
-                              <span className="badge info">元: {job.originalWorkAreaName}</span>
-                            )}
-                          </div>
-                        </td>
-                        <td>
-                          {job.startTime ?? "—"}〜{job.endTime ?? "—"}
-                        </td>
-                        <td>
-                          {job.peopleSegments.map((s) => `${s.startTime}-${s.endTime}:${s.peopleCount}人`).join(" / ") || "未配置"}
-                        </td>
-                        <td>
-                          {job.requestedQuantity}
-                          {job.unit}
-                        </td>
-                        <td>
-                          {job.scheduledQuantity}
-                          {job.unit}
-                        </td>
-                        <td style={{ color: job.overflowQuantity > 0 ? "var(--warn)" : undefined }}>
-                          {job.overflowQuantity > 0 ? `${job.overflowQuantity}${job.unit}` : "—"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          )}
+
+          {view === "board" && (
+            <div className="card">
+              <div className="toolbar">
+                <h2 style={{ margin: 0 }}>部屋ボックス（クリック / ドラッグで配置変更）</h2>
+                <div className="spacer" />
+                {pins.length > 0 && (
+                  <>
+                    <span className="subtext">手動ピン {pins.length}件</span>
+                    <button type="button" className="ghost-button" onClick={clearPins} disabled={loading}>
+                      すべて自動に戻す
+                    </button>
+                  </>
+                )}
+              </div>
+              <p className="section-note">
+                各カードは「人＋作業時間帯」です。カードをクリックして配置先の部屋を選ぶか、別の部屋ボックスへドラッグすると、
+                その時間帯はその部屋に固定（📌）され、残りは自動で再配置します。「手すき・未割当」へ戻すと固定を解除します。
+              </p>
+
+              <div className="alloc-board">
+                {areaOptions.map((area) => {
+                  const cards = cardsByArea.get(area.workAreaId) ?? [];
+                  const peak = peakByArea.get(area.workAreaId) ?? 0;
+                  const cap = capMap.get(area.workAreaId);
+                  const overCap = cap != null && peak > cap;
+                  return (
+                    <AllocBox
+                      key={area.workAreaId}
+                      name={area.workAreaName}
+                      color={area.color}
+                      capText={cap != null ? `ピーク ${peak} / 上限 ${cap}人` : `ピーク ${peak}人`}
+                      overCap={overCap}
+                      active={dragOverZone === area.workAreaId}
+                      onDragEnterZone={() => setDragOverZone(area.workAreaId)}
+                      onDragLeaveZone={() => setDragOverZone(null)}
+                      onDropChip={(chip) => {
+                        setDragOverZone(null);
+                        dropChipOnZone(chip, area.workAreaId, area.workAreaName);
+                      }}
+                    >
+                      {cards.length === 0 && <div className="alloc-box-empty">割り当てなし</div>}
+                      {cards.map((card) => (
+                        <PersonCard
+                          key={card.key}
+                          card={card}
+                          color={area.color}
+                          areas={areaOptions}
+                          currentAreaId={card.workAreaId}
+                          isOpen={openCardKey === card.key}
+                          onToggle={() => setOpenCardKey((prev) => (prev === card.key ? null : card.key))}
+                          onAssign={(zoneId, zoneName) => assignCard(card, zoneId, zoneName)}
+                        />
+                      ))}
+                    </AllocBox>
+                  );
+                })}
+
+                <AllocBox
+                  idle
+                  name="手すき・未割当"
+                  capText={`${idleCards.length}件`}
+                  active={dragOverZone === UNPIN_ZONE}
+                  onDragEnterZone={() => setDragOverZone(UNPIN_ZONE)}
+                  onDragLeaveZone={() => setDragOverZone(null)}
+                  onDropChip={(chip) => {
+                    setDragOverZone(null);
+                    dropChipOnZone(chip, UNPIN_ZONE, "");
+                  }}
+                >
+                  {idleCards.length === 0 && <div className="alloc-box-empty">手すきなし（全員稼働）</div>}
+                  {idleCards.map((card) => (
+                    <PersonCard
+                      key={card.key}
+                      card={card}
+                      areas={areaOptions}
+                      currentAreaId={null}
+                      isOpen={openCardKey === card.key}
+                      onToggle={() => setOpenCardKey((prev) => (prev === card.key ? null : card.key))}
+                      onAssign={(zoneId, zoneName) => assignCard(card, zoneId, zoneName)}
+                    />
+                  ))}
+                </AllocBox>
+              </div>
+
+              {openCardKey && <div className="alloc-menu-backdrop" onClick={() => setOpenCardKey(null)} />}
             </div>
-          </div>
-
-          <div className="card">
-            <div className="toolbar">
-              <h2 style={{ margin: 0 }}>部屋ボックス（クリック / ドラッグで配置変更）</h2>
-              <div className="spacer" />
-              {pins.length > 0 && (
-                <>
-                  <span className="subtext">手動ピン {pins.length}件</span>
-                  <button type="button" className="ghost-button" onClick={clearPins} disabled={loading}>
-                    すべて自動に戻す
-                  </button>
-                </>
-              )}
-            </div>
-            <p className="section-note">
-              各カードは「人＋作業時間帯」です。カードをクリックして配置先の部屋を選ぶか、別の部屋ボックスへドラッグすると、
-              その時間帯はその部屋に固定（📌）され、残りは自動で再配置します。「手すき・未割当」へ戻すと固定を解除します。
-            </p>
-
-            <div className="alloc-board">
-              {areaOptions.map((area) => {
-                const cards = cardsByArea.get(area.workAreaId) ?? [];
-                const peak = peakByArea.get(area.workAreaId) ?? 0;
-                const cap = capMap.get(area.workAreaId);
-                const overCap = cap != null && peak > cap;
-                return (
-                  <AllocBox
-                    key={area.workAreaId}
-                    name={area.workAreaName}
-                    color={area.color}
-                    capText={cap != null ? `ピーク ${peak} / 上限 ${cap}人` : `ピーク ${peak}人`}
-                    overCap={overCap}
-                    active={dragOverZone === area.workAreaId}
-                    onDragEnterZone={() => setDragOverZone(area.workAreaId)}
-                    onDragLeaveZone={() => setDragOverZone(null)}
-                    onDropChip={(chip) => {
-                      setDragOverZone(null);
-                      dropChipOnZone(chip, area.workAreaId, area.workAreaName);
-                    }}
-                  >
-                    {cards.length === 0 && <div className="alloc-box-empty">割り当てなし</div>}
-                    {cards.map((card) => (
-                      <PersonCard
-                        key={card.key}
-                        card={card}
-                        color={area.color}
-                        areas={areaOptions}
-                        currentAreaId={card.workAreaId}
-                        isOpen={openCardKey === card.key}
-                        onToggle={() => setOpenCardKey((prev) => (prev === card.key ? null : card.key))}
-                        onAssign={(zoneId, zoneName) => assignCard(card, zoneId, zoneName)}
-                      />
-                    ))}
-                  </AllocBox>
-                );
-              })}
-
-              <AllocBox
-                idle
-                name="手すき・未割当"
-                capText={`${idleCards.length}件`}
-                active={dragOverZone === UNPIN_ZONE}
-                onDragEnterZone={() => setDragOverZone(UNPIN_ZONE)}
-                onDragLeaveZone={() => setDragOverZone(null)}
-                onDropChip={(chip) => {
-                  setDragOverZone(null);
-                  dropChipOnZone(chip, UNPIN_ZONE, "");
-                }}
-              >
-                {idleCards.length === 0 && <div className="alloc-box-empty">手すきなし（全員稼働）</div>}
-                {idleCards.map((card) => (
-                  <PersonCard
-                    key={card.key}
-                    card={card}
-                    areas={areaOptions}
-                    currentAreaId={null}
-                    isOpen={openCardKey === card.key}
-                    onToggle={() => setOpenCardKey((prev) => (prev === card.key ? null : card.key))}
-                    onAssign={(zoneId, zoneName) => assignCard(card, zoneId, zoneName)}
-                  />
-                ))}
-              </AllocBox>
-            </div>
-
-            {openCardKey && <div className="alloc-menu-backdrop" onClick={() => setOpenCardKey(null)} />}
-          </div>
+          )}
         </>
       )}
     </>

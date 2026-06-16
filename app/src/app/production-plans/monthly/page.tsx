@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SectionTabs from "@/components/ui/section-tabs";
 import { aggregateMonthlySuggestions } from "@/lib/monthly-production-schedule";
 import {
   loadMonthlyProductionSchedulePreview,
@@ -175,131 +176,180 @@ export default async function MonthlyProductionPlansPage({
         disabled={groupedSuggestions.length === 0}
       />
 
-      {planningBasis === "historical_actual" && (
-        <>
-          <h2>前々月前年比 予測</h2>
-          <p className="section-note">数量は基本単位とケース数を併記します。小数の数量は表示時に切り上げます。</p>
-          <HistoricalForecastTable preview={preview} caseOf={caseOf} />
-        </>
-      )}
+      <SectionTabs
+        ariaLabel="月間予定の表示切り替え"
+        items={[
+          {
+            id: "forecast",
+            label: planningBasis === "historical_actual" ? "予測・予実" : "予実・過不足",
+            count:
+              planningBasis === "historical_actual"
+                ? preview.historicalForecasts.length
+                : preview.reconciliation.length,
+            content: (
+              <>
+                {planningBasis === "historical_actual" && (
+                  <>
+                    <h2>前々月前年比 予測</h2>
+                    <p className="section-note">数量は基本単位とケース数を併記します。小数の数量は表示時に切り上げます。</p>
+                    <HistoricalForecastTable preview={preview} caseOf={caseOf} />
+                  </>
+                )}
 
-      <h2>当月 予実・過不足</h2>
-      <p className="section-note">
-        月次予測(目標)に対する確定実績の累計と残目標です。実績累計は確定日報のみを集計し、予定値とは分けています。最終的な追加判断は上の「シフト連動で仮予定生成」で行ってください。
-      </p>
-      <MonthlyReconciliationTable rows={preview.reconciliation} caseOf={caseOf} />
-
-      <h2>月間生産予定表</h2>
-      <ProductionExcelSheet days={days} rows={productionSheetRows} />
-
-      <h2>生成候補</h2>
-      {groupedSuggestions.length === 0 ? (
-        <div className="empty-state">
-          {planningBasis === "historical_actual"
-            ? "前々月前年比予測と既存予定を見た結果、追加の生産予定は不要です。"
-            : "現在庫、未処理需要、既存予定を見た結果、追加の生産予定は不要です。"}
-        </div>
-      ) : (
-        <div className="table-frame">
-          <table>
-            <thead>
-              <tr>
-                <th>予定日</th>
-                <th>商品</th>
-                <th>数量</th>
-                <th>{planningBasis === "historical_actual" ? "予測基準日" : "不足判定日"}</th>
-                <th>判定理由</th>
-              </tr>
-            </thead>
-            <tbody>
-              {groupedSuggestions.map((suggestion) => (
-                <tr key={`${suggestion.scheduleDate}:${suggestion.productId}`}>
-                  <td>{suggestion.scheduleDate}</td>
-                  <td>
-                    {suggestion.productCode} · {suggestion.productName}
-                  </td>
-                  <td className="right">
-                    <strong>
-                      {formatCases(suggestion.suggestedQuantity, {
-                        casePackQty: caseOf(suggestion.productId),
-                        baseUnit: suggestion.unit,
+                <h2>当月 予実・過不足</h2>
+                <p className="section-note">
+                  月次予測(目標)に対する確定実績の累計と残目標です。実績累計は確定日報のみを集計し、予定値とは分けています。最終的な追加判断は上の「シフト連動で仮予定生成」で行ってください。
+                </p>
+                <MonthlyReconciliationTable rows={preview.reconciliation} caseOf={caseOf} />
+              </>
+            ),
+          },
+          {
+            id: "schedule",
+            label: "月間生産予定表",
+            count: productionSheetRows.length,
+            content: (
+              <>
+                <h2>月間生産予定表</h2>
+                <ProductionExcelSheet days={days} rows={productionSheetRows} />
+              </>
+            ),
+          },
+          {
+            id: "suggestions",
+            label: "生成候補",
+            count: groupedSuggestions.length,
+            content: (
+              <>
+                <h2>生成候補</h2>
+                {groupedSuggestions.length === 0 ? (
+                  <div className="empty-state">
+                    {planningBasis === "historical_actual"
+                      ? "前々月前年比予測と既存予定を見た結果、追加の生産予定は不要です。"
+                      : "現在庫、未処理需要、既存予定を見た結果、追加の生産予定は不要です。"}
+                  </div>
+                ) : (
+                  <div className="table-frame">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>予定日</th>
+                          <th>商品</th>
+                          <th>数量</th>
+                          <th>{planningBasis === "historical_actual" ? "予測基準日" : "不足判定日"}</th>
+                          <th>判定理由</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {groupedSuggestions.map((suggestion) => (
+                          <tr key={`${suggestion.scheduleDate}:${suggestion.productId}`}>
+                            <td>{suggestion.scheduleDate}</td>
+                            <td>
+                              {suggestion.productCode} · {suggestion.productName}
+                            </td>
+                            <td className="right">
+                              <strong>
+                                {formatCases(suggestion.suggestedQuantity, {
+                                  casePackQty: caseOf(suggestion.productId),
+                                  baseUnit: suggestion.unit,
+                                })}
+                              </strong>
+                            </td>
+                            <td>{suggestion.dueDates.sort().join(", ")}</td>
+                            <td className="wrap-cell">{suggestion.reasons[0]}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            ),
+          },
+          {
+            id: "calendar",
+            label: "月間カレンダー",
+            count: days.length,
+            content: (
+              <>
+                <h2>月間カレンダー</h2>
+                <div className="table-frame">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>日付</th>
+                        <th>既存の生産予定</th>
+                        <th>今回の生成候補</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {days.map((date) => (
+                        <tr key={date}>
+                          <td>{date}</td>
+                          <td>
+                            <ScheduleList rows={plansByDate.get(date) ?? []} />
+                          </td>
+                          <td>
+                            <ScheduleList rows={suggestionsByDate.get(date) ?? []} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ),
+          },
+          {
+            id: "product-inventory",
+            label: "製品別の在庫見通し",
+            count: preview.productSummaries.length,
+            content: (
+              <>
+                <h2>製品別の在庫見通し</h2>
+                <div className="table-frame">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>商品</th>
+                        <th>基準日在庫</th>
+                        <th>{planningBasis === "historical_actual" ? "月次予測" : "未処理需要"}</th>
+                        <th>既存予定</th>
+                        <th>生成候補</th>
+                        <th>期間末見込</th>
+                        <th>期間中最低</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.productSummaries.map((summary) => {
+                        const cp = caseOf(summary.productId);
+                        const fmt = (v: number) => formatCases(v, { casePackQty: cp, baseUnit: summary.unit });
+                        return (
+                          <tr key={summary.productId}>
+                            <td>
+                              {summary.productCode} · {summary.productName}
+                            </td>
+                            <td className="right">{fmt(summary.startingOnHandQuantity)}</td>
+                            <td className="right">{fmt(summary.openDemandQuantity)}</td>
+                            <td className="right">{fmt(summary.existingProductionQuantity)}</td>
+                            <td className="right">{fmt(summary.suggestedQuantity)}</td>
+                            <td className="right">{fmt(summary.endingProjectedOnHandQuantity)}</td>
+                            <td className="right">
+                              <span className={summary.minProjectedOnHandQuantity < 0 ? "badge danger" : "badge muted"}>
+                                {fmt(summary.minProjectedOnHandQuantity)}
+                              </span>
+                            </td>
+                          </tr>
+                        );
                       })}
-                    </strong>
-                  </td>
-                  <td>{suggestion.dueDates.sort().join(", ")}</td>
-                  <td className="wrap-cell">{suggestion.reasons[0]}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <h2>月間カレンダー</h2>
-      <div className="table-frame">
-        <table>
-          <thead>
-            <tr>
-              <th>日付</th>
-              <th>既存の生産予定</th>
-              <th>今回の生成候補</th>
-            </tr>
-          </thead>
-          <tbody>
-            {days.map((date) => (
-              <tr key={date}>
-                <td>{date}</td>
-                <td>
-                  <ScheduleList rows={plansByDate.get(date) ?? []} />
-                </td>
-                <td>
-                  <ScheduleList rows={suggestionsByDate.get(date) ?? []} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <h2>製品別の在庫見通し</h2>
-      <div className="table-frame">
-        <table>
-          <thead>
-            <tr>
-              <th>商品</th>
-              <th>基準日在庫</th>
-              <th>{planningBasis === "historical_actual" ? "月次予測" : "未処理需要"}</th>
-              <th>既存予定</th>
-              <th>生成候補</th>
-              <th>期間末見込</th>
-              <th>期間中最低</th>
-            </tr>
-          </thead>
-          <tbody>
-            {preview.productSummaries.map((summary) => {
-              const cp = caseOf(summary.productId);
-              const fmt = (v: number) => formatCases(v, { casePackQty: cp, baseUnit: summary.unit });
-              return (
-                <tr key={summary.productId}>
-                  <td>
-                    {summary.productCode} · {summary.productName}
-                  </td>
-                  <td className="right">{fmt(summary.startingOnHandQuantity)}</td>
-                  <td className="right">{fmt(summary.openDemandQuantity)}</td>
-                  <td className="right">{fmt(summary.existingProductionQuantity)}</td>
-                  <td className="right">{fmt(summary.suggestedQuantity)}</td>
-                  <td className="right">{fmt(summary.endingProjectedOnHandQuantity)}</td>
-                  <td className="right">
-                    <span className={summary.minProjectedOnHandQuantity < 0 ? "badge danger" : "badge muted"}>
-                      {fmt(summary.minProjectedOnHandQuantity)}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ),
+          },
+        ]}
+      />
     </>
   );
 }

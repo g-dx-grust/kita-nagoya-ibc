@@ -757,6 +757,75 @@ form.toolbar {
   font-weight: 500;
 }
 
+.section-tabs {
+  margin-top: 16px;
+}
+
+.section-tabs-list {
+  position: sticky;
+  top: 64px;
+  z-index: 12;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--surface) 94%, var(--surface-subtle));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.section-tab {
+  width: auto;
+  min-height: 36px;
+  padding: 7px 14px;
+  background: #fff;
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.section-tab:hover:not(:disabled) {
+  background: var(--surface-subtle);
+  border-color: var(--primary);
+  color: var(--text);
+}
+
+.section-tab.is-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.section-tab-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.section-tab.is-active .section-tab-count {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.section-tab-panel {
+  min-width: 0;
+}
+
+.section-tab-panel[hidden] {
+  display: none !important;
+}
+
+.section-tab-panel > h2:first-child {
+  margin-top: 0;
+}
+
 .subtext {
   color: var(--muted);
   font-size: 12px;
@@ -2562,24 +2631,23 @@ tr.row-muted > td {
 
 /* --- 当日割り当て ガント/タイムライン (要望B 見える化) --- */
 .alloc-view-toggle {
-  display: inline-flex;
-  gap: 0;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .alloc-view-toggle button {
   width: auto;
   min-height: 30px;
   padding: 4px 14px;
-  border: none;
-  border-radius: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
   background: var(--surface);
   color: var(--text);
   font-weight: 600;
 }
 .alloc-view-toggle button.is-active {
   background: var(--primary);
+  border-color: var(--primary);
   color: #fff;
 }
 .gantt {

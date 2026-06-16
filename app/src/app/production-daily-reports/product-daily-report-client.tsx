@@ -4,6 +4,7 @@ import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { CheckCircle, Image as ImageIcon, Pencil, Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+import SectionTabs from "@/components/ui/section-tabs";
 import ProductCombobox, { type ProductComboOption } from "@/components/ui/product-combobox";
 import SearchableCombobox from "@/components/ui/searchable-combobox";
 import {
@@ -301,295 +302,324 @@ export default function ProductDailyReportClient({
         </div>
       )}
 
-      <section className="panel">
-        <h2>日報入力</h2>
-        <form onSubmit={createEntry}>
-          <div className="grid grid-4">
-            <label>
-              <span>日付</span>
-              <input
-                type="date"
-                required
-                value={form.reportDate}
-                onChange={(e) => setFormValue(setForm, "reportDate", e.target.value)}
-              />
-            </label>
-            <label className="min-w-[260px]">
-              <span>商品</span>
-              <ProductCombobox
-                products={products}
-                value={form.productId}
-                onChange={(value) => onSelectProduct(setForm, value)}
-                emptyOptionLabel="商品名を直接入力"
-              />
-            </label>
-            {!form.productId && (
-              <label>
-                <span>商品名</span>
-                <input
-                  type="text"
-                  value={form.productName}
-                  onChange={(e) => setFormValue(setForm, "productName", e.target.value)}
-                />
-              </label>
-            )}
-            <label>
-              <span>賞味期限</span>
-              <input
-                type="date"
-                value={form.expiryDate}
-                onChange={(e) => setFormValue(setForm, "expiryDate", e.target.value)}
-              />
-            </label>
-            <label>
-              <span>開始時間</span>
-              <input
-                type="time"
-                required
-                value={form.startTime}
-                onChange={(e) => setFormValue(setForm, "startTime", e.target.value)}
-              />
-            </label>
-            <label>
-              <span>終了時間</span>
-              <input
-                type="time"
-                required
-                value={form.endTime}
-                onChange={(e) => setFormValue(setForm, "endTime", e.target.value)}
-              />
-            </label>
-            <label>
-              <span>休憩(分)</span>
-              <input
-                type="number"
-                min={0}
-                step={1}
-                value={form.breakMinutes}
-                onChange={(e) => setFormValue(setForm, "breakMinutes", e.target.value)}
-              />
-            </label>
-            <label>
-              <span>作業人数</span>
-              <input
-                type="number"
-                required
-                min={0.1}
-                step={0.1}
-                value={form.workerCount}
-                onChange={(e) => setFormValue(setForm, "workerCount", e.target.value)}
-              />
-            </label>
-            <label>
-              <span>生産数</span>
-              <input
-                type="number"
-                required
-                min={0}
-                step="any"
-                value={form.productionQty}
-                onChange={(e) => setFormValue(setForm, "productionQty", e.target.value)}
-              />
-            </label>
-            <label>
-              <span>手間賃区分</span>
-              <select
-                value={form.laborFeeRateId}
-                onChange={(e) => setFormValue(setForm, "laborFeeRateId", e.target.value)}
-              >
-                {laborRates.length === 0 && <option value="">標準</option>}
-                {laborRates.map((rate) => (
-                  <option key={rate.id} value={rate.id}>
-                    {rate.name}（{formatYen(rate.hourlyRate)}/時）
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="min-w-[220px]">
-              <span>備考</span>
-              <input
-                type="text"
-                value={form.note}
-                onChange={(e) => setFormValue(setForm, "note", e.target.value)}
-              />
-            </label>
-          </div>
-
-          <MaterialsEditor
-            materials={form.materials}
-            materialOptions={materialOptions}
-            onChange={(next) => setForm((prev) => ({ ...prev, materials: next }))}
-          />
-
-          <div className="stat-grid mt-4">
-            <Metric label="使用原料合計" value={`${formatNumber(preview.totalMaterialKg)} kg`} />
-            <Metric label="1人1h生産数" value={formatNumber(preview.perHourQty)} />
-            <Metric label="1袋手間賃" value={formatYen(preview.laborFeePerUnit)} />
-            <Metric label="原料原価" value={formatYen(preview.materialCost)} />
-            <Metric label="利率" value={formatPercent(preview.profitRate)} />
-          </div>
-
-          <div className="row form-actions mt-4">
-            <div className="spacer" />
-            <button type="submit" className="gap-2" disabled={busy}>
-              <Plus className="h-4 w-4" />
-              保存
-            </button>
-          </div>
-        </form>
-      </section>
-
-      <MonthlyLaborFeePanel selectedMonth={selectedMonth} rows={monthlyLaborFees} />
-
-      <section>
-        <h2>月次 商品別集計</h2>
-        <div className="table-frame">
-          <table>
-            <thead>
-              <tr>
-                <th>商品</th>
-                <th className="right">製造回数</th>
-                <th className="right">生産数合計</th>
-                <th className="right">使用原料合計(kg)</th>
-                <th className="right">売値合計</th>
-                <th className="right">平均利率</th>
-                <th className="right">平均ロス率</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summaries.map((summary) => (
-                <SummaryRow key={summary.productKey} summary={summary} />
-              ))}
-              <SummaryRow summary={total} total />
-              {summaries.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="muted">
-                    対象月の日報はありません。
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section>
-        <h2>日報一覧</h2>
-        <div className="table-frame">
-          <table>
-            <thead>
-              <tr>
-                <th>日付</th>
-                <th>商品</th>
-                <th>賞味期限</th>
-                <th>時間</th>
-                <th className="right">人数</th>
-                <th className="right">生産数</th>
-                <th>使用原料</th>
-                <th>提出/写真</th>
-                <th className="right">1人1h</th>
-                <th className="right">1袋手間賃</th>
-                <th className="right">ロス率</th>
-                <th className="right">売値</th>
-                <th className="right">利率</th>
-                <th>確認</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) =>
-                editingId === row.id && editForm ? (
-                  <EditRow
-                    key={row.id}
-                    form={editForm}
-                    products={products}
-                    materialOptions={materialOptions}
-                    laborRates={laborRates}
-                    busy={busy}
-                    onChange={(key, value) => setFormValue(setEditForm, key, value)}
-                    onChangeMaterials={(next) =>
-                      setEditForm((prev) => (prev ? { ...prev, materials: next } : prev))
-                    }
-                    onSave={() => saveEdit(row.id)}
-                    onCancel={() => {
-                      setEditingId(null);
-                      setEditForm(null);
-                    }}
-                  />
-                ) : (
-                  <tr key={row.id}>
-                    <td>{row.reportDate}</td>
-                    <td>
-                      <div>{displayProductName(row)}</div>
-                      {row.productCode && <div className="subtext">{row.productCode}</div>}
-                    </td>
-                    <td>{row.expiryDate || "—"}</td>
-                    <td>
-                      {row.startTime}〜{row.endTime}
-                      <div className="subtext">休憩 {row.breakMinutes}分 / 稼動 {formatNumber(row.operatingMinutes)}分</div>
-                    </td>
-                    <td className="right">{formatNumber(row.workerCount)}</td>
-                    <td className="right">{formatNumber(row.productionQty)}</td>
-                    <td>
-                      <div>{formatNumber(row.materialUsedKg)} kg</div>
-                      {row.materials.length > 0 && (
-                        <div className="subtext">
-                          {row.materials
-                            .map((m) => `${m.materialName} ${formatNumber(m.usedKg)}kg`)
-                            .join(" / ")}
-                        </div>
+      <SectionTabs
+        ariaLabel="日報の表示切り替え"
+        initialTabId="review"
+        items={[
+          {
+            id: "review",
+            label: "日報確認",
+            count: pendingApproval.length > 0 ? `未計上 ${pendingApproval.length}` : rows.length,
+            content: (
+              <section>
+                <h2>日報確認</h2>
+                <div className="table-frame">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>日付</th>
+                        <th>商品</th>
+                        <th>賞味期限</th>
+                        <th>時間</th>
+                        <th className="right">人数</th>
+                        <th className="right">生産数</th>
+                        <th>使用原料</th>
+                        <th>提出/写真</th>
+                        <th className="right">1人1h</th>
+                        <th className="right">1袋手間賃</th>
+                        <th className="right">ロス率</th>
+                        <th className="right">売値</th>
+                        <th className="right">利率</th>
+                        <th>確認</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row) =>
+                        editingId === row.id && editForm ? (
+                          <EditRow
+                            key={row.id}
+                            form={editForm}
+                            products={products}
+                            materialOptions={materialOptions}
+                            laborRates={laborRates}
+                            busy={busy}
+                            onChange={(key, value) => setFormValue(setEditForm, key, value)}
+                            onChangeMaterials={(next) =>
+                              setEditForm((prev) => (prev ? { ...prev, materials: next } : prev))
+                            }
+                            onSave={() => saveEdit(row.id)}
+                            onCancel={() => {
+                              setEditingId(null);
+                              setEditForm(null);
+                            }}
+                          />
+                        ) : (
+                          <tr key={row.id}>
+                            <td>{row.reportDate}</td>
+                            <td>
+                              <div>{displayProductName(row)}</div>
+                              {row.productCode && <div className="subtext">{row.productCode}</div>}
+                            </td>
+                            <td>{row.expiryDate || "—"}</td>
+                            <td>
+                              {row.startTime}〜{row.endTime}
+                              <div className="subtext">休憩 {row.breakMinutes}分 / 稼動 {formatNumber(row.operatingMinutes)}分</div>
+                            </td>
+                            <td className="right">{formatNumber(row.workerCount)}</td>
+                            <td className="right">{formatNumber(row.productionQty)}</td>
+                            <td>
+                              <div>{formatNumber(row.materialUsedKg)} kg</div>
+                              {row.materials.length > 0 && (
+                                <div className="subtext">
+                                  {row.materials
+                                    .map((m) => `${m.materialName} ${formatNumber(m.usedKg)}kg`)
+                                    .join(" / ")}
+                                </div>
+                              )}
+                            </td>
+                            <td>
+                              <SubmissionInfo row={row} />
+                            </td>
+                            <td className="right">{formatNumber(row.perHourQty)}</td>
+                            <td className="right">{formatYen(row.laborFeePerUnit)}</td>
+                            <td className="right">{formatPercent(row.lossRate)}</td>
+                            <td className="right">{formatYen(row.sales)}</td>
+                            <td className="right">{formatPercent(row.profitRate)}</td>
+                            <td>
+                              <StatusBadges row={row} />
+                            </td>
+                            <td>
+                              <div className="table-actions">
+                                {row.approvalStatus === "submitted" && (
+                                  <button type="button" className="gap-2" onClick={() => approveRow(row)} disabled={busy}>
+                                    <CheckCircle className="h-4 w-4" />
+                                    計上
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  className="secondary gap-2"
+                                  onClick={() => {
+                                    setEditingId(row.id);
+                                    setEditForm(formFromRow(row));
+                                  }}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                  編集
+                                </button>
+                                <button type="button" className="danger gap-2" onClick={() => deleteRow(row)} disabled={busy}>
+                                  <Trash2 className="h-4 w-4" />
+                                  削除
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ),
                       )}
-                    </td>
-                    <td>
-                      <SubmissionInfo row={row} />
-                    </td>
-                    <td className="right">{formatNumber(row.perHourQty)}</td>
-                    <td className="right">{formatYen(row.laborFeePerUnit)}</td>
-                    <td className="right">{formatPercent(row.lossRate)}</td>
-                    <td className="right">{formatYen(row.sales)}</td>
-                    <td className="right">{formatPercent(row.profitRate)}</td>
-                    <td>
-                      <StatusBadges row={row} />
-                    </td>
-                    <td>
-                      <div className="table-actions">
-                        {row.approvalStatus === "submitted" && (
-                          <button type="button" className="gap-2" onClick={() => approveRow(row)} disabled={busy}>
-                            <CheckCircle className="h-4 w-4" />
-                            計上
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="secondary gap-2"
-                          onClick={() => {
-                            setEditingId(row.id);
-                            setEditForm(formFromRow(row));
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                          編集
-                        </button>
-                        <button type="button" className="danger gap-2" onClick={() => deleteRow(row)} disabled={busy}>
-                          <Trash2 className="h-4 w-4" />
-                          削除
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ),
-              )}
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={15} className="muted">
-                    対象月の日報はありません。
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                      {rows.length === 0 && (
+                        <tr>
+                          <td colSpan={15} className="muted">
+                            対象月の日報はありません。
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ),
+          },
+          {
+            id: "entry",
+            label: "日報入力",
+            count: "手入力",
+            content: (
+              <section className="panel">
+                <h2>日報入力</h2>
+                <form onSubmit={createEntry}>
+                  <div className="grid grid-4">
+                    <label>
+                      <span>日付</span>
+                      <input
+                        type="date"
+                        required
+                        value={form.reportDate}
+                        onChange={(e) => setFormValue(setForm, "reportDate", e.target.value)}
+                      />
+                    </label>
+                    <label className="min-w-[260px]">
+                      <span>商品</span>
+                      <ProductCombobox
+                        products={products}
+                        value={form.productId}
+                        onChange={(value) => onSelectProduct(setForm, value)}
+                        emptyOptionLabel="商品名を直接入力"
+                      />
+                    </label>
+                    {!form.productId && (
+                      <label>
+                        <span>商品名</span>
+                        <input
+                          type="text"
+                          value={form.productName}
+                          onChange={(e) => setFormValue(setForm, "productName", e.target.value)}
+                        />
+                      </label>
+                    )}
+                    <label>
+                      <span>賞味期限</span>
+                      <input
+                        type="date"
+                        value={form.expiryDate}
+                        onChange={(e) => setFormValue(setForm, "expiryDate", e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      <span>開始時間</span>
+                      <input
+                        type="time"
+                        required
+                        value={form.startTime}
+                        onChange={(e) => setFormValue(setForm, "startTime", e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      <span>終了時間</span>
+                      <input
+                        type="time"
+                        required
+                        value={form.endTime}
+                        onChange={(e) => setFormValue(setForm, "endTime", e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      <span>休憩(分)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={form.breakMinutes}
+                        onChange={(e) => setFormValue(setForm, "breakMinutes", e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      <span>作業人数</span>
+                      <input
+                        type="number"
+                        required
+                        min={0.1}
+                        step={0.1}
+                        value={form.workerCount}
+                        onChange={(e) => setFormValue(setForm, "workerCount", e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      <span>生産数</span>
+                      <input
+                        type="number"
+                        required
+                        min={0}
+                        step="any"
+                        value={form.productionQty}
+                        onChange={(e) => setFormValue(setForm, "productionQty", e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      <span>手間賃区分</span>
+                      <select
+                        value={form.laborFeeRateId}
+                        onChange={(e) => setFormValue(setForm, "laborFeeRateId", e.target.value)}
+                      >
+                        {laborRates.length === 0 && <option value="">標準</option>}
+                        {laborRates.map((rate) => (
+                          <option key={rate.id} value={rate.id}>
+                            {rate.name}（{formatYen(rate.hourlyRate)}/時）
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="min-w-[220px]">
+                      <span>備考</span>
+                      <input
+                        type="text"
+                        value={form.note}
+                        onChange={(e) => setFormValue(setForm, "note", e.target.value)}
+                      />
+                    </label>
+                  </div>
+
+                  <MaterialsEditor
+                    materials={form.materials}
+                    materialOptions={materialOptions}
+                    onChange={(next) => setForm((prev) => ({ ...prev, materials: next }))}
+                  />
+
+                  <div className="stat-grid mt-4">
+                    <Metric label="使用原料合計" value={`${formatNumber(preview.totalMaterialKg)} kg`} />
+                    <Metric label="1人1h生産数" value={formatNumber(preview.perHourQty)} />
+                    <Metric label="1袋手間賃" value={formatYen(preview.laborFeePerUnit)} />
+                    <Metric label="原料原価" value={formatYen(preview.materialCost)} />
+                    <Metric label="利率" value={formatPercent(preview.profitRate)} />
+                  </div>
+
+                  <div className="row form-actions mt-4">
+                    <div className="spacer" />
+                    <button type="submit" className="gap-2" disabled={busy}>
+                      <Plus className="h-4 w-4" />
+                      保存
+                    </button>
+                  </div>
+                </form>
+              </section>
+            ),
+          },
+          {
+            id: "labor-fee",
+            label: "月次手間賃",
+            count: monthlyLaborFees.length,
+            content: <MonthlyLaborFeePanel selectedMonth={selectedMonth} rows={monthlyLaborFees} />,
+          },
+          {
+            id: "summary",
+            label: "商品別集計",
+            count: summaries.length,
+            content: (
+              <section>
+                <h2>月次 商品別集計</h2>
+                <div className="table-frame">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>商品</th>
+                        <th className="right">製造回数</th>
+                        <th className="right">生産数合計</th>
+                        <th className="right">使用原料合計(kg)</th>
+                        <th className="right">売値合計</th>
+                        <th className="right">平均利率</th>
+                        <th className="right">平均ロス率</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summaries.map((summary) => (
+                        <SummaryRow key={summary.productKey} summary={summary} />
+                      ))}
+                      <SummaryRow summary={total} total />
+                      {summaries.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="muted">
+                            対象月の日報はありません。
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ),
+          },
+        ]}
+      />
     </>
   );
 }
