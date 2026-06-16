@@ -296,12 +296,6 @@ export default function ProductDailyReportClient({
         </div>
       </CollapsiblePanel>
 
-      {pendingApproval.length > 0 && (
-        <div className="alert warn">
-          スタッフ提出の日報が {pendingApproval.length} 件あります。内容を確認し、問題なければ「計上」を押してください。
-        </div>
-      )}
-
       {alerts.length > 0 && (
         <div className="alert warn">
           マスタ照合・売値・原価の確認が必要な日報があります（{alerts.length}件）。

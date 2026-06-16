@@ -198,6 +198,7 @@ export default async function ProductionDailyReportsPage({
     })),
   );
   const total: ProductDailyReportSummaryRow = summarizeProductDailyReportTotals(summaries);
+  const pendingApprovalCount = rows.filter((row) => row.approvalStatus === "submitted").length;
   const laborRateOptions: ProductDailyReportLaborRateOption[] = laborRates.map((rate) => ({
     id: rate.id,
     code: rate.code,
@@ -228,6 +229,17 @@ export default async function ProductionDailyReportsPage({
         </Link>
       </div>
 
+      {pendingApprovalCount > 0 && (
+        <div className="alert warn top-page-alert">
+          <span>
+            日報未計上の案件が {pendingApprovalCount} 件あります。内容を確認し、問題なければ「計上」を押してください。
+          </span>
+          <a className="button-link secondary-link" href="#daily-report-review">
+            日報確認へ
+          </a>
+        </div>
+      )}
+
       <CollapsiblePanel
         title="検索・表示条件"
         summary={`${formatMonthLabel(month)} / ${productId ? "商品指定あり" : "全商品"}${q ? ` / ${q}` : ""}`}
@@ -256,6 +268,7 @@ export default async function ProductionDailyReportsPage({
         </form>
       </CollapsiblePanel>
 
+      <div id="daily-report-review" className="anchor-offset" />
       <ProductDailyReportClient
         selectedMonth={month}
         rows={rows}

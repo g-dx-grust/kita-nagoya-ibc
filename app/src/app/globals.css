@@ -1109,6 +1109,19 @@ button:disabled {
   font-weight: 600;
 }
 
+.top-page-alert {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0;
+}
+
+.anchor-offset {
+  scroll-margin-top: 72px;
+}
+
 .alert.warn {
   background: var(--warn-soft);
   border-color: var(--warn-border);
