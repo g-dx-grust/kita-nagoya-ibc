@@ -131,6 +131,35 @@ describe("日報蓄積(B) 在庫差引", () => {
     expect(monthly?.sourceType).toBe("daily_report");
   });
 
+  it("Excel履歴取込は承認済みでも在庫台帳へ反映しない", async () => {
+    const { product, m1 } = await setup();
+    const { createProductDailyReportEntry, updateProductDailyReportEntry } = await import(
+      "@/lib/product-daily-report-service"
+    );
+
+    const entry = await createProductDailyReportEntry({
+      ...baseInput(product.id),
+      approvalStatus: "approved",
+      inventoryReflected: false,
+      sourceType: "excel_history",
+      sourceSheetName: "2026.6",
+      sourceRowNumber: 2,
+      materials: [{ materialId: m1.id, materialName: m1.name, usedKg: 30 }],
+    });
+
+    expect(entry!.approvalStatus).toBe("approved");
+    expect(entry!.inventoryReflected).toBe(false);
+    expect(await prisma.stockMovement.count({ where: { sourceType: "production_daily_report" } as any })).toBe(0);
+
+    await updateProductDailyReportEntry(entry!.id, {
+      ...baseInput(product.id),
+      productionQty: 120,
+      materials: [{ materialId: m1.id, materialName: m1.name, usedKg: 35 }],
+    });
+
+    expect(await prisma.stockMovement.count({ where: { sourceType: "production_daily_report" } as any })).toBe(0);
+  });
+
   it("マスタ未紐付け(フリーテキスト)原料は在庫差引しないが原価には載らない(単価0)", async () => {
     const { product, m1 } = await setup();
     const { createProductDailyReportEntry } = await import("@/lib/product-daily-report-service");

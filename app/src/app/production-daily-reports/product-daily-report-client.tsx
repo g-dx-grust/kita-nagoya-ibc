@@ -91,6 +91,7 @@ export type ProductDailyReportRow = {
   laborFeeRateName: string | null;
   note: string | null;
   approvalStatus: string;
+  inventoryReflected: boolean;
   submittedBy: string | null;
   approvedAt: string | null;
   approvedBy: string | null;
@@ -1034,6 +1035,7 @@ function StatusBadges({ row }: { row: ProductDailyReportRow }) {
       {row.approvalStatus === "submitted" && <span className="badge warn">未計上</span>}
       {row.approvalStatus === "approved" && <span className="badge success">計上済</span>}
       {row.approvalStatus === "rejected" && <span className="badge danger">差戻し</span>}
+      {row.approvalStatus === "approved" && !row.inventoryReflected && <span className="badge info">履歴・在庫未反映</span>}
       {row.productMatchStatus === "unmatched" && <span className="badge danger">商品未照合</span>}
       {row.productMatchStatus === "fuzzy" && <span className="badge warn">曖昧照合</span>}
       {row.productMatchStatus !== "unmatched" && row.productMatchStatus !== "fuzzy" && (

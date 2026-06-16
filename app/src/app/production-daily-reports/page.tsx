@@ -155,6 +155,7 @@ export default async function ProductionDailyReportsPage({
     laborFeeRateName: entry.laborFeeRate?.name ?? null,
     note: entry.note,
     approvalStatus: entry.approvalStatus,
+    inventoryReflected: entry.inventoryReflected,
     submittedBy: entry.submittedBy,
     approvedAt: entry.approvedAt ? entry.approvedAt.toISOString().slice(0, 16).replace("T", " ") : null,
     approvedBy: entry.approvedBy,

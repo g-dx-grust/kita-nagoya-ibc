@@ -50,6 +50,7 @@ export type ProductDailyReportInput = {
   sourceSheetName?: string | null;
   sourceRowNumber?: number | null;
   approvalStatus?: ProductDailyReportApprovalStatus;
+  inventoryReflected?: boolean;
   submittedBy?: string | null;
   approvedBy?: string | null;
   labelPhotos?: ProductDailyReportLabelPhotoInput[];
@@ -105,7 +106,7 @@ type ProductDailyReportEntryWithDetails = Prisma.ProductionDailyReportEntryGetPa
 
 export async function createProductDailyReportEntry(input: ProductDailyReportInput) {
   const built = await buildProductDailyReportData(input);
-  const shouldReflectInventory = built.data.approvalStatus === "approved";
+  const shouldReflectInventory = shouldReflectInventoryForEntry(built.data);
 
   const row = await prisma.$transaction(async (tx) => {
     const created = await tx.productionDailyReportEntry.create({ data: built.data });
@@ -150,6 +151,7 @@ export async function updateProductDailyReportEntry(id: string, input: ProductDa
     submittedBy: before.submittedBy,
     approvedAt: before.approvedAt,
     approvedBy: before.approvedBy,
+    inventoryReflected: before.inventoryReflected,
     labelPhotosJson: before.labelPhotosJson,
   });
 
@@ -159,7 +161,7 @@ export async function updateProductDailyReportEntry(id: string, input: ProductDa
     await tx.productionDailyReportEntryMaterial.createMany({
       data: built.materials.map((m) => ({ ...materialChildData(m), entryId: id })),
     });
-    if (updated.approvalStatus === "approved") {
+    if (shouldReflectInventoryForEntry(updated)) {
       await replaceProductionDailyReportMovements(
         tx,
         { id, productId: updated.productId, productionQty: updated.productionQty, reportDate: updated.reportDate },
@@ -176,7 +178,7 @@ export async function updateProductDailyReportEntry(id: string, input: ProductDa
       const [productId, yearMonth] = key.split("|");
       await syncMonthlyActualFromProductionDailyReports(tx, { productId, yearMonth });
     }
-    if (updated.approvalStatus === "approved" && updated.productId) {
+    if (shouldReflectInventoryForEntry(updated) && updated.productId) {
       await completeMatchingPlans(tx, updated.productId, updated.reportDate);
     }
     return tx.productionDailyReportEntry.findUnique({ where: { id }, include: entryInclude });
@@ -196,6 +198,7 @@ export async function approveProductDailyReportEntry(id: string, approvedBy?: st
     submittedBy: before.submittedBy,
     approvedAt: new Date(),
     approvedBy: approvedBy ?? before.approvedBy,
+    inventoryReflected: true,
     labelPhotosJson: before.labelPhotosJson,
   });
 
@@ -253,6 +256,7 @@ async function buildProductDailyReportData(
     submittedBy?: string | null;
     approvedAt?: Date | null;
     approvedBy?: string | null;
+    inventoryReflected?: boolean;
     labelPhotosJson?: string | null;
   },
 ): Promise<BuiltEntry> {
@@ -289,6 +293,8 @@ async function buildProductDailyReportData(
   const approvalStatus = input.approvalStatus ?? defaults?.approvalStatus ?? "approved";
   const approvedAt =
     approvalStatus === "approved" ? (defaults?.approvedAt ?? new Date()) : null;
+  const inventoryReflected =
+    input.inventoryReflected ?? defaults?.inventoryReflected ?? approvalStatus === "approved";
 
   const data: Prisma.ProductionDailyReportEntryUncheckedCreateInput = {
     reportDate,
@@ -310,6 +316,7 @@ async function buildProductDailyReportData(
     sourceRowNumber: input.sourceRowNumber ?? null,
     active: true,
     approvalStatus,
+    inventoryReflected,
     submittedBy: input.submittedBy ?? defaults?.submittedBy ?? null,
     approvedAt,
     approvedBy: input.approvedBy ?? defaults?.approvedBy ?? null,
@@ -364,7 +371,15 @@ function entryToInput(
     sourceSheetName: entry.sourceSheetName,
     sourceRowNumber: entry.sourceRowNumber,
     approvalStatus: "approved",
+    inventoryReflected: entry.inventoryReflected,
   };
+}
+
+function shouldReflectInventoryForEntry(entry: {
+  approvalStatus?: string;
+  inventoryReflected?: boolean;
+}) {
+  return entry.approvalStatus === "approved" && entry.inventoryReflected === true;
 }
 
 function serializeLabelPhotos(photos: ProductDailyReportLabelPhotoInput[]) {

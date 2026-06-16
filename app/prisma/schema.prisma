@@ -503,6 +503,7 @@ model ProductionDailyReportEntry {
   sourceRowNumber       Int?
   active                Boolean       @default(true)
   approvalStatus        String        @default("approved") // submitted | approved | rejected
+  inventoryReflected    Boolean       @default(true) // false=履歴取込など、承認済みでも在庫台帳へ反映しない
   submittedBy           String?
   approvedAt            DateTime?
   approvedBy            String?
