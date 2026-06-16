@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { BarChart3 } from "lucide-react";
+
 import { prisma } from "@/lib/prisma";
 import {
   aggregateProductDailyReports,
@@ -5,6 +8,7 @@ import {
   type ProductDailyReportSummaryRow,
 } from "@/lib/product-daily-report-calculations";
 import { loadProductDailyReportSnapshotsForProducts } from "@/lib/product-daily-report-service";
+import { kitagoyaPath } from "@/lib/paths";
 import { matchesQuery } from "@/lib/search";
 import ProductReportFilter from "./product-report-filter";
 import ProductDailyReportClient, {
@@ -237,6 +241,10 @@ export default async function ProductionDailyReportsPage({
         <button type="submit" className="secondary">
           表示
         </button>
+        <Link className="button-link secondary-link gap-2" href={dashboardHref(month, productId, q)}>
+          <BarChart3 className="h-4 w-4" />
+          ダッシュボード
+        </Link>
       </form>
 
       <ProductDailyReportClient
@@ -255,6 +263,13 @@ export default async function ProductionDailyReportsPage({
 
 function normalizeMonth(value: string) {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(value) ? value : new Date().toISOString().slice(0, 7);
+}
+
+function dashboardHref(month: string, productId: string, q: string) {
+  const params = new URLSearchParams({ month });
+  if (productId) params.set("productId", productId);
+  if (q) params.set("q", q);
+  return `${kitagoyaPath("/production-daily-reports/dashboard")}?${params.toString()}`;
 }
 
 function formatDate(value: Date | null) {
