@@ -354,6 +354,40 @@ describe("simulateMonthlyShiftSchedule", () => {
     expect(result.plans.map((plan) => plan.quantity).sort((a, b) => a - b)).toEqual([200, 200]);
   });
 
+  it("商品ごとの候補順位がある場合は第1候補の部屋を優先する", () => {
+    const prioritizedProduct = productWithTwoRooms("p1", "P001", "商品A");
+    prioritizedProduct.capacities = prioritizedProduct.capacities.map((capacity) => ({
+      ...capacity,
+      candidatePriority: capacity.workAreaId === "room2" ? 1 : 2,
+    }));
+    const result = simulateMonthlyShiftSchedule({
+      dateFrom: "2026-05-01",
+      dateTo: "2026-05-01",
+      defaultStartTime: "09:00",
+      baselineEndTime: "10:00",
+      breakWindows: [],
+      products: [prioritizedProduct],
+      items: [
+        {
+          productId: "p1",
+          productCode: "P001",
+          productName: "商品A",
+          productionType: "stock",
+          unit: "袋",
+          preferredDate: "2026-05-01",
+          dueDates: ["2026-05-01"],
+          quantity: 100,
+          reasons: ["月間予測"],
+        },
+      ],
+      shifts: [{ employeeId: "e1", employeeName: "A", date: "2026-05-01", startTime: "09:00", endTime: "10:00" }],
+      existingPlans: [],
+      existingAssignments: [],
+    });
+
+    expect(result.plans[0].workAreaId).toBe("room2");
+  });
+
   it("午後に既存予定がある部屋でも午前の空き枠へ配置する", () => {
     const result = simulateMonthlyShiftSchedule({
       dateFrom: "2026-05-01",

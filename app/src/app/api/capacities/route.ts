@@ -23,6 +23,7 @@ export async function POST(req: Request) {
       unitsPerPersonHour: body.unitsPerPersonHour,
       standardPeople: body.standardPeople,
       standardBreakMinutes: body.standardBreakMinutes,
+      candidatePriority: body.candidatePriority ?? null,
       note: body.note ?? null,
       sourceType: body.sourceType,
       locked: body.locked,

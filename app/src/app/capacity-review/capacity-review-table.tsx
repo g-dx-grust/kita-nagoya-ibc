@@ -17,6 +17,7 @@ export type CapacityReviewRow = {
   unitsPerPersonHour: number | null;
   standardPeople: number;
   standardBreakMinutes: number;
+  candidatePriority: number | null;
   reviewStatus: "unreviewed" | "confirmed" | "needs_review";
   reviewMemo: string;
   reviewedAt: string | null;
@@ -29,6 +30,7 @@ type Draft = {
   unitsPerPersonHour: string;
   standardPeople: string;
   standardBreakMinutes: string;
+  candidatePriority: string;
   reviewStatus: CapacityReviewRow["reviewStatus"];
   reviewMemo: string;
   sampleQuantity: string;
@@ -120,6 +122,7 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
         unitsPerPersonHour: row.unitsPerPersonHour == null ? "" : formatNumber(row.unitsPerPersonHour),
         standardPeople: formatNumber(row.standardPeople),
         standardBreakMinutes: String(row.standardBreakMinutes),
+        candidatePriority: row.candidatePriority == null ? "" : String(row.candidatePriority),
         reviewStatus: row.reviewStatus,
         reviewMemo: row.reviewMemo ?? "",
         sampleQuantity: "",
@@ -156,10 +159,15 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
     const unitsPerPersonHour = Number(draft.unitsPerPersonHour);
     const standardPeople = Number(draft.standardPeople);
     const standardBreakMinutes = 0;
+    const candidatePriority = draft.candidatePriority.trim() ? Number(draft.candidatePriority) : null;
     const reviewStatus = statusOverride ?? draft.reviewStatus;
 
     if (!(unitsPerPersonHour > 0 && standardPeople > 0)) {
       setError("生産能力・基準人数を確認してください。");
+      return;
+    }
+    if (candidatePriority != null && (!Number.isInteger(candidatePriority) || candidatePriority < 1)) {
+      setError("候補順位は1以上の整数で入力してください。");
       return;
     }
 
@@ -175,6 +183,7 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
         unitsPerPersonHour,
         standardPeople,
         standardBreakMinutes,
+        candidatePriority,
         reviewStatus,
         reviewMemo: draft.reviewMemo || null,
       }),
@@ -195,6 +204,7 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
               unitsPerPersonHour,
               standardPeople,
               standardBreakMinutes,
+              candidatePriority,
               reviewStatus,
               reviewMemo: draft.reviewMemo,
               reviewedAt: json.reviewedAt ?? item.reviewedAt,
@@ -238,6 +248,7 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
               unitsPerPersonHour: null,
               standardPeople: 1,
               standardBreakMinutes: 0,
+              candidatePriority: null,
               reviewStatus: "unreviewed",
               reviewMemo: "",
               reviewedAt: null,
@@ -305,6 +316,7 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
               <tr>
                 <th>商品</th>
                 <th>作業場所</th>
+                <th>候補順位</th>
                 <th>生産能力 / 人時</th>
                 <th>現場確認から計算</th>
                 <th>基準人数</th>
@@ -335,6 +347,16 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
                     <td>
                       {row.workAreaName}
                       {row.missingCapacity && <div className="badge warn">未登録</div>}
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={draft.candidatePriority}
+                        onChange={(event) => patchDraft(row, { candidatePriority: event.target.value })}
+                      />
+                      <div className="subtext">1=第1候補</div>
                     </td>
                     <td>
                       <input

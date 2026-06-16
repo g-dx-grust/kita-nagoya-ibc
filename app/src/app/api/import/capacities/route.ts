@@ -24,6 +24,7 @@ export async function POST(req: Request) {
         value(r.work_area_id) ??
         (value(r.work_area_name) ? workAreaByName.get(value(r.work_area_name)!) : undefined);
       const unitsPerPersonHour = positiveNumber(r.units_per_person_hour);
+      const candidatePriority = positiveInt(r.candidate_priority);
       const sourceType = value(r.source_type) ?? "MANUAL";
       const validFrom = parseDate(r.valid_from);
       const validTo = parseDate(r.valid_to);
@@ -47,6 +48,7 @@ export async function POST(req: Request) {
           unitsPerPersonHour,
           standardPeople: positiveNumber(r.standard_people) ?? 1,
           standardBreakMinutes: nonnegativeInt(r.standard_break_minutes) ?? 0,
+          candidatePriority,
           sourceType,
           locked: parseBool(r.locked) ?? false,
           validFrom: validFrom || null,
@@ -59,6 +61,7 @@ export async function POST(req: Request) {
           unitsPerPersonHour,
           standardPeople: positiveNumber(r.standard_people) ?? 1,
           standardBreakMinutes: nonnegativeInt(r.standard_break_minutes) ?? 0,
+          candidatePriority,
           sourceType,
           locked: parseBool(r.locked) ?? false,
           validFrom: validFrom || null,
@@ -91,6 +94,12 @@ function nonnegativeInt(v: string | undefined): number | null {
   if (!s) return null;
   const n = Number(s);
   return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : null;
+}
+function positiveInt(v: string | undefined): number | null {
+  const s = value(v);
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : null;
 }
 function parseBool(v: string | undefined): boolean | null {
   const s = value(v)?.toLowerCase();

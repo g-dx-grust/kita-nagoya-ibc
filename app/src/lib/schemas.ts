@@ -436,6 +436,7 @@ const CapacityBaseSchema = z.object({
   unitsPerPersonHour: z.number().positive(),
   standardPeople: z.number().positive().default(1),
   standardBreakMinutes: z.number().int().min(0).default(0),
+  candidatePriority: z.number().int().min(1).max(99).nullish(),
   note: z.string().nullish(),
   sourceType: CapacitySourceTypeEnum.default("MANUAL"),
   locked: z.boolean().default(false),

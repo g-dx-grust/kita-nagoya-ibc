@@ -44,6 +44,7 @@ export type ShiftSimulationCapacity = {
   unitsPerPersonHour: number;
   standardPeople: number;
   standardBreakMinutes: number;
+  candidatePriority?: number | null;
 };
 
 export type ShiftSimulationProduct = {
@@ -362,15 +363,21 @@ function dedupeAssignments(
 
 function chooseSchedulableCapacities(product: ShiftSimulationProduct) {
   return [...product.capacities].sort((a, b) => {
+    const priorityDiff = priorityKey(a.candidatePriority) - priorityKey(b.candidatePriority);
     const defaultScore =
       Number(b.workAreaId === product.defaultWorkAreaId) - Number(a.workAreaId === product.defaultWorkAreaId);
     return (
+      priorityDiff ||
       defaultScore ||
       b.unitsPerPersonHour - a.unitsPerPersonHour ||
       a.workAreaDisplayOrder - b.workAreaDisplayOrder ||
       a.workAreaName.localeCompare(b.workAreaName, "ja")
     );
   });
+}
+
+function priorityKey(priority: number | null | undefined) {
+  return priority == null ? Number.MAX_SAFE_INTEGER : priority;
 }
 
 function hasUsableRoomWindow(input: {

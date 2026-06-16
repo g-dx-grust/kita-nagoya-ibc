@@ -138,13 +138,14 @@ const TEMPLATES: Record<string, { header: string[]; example: (string | number)[]
       "units_per_person_hour",
       "standard_people",
       "standard_break_minutes",
+      "candidate_priority",
       "note",
       "source_type",
       "locked",
       "valid_from",
       "valid_to",
     ],
-    example: [["P001", "", "一般部屋", 100, 5, 0, "", "MANUAL", "false", "2026-01-01", ""]],
+    example: [["P001", "", "一般部屋", 100, 5, 0, 1, "", "MANUAL", "false", "2026-01-01", ""]],
   },
   shifts: {
     header: [

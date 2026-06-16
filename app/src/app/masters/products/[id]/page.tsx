@@ -86,6 +86,7 @@ export default async function ProductDetail({ params }: { params: Promise<{ id: 
           unitsPerPersonHour: c.unitsPerPersonHour,
           standardPeople: c.standardPeople,
           standardBreakMinutes: c.standardBreakMinutes,
+          candidatePriority: c.candidatePriority,
         }))}
         billingPrices={product.billingPrices.map((price) => ({
           id: price.id,

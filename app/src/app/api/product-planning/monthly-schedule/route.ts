@@ -143,6 +143,7 @@ export async function POST(req: Request) {
             unitsPerPersonHour: capacity.unitsPerPersonHour,
             standardPeople: capacity.standardPeople,
             standardBreakMinutes: capacity.standardBreakMinutes,
+            candidatePriority: capacity.candidatePriority,
           })),
       })),
       shifts: shifts.map((shift) => ({

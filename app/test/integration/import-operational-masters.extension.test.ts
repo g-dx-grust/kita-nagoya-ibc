@@ -47,8 +47,8 @@ describe("Operational master CSV imports (integration)", () => {
     const product = await createTestProduct(prisma, { productCode: "PCAP001" });
     const workArea = await createTestWorkArea(prisma, { name: "能力CSV部屋" });
     const csv = [
-      "product_code,product_name,work_area_name,units_per_person_hour,standard_people,standard_break_minutes,note,source_type,locked,valid_from,valid_to",
-      "PCAP001,,能力CSV部屋,120,3,0,,DAILY_REPORT_MEDIAN,true,2026-01-01,",
+      "product_code,product_name,work_area_name,units_per_person_hour,standard_people,standard_break_minutes,candidate_priority,note,source_type,locked,valid_from,valid_to",
+      "PCAP001,,能力CSV部屋,120,3,0,2,,DAILY_REPORT_MEDIAN,true,2026-01-01,",
     ].join("\n");
 
     const response = await IMPORT_CAPACITIES(
@@ -65,6 +65,7 @@ describe("Operational master CSV imports (integration)", () => {
       sourceType: "DAILY_REPORT_MEDIAN",
       locked: true,
       unitsPerPersonHour: 120,
+      candidatePriority: 2,
     });
   });
 

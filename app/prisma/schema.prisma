@@ -204,6 +204,7 @@ model ProductionCapacity {
   unitsPerPersonHour   Float
   standardPeople       Float     @default(1)
   standardBreakMinutes Int       @default(0)
+  candidatePriority    Int? // 商品ごとの部屋候補順位。1=第1候補、2=第2候補、null=最後尾
   note                 String?
   sourceType           String    @default("MANUAL") // MANUAL | DAILY_REPORT_MEDIAN
   locked               Boolean   @default(false)
@@ -215,6 +216,7 @@ model ProductionCapacity {
   reviewedAt           DateTime?
 
   @@unique([productId, workAreaId])
+  @@index([productId, candidatePriority])
 }
 
 model BillingPrice {

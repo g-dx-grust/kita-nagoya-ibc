@@ -55,6 +55,7 @@ type CapacityRow = {
   unitsPerPersonHour: number;
   standardPeople: number;
   standardBreakMinutes: number;
+  candidatePriority: number | null;
 };
 type BillingPriceRow = {
   id?: string;
@@ -740,6 +741,7 @@ export default function ProductEditor({
           <thead>
             <tr>
               <th>作業場所</th>
+              <th>候補順位</th>
               <th>生産量 / 人時</th>
               <th>基準人数</th>
               <th></th>
@@ -758,6 +760,20 @@ export default function ProductEditor({
                     onChange={(workAreaId) => {
                       const copy = [...capRows];
                       copy[idx] = { ...r, workAreaId };
+                      setCapRows(copy);
+                    }}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={r.candidatePriority ?? ""}
+                    onChange={(e) => {
+                      const copy = [...capRows];
+                      const value = e.target.value === "" ? null : Number(e.target.value);
+                      copy[idx] = { ...r, candidatePriority: value };
                       setCapRows(copy);
                     }}
                   />
@@ -812,6 +828,7 @@ export default function ProductEditor({
                   unitsPerPersonHour: 100,
                   standardPeople: 1,
                   standardBreakMinutes: 0,
+                  candidatePriority: capRows.length + 1,
                 },
               ])
             }

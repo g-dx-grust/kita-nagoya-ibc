@@ -50,6 +50,7 @@ export default async function CapacityReviewPage() {
         unitsPerPersonHour: capacity?.unitsPerPersonHour ?? null,
         standardPeople: capacity?.standardPeople ?? 1,
         standardBreakMinutes: capacity?.standardBreakMinutes ?? 0,
+        candidatePriority: capacity?.candidatePriority ?? candidatePriorityFor(product.defaultWorkAreaId, workAreas, workArea.id),
         reviewStatus: reviewStatus(capacity?.reviewStatus),
         reviewMemo: capacity?.reviewMemo ?? "",
         reviewedAt: capacity?.reviewedAt?.toISOString() ?? null,
@@ -70,6 +71,17 @@ export default async function CapacityReviewPage() {
       <CapacityReviewTable rows={rows} />
     </>
   );
+}
+
+function candidatePriorityFor(defaultWorkAreaId: string | null, workAreas: { id: string }[], workAreaId: string) {
+  const ordered = [
+    ...(defaultWorkAreaId && workAreas.some((workArea) => workArea.id === defaultWorkAreaId)
+      ? [defaultWorkAreaId]
+      : []),
+    ...workAreas.map((workArea) => workArea.id).filter((id) => id !== defaultWorkAreaId),
+  ];
+  const index = ordered.indexOf(workAreaId);
+  return index >= 0 ? index + 1 : null;
 }
 
 function reviewStatus(value: string | null | undefined): CapacityReviewRow["reviewStatus"] {

@@ -43,6 +43,12 @@ describe("Production capacity source extension (integration)", () => {
     expect(capacity.locked).toBe(true);
   });
 
+  it("stores candidate priority for room ordering", async () => {
+    const capacity = await createCapacity({ candidatePriority: 2 });
+
+    expect(capacity.candidatePriority).toBe(2);
+  });
+
   it("keeps reviewStatus independent from sourceType", async () => {
     const capacity = await createCapacity({
       sourceType: "DAILY_REPORT_MEDIAN",
@@ -76,6 +82,7 @@ describe("Production capacity source extension (integration)", () => {
     data: Partial<{
       sourceType: "MANUAL" | "DAILY_REPORT_MEDIAN";
       locked: boolean;
+      candidatePriority: number | null;
       reviewStatus: string;
       validFrom: Date | null;
       validTo: Date | null;

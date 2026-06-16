@@ -30,6 +30,7 @@ type CandidateCapacity = {
   unitsPerPersonHour: number;
   standardPeople: number;
   standardBreakMinutes: number;
+  candidatePriority: number | null;
   note: string | null;
   synthetic: boolean;
   sourceWorkAreaName: string | null;
@@ -516,15 +517,18 @@ function getSchedulableCapacities(
       unitsPerPersonHour: template.unitsPerPersonHour,
       standardPeople: template.standardPeople,
       standardBreakMinutes: template.standardBreakMinutes,
+      candidatePriority: workArea.displayOrder,
       note: template.note,
       synthetic: true,
       sourceWorkAreaName: template.workArea.name,
     }));
 
   return [...registeredCandidates, ...generatedCandidates].sort((a, b) => {
+    const priorityDiff = priorityKey(a.candidatePriority) - priorityKey(b.candidatePriority);
     const defaultScore =
       Number(b.workAreaId === product.defaultWorkAreaId) - Number(a.workAreaId === product.defaultWorkAreaId);
     return (
+      priorityDiff ||
       defaultScore ||
       a.workArea.displayOrder - b.workArea.displayOrder ||
       a.workArea.name.localeCompare(b.workArea.name, "ja")
@@ -541,10 +545,15 @@ function toCandidateCapacity(capacity: LoadedCapacity): CandidateCapacity {
     unitsPerPersonHour: capacity.unitsPerPersonHour,
     standardPeople: capacity.standardPeople,
     standardBreakMinutes: capacity.standardBreakMinutes,
+    candidatePriority: capacity.candidatePriority,
     note: capacity.note,
     synthetic: false,
     sourceWorkAreaName: null,
   };
+}
+
+function priorityKey(priority: number | null | undefined) {
+  return priority == null ? Number.MAX_SAFE_INTEGER : priority;
 }
 
 function chooseBestSlot({

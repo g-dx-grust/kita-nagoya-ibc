@@ -194,6 +194,7 @@ export default function ProductCreateForm({
           unitsPerPersonHour: uph,
           standardPeople: people > 0 ? people : 1,
           standardBreakMinutes: 0,
+          candidatePriority: 1,
         }),
       });
       if (!capRes.ok) {
