@@ -1,3 +1,4 @@
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import GeneratePurchaseCandidatesButton from "./generate-button";
 import PurchaseOrderTable, {
   ShortageForecastTable,
@@ -98,22 +99,27 @@ export default async function PurchasesPage({
 
   return (
     <>
-      <h1>発注候補</h1>
-      <form className="panel toolbar" method="GET">
-        <label>
-          <span>基準日</span>
-          <input name="dateFrom" type="date" defaultValue={dateFrom} />
-        </label>
-        <label>
-          <span>不足確認期限</span>
-          <input name="dateTo" type="date" defaultValue={dateTo} />
-        </label>
-        <button type="submit" className="secondary">
-          再計算
-        </button>
-        <div className="spacer" />
-        <GeneratePurchaseCandidatesButton dateFrom={dateFrom} dateTo={dateTo} />
-      </form>
+      <div className="page-title-row">
+        <h1>発注候補</h1>
+        <div className="page-title-actions">
+          <GeneratePurchaseCandidatesButton dateFrom={dateFrom} dateTo={dateTo} />
+        </div>
+      </div>
+      <CollapsiblePanel title="表示・再計算条件" summary={`${dateFrom} 〜 ${dateTo}`}>
+        <form className="toolbar compact-controls" method="GET">
+          <label>
+            <span>基準日</span>
+            <input name="dateFrom" type="date" defaultValue={dateFrom} />
+          </label>
+          <label>
+            <span>不足確認期限</span>
+            <input name="dateTo" type="date" defaultValue={dateTo} />
+          </label>
+          <button type="submit" className="secondary">
+            再計算
+          </button>
+        </form>
+      </CollapsiblePanel>
 
       <h2>累積不足見込み</h2>
       {forecastShortages.length === 0 ? (

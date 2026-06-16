@@ -103,6 +103,21 @@ export function equipmentKindLabel(value: string | null | undefined) {
   }
 }
 
+export function autoScheduleRoleLabel(value: string | null | undefined) {
+  switch (value) {
+    case "ORDER_PRIMARY":
+      return "受注生産を優先";
+    case "STOCK_PRIMARY":
+      return "在庫生産を優先";
+    case "SHARED":
+      return "共用";
+    case "EXCLUDED":
+      return "自動予定から除外";
+    default:
+      return value || "未設定";
+  }
+}
+
 export function capacitySourceTypeLabel(value: string | null | undefined) {
   switch (value) {
     case "MANUAL":

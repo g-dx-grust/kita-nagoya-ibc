@@ -4,6 +4,7 @@ import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { CheckCircle, Image as ImageIcon, Pencil, Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import SectionTabs from "@/components/ui/section-tabs";
 import ProductCombobox, { type ProductComboOption } from "@/components/ui/product-combobox";
 import SearchableCombobox from "@/components/ui/searchable-combobox";
@@ -282,7 +283,10 @@ export default function ProductDailyReportClient({
       {message && <div className="alert success">{message}</div>}
       {error && <div className="alert danger">{error}</div>}
 
-      <div className="panel">
+      <CollapsiblePanel
+        title="集計サマリー"
+        summary={`日報 ${rows.length}件 / 未計上 ${pendingApproval.length}件 / 要確認 ${alerts.length}件`}
+      >
         <div className="stat-grid">
           <Metric label="日報行数" value={`${rows.length} 件`} />
           <Metric label="未計上" value={`${pendingApproval.length} 件`} />
@@ -290,7 +294,7 @@ export default function ProductDailyReportClient({
           <Metric label="売値合計" value={formatYen(total.totalSales)} />
           <Metric label="要確認" value={`${alerts.length} 件`} />
         </div>
-      </div>
+      </CollapsiblePanel>
 
       {pendingApproval.length > 0 && (
         <div className="alert warn">
@@ -307,15 +311,16 @@ export default function ProductDailyReportClient({
       <SectionTabs
         ariaLabel="日報の表示切り替え"
         initialTabId="review"
+        inlineHeader
         items={[
           {
             id: "review",
             label: "日報確認",
+            heading: "月別製造日報",
             count: pendingApproval.length > 0 ? `未計上 ${pendingApproval.length}` : rows.length,
             content: (
               <section>
                 <div className="daily-report-heading">
-                  <h2>月別製造日報</h2>
                   <div className="column-legend" aria-label="列種別">
                     <span className="column-kind input">入力</span>
                     <span className="column-kind auto">自動計算</span>
@@ -323,6 +328,34 @@ export default function ProductDailyReportClient({
                 </div>
                 <div className="table-frame daily-report-frame">
                   <table className="daily-report-table">
+                    <colgroup>
+                      <col className="daily-col-date" />
+                      <col className="daily-col-product" />
+                      <col className="daily-col-small" />
+                      <col className="daily-col-name" />
+                      <col className="daily-col-date-input" />
+                      <col className="daily-col-time" />
+                      <col className="daily-col-time" />
+                      <col className="daily-col-time" />
+                      <col className="daily-col-number" />
+                      <col className="daily-col-number" />
+                      <col className="daily-col-number" />
+                      <col className="daily-col-material" />
+                      <col className="daily-col-wide-number" />
+                      <col className="daily-col-wide-number" />
+                      <col className="daily-col-wide-number" />
+                      <col className="daily-col-wide-number" />
+                      <col className="daily-col-number" />
+                      <col className="daily-col-number" />
+                      <col className="daily-col-number" />
+                      <col className="daily-col-number" />
+                      <col className="daily-col-number" />
+                      <col className="daily-col-number" />
+                      <col className="daily-col-number" />
+                      <col className="daily-col-note" />
+                      <col className="daily-col-status" />
+                      <col className="daily-col-actions" />
+                    </colgroup>
                     <thead>
                       <tr>
                         <th className="sticky-date">日付 <ColumnKind kind="input" /></th>
@@ -418,28 +451,44 @@ export default function ProductDailyReportClient({
                               <StatusBadges row={row} />
                               <SubmissionInfo row={row} />
                             </td>
-                            <td>
+                            <td className="action-cell">
                               <div className="table-actions">
                                 {row.approvalStatus === "submitted" && (
-                                  <button type="button" className="gap-2" onClick={() => approveRow(row)} disabled={busy}>
+                                  <button
+                                    type="button"
+                                    className="icon-button"
+                                    onClick={() => approveRow(row)}
+                                    disabled={busy}
+                                    aria-label="計上"
+                                    title="計上"
+                                  >
                                     <CheckCircle className="h-4 w-4" />
-                                    計上
+                                    <span className="visually-hidden">計上</span>
                                   </button>
                                 )}
                                 <button
                                   type="button"
-                                  className="secondary gap-2"
+                                  className="secondary icon-button"
                                   onClick={() => {
                                     setEditingId(row.id);
                                     setEditForm(formFromRow(row));
                                   }}
+                                  aria-label="編集"
+                                  title="編集"
                                 >
                                   <Pencil className="h-4 w-4" />
-                                  編集
+                                  <span className="visually-hidden">編集</span>
                                 </button>
-                                <button type="button" className="danger gap-2" onClick={() => deleteRow(row)} disabled={busy}>
+                                <button
+                                  type="button"
+                                  className="danger icon-button"
+                                  onClick={() => deleteRow(row)}
+                                  disabled={busy}
+                                  aria-label="削除"
+                                  title="削除"
+                                >
                                   <Trash2 className="h-4 w-4" />
-                                  削除
+                                  <span className="visually-hidden">削除</span>
                                 </button>
                               </div>
                             </td>
@@ -462,10 +511,10 @@ export default function ProductDailyReportClient({
           {
             id: "entry",
             label: "日報入力",
+            heading: "日報入力",
             count: "手入力",
             content: (
               <section className="panel">
-                <h2>日報入力</h2>
                 <form onSubmit={createEntry}>
                   <div className="daily-report-form-layout">
                     <div className="entry-card">
@@ -623,16 +672,17 @@ export default function ProductDailyReportClient({
           {
             id: "labor-fee",
             label: "月次手間賃",
+            heading: "月次手間賃",
             count: monthlyLaborFees.length,
             content: <MonthlyLaborFeePanel selectedMonth={selectedMonth} rows={monthlyLaborFees} />,
           },
           {
             id: "summary",
             label: "商品別集計",
+            heading: "月次 商品別集計",
             count: summaries.length,
             content: (
               <section>
-                <h2>月次 商品別集計</h2>
                 <div className="table-frame">
                   <table>
                     <thead>
@@ -818,7 +868,7 @@ function MonthlyLaborFeePanel({ selectedMonth, rows }: { selectedMonth: string; 
   return (
     <section className="panel">
       <div className="row" style={{ alignItems: "center" }}>
-        <h2 style={{ margin: 0 }}>月次手間賃更新（{selectedMonth}）</h2>
+        <span className="muted">対象月 {selectedMonth}</span>
         <div className="spacer" />
         <button type="button" className="secondary gap-2" onClick={recompute} disabled={busy}>
           <RefreshCw className="h-4 w-4" />
@@ -976,15 +1026,22 @@ function EditRow({
       <td>
         <span className="muted">状態保持</span>
       </td>
-      <td>
+      <td className="action-cell">
         <div className="table-actions">
-          <button type="button" className="gap-2" onClick={onSave} disabled={busy}>
+          <button type="button" className="icon-button" onClick={onSave} disabled={busy} aria-label="保存" title="保存">
             <Save className="h-4 w-4" />
-            保存
+            <span className="visually-hidden">保存</span>
           </button>
-          <button type="button" className="secondary gap-2" onClick={onCancel} disabled={busy}>
+          <button
+            type="button"
+            className="secondary icon-button"
+            onClick={onCancel}
+            disabled={busy}
+            aria-label="取消"
+            title="取消"
+          >
             <X className="h-4 w-4" />
-            取消
+            <span className="visually-hidden">取消</span>
           </button>
         </div>
       </td>

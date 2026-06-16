@@ -21,6 +21,7 @@ export default async function WorkAreasPage() {
     externalFlag: row.externalFlag,
     displayOrder: row.displayOrder,
     equipmentKind: row.equipmentKind,
+    autoScheduleRole: row.autoScheduleRole,
     concurrentOperationAllowed: row.concurrentOperationAllowed,
     validFrom: row.validFrom ? row.validFrom.toISOString().slice(0, 10) : null,
     validTo: row.validTo ? row.validTo.toISOString().slice(0, 10) : null,

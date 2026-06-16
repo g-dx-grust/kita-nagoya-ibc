@@ -29,6 +29,18 @@ export const workAreaFields: MasterField[] = [
       { value: "OTHER", label: "その他" },
     ],
   },
+  {
+    key: "autoScheduleRole",
+    label: "自動予定の役割",
+    type: "select",
+    default: "SHARED",
+    options: [
+      { value: "ORDER_PRIMARY", label: "受注生産を優先" },
+      { value: "STOCK_PRIMARY", label: "在庫生産を優先" },
+      { value: "SHARED", label: "共用" },
+      { value: "EXCLUDED", label: "自動予定から除外" },
+    ],
+  },
   { key: "concurrentOperationAllowed", label: "同時稼働可", type: "checkbox", default: true },
   { key: "externalFlag", label: "外注先", type: "checkbox", default: false },
   { key: "validFrom", label: "有効開始", type: "date", nullable: true },

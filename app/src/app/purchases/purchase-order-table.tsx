@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import {
   purchaseOrderStatusLabel,
   purchaseOrderUrgencyClass,
@@ -251,43 +252,49 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
       {showCaseNote && (
         <p className="section-note">資材はケース入数があれば基本単位とケース数を併記します。編集は基本単位で行います。</p>
       )}
-      <div className="filter-bar">
-        <input
-          className="filter-search"
-          type="search"
-          placeholder="品目コード・品目名・仕入先で検索"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          aria-label="発注候補を検索"
-        />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="">状態(すべて)</option>
-          <option value="candidate">候補</option>
-          <option value="draft">仮発注</option>
-          <option value="ordered_unconfirmed">未確定発注</option>
-          <option value="confirmed">確定発注</option>
-          <option value="received">入荷済み</option>
-          <option value="cancelled">取消</option>
-        </select>
-        <select value={urgencyFilter} onChange={(e) => setUrgencyFilter(e.target.value)}>
-          <option value="">緊急度(すべて)</option>
-          <option value="CRITICAL">緊急</option>
-          <option value="WARNING">注意</option>
-          <option value="INFO">余裕あり</option>
-          <option value="NONE">—</option>
-        </select>
-        <select value={itemTypeFilter} onChange={(e) => setItemTypeFilter(e.target.value)}>
-          <option value="">区分(すべて)</option>
-          <option value="raw_material">原料</option>
-          <option value="packaging">資材</option>
-        </select>
-        <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
-          条件クリア
-        </button>
-        <span className="filter-count">
-          {filteredRows.length} / {rows.length} 件
-        </span>
-      </div>
+      <CollapsiblePanel
+        title="表内検索・絞り込み"
+        summary={`${filteredRows.length} / ${rows.length} 件${hasActiveFilters ? " / 条件あり" : ""}`}
+        open={hasActiveFilters}
+      >
+        <div className="filter-bar compact-controls">
+          <input
+            className="filter-search"
+            type="search"
+            placeholder="品目コード・品目名・仕入先で検索"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="発注候補を検索"
+          />
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">状態(すべて)</option>
+            <option value="candidate">候補</option>
+            <option value="draft">仮発注</option>
+            <option value="ordered_unconfirmed">未確定発注</option>
+            <option value="confirmed">確定発注</option>
+            <option value="received">入荷済み</option>
+            <option value="cancelled">取消</option>
+          </select>
+          <select value={urgencyFilter} onChange={(e) => setUrgencyFilter(e.target.value)}>
+            <option value="">緊急度(すべて)</option>
+            <option value="CRITICAL">緊急</option>
+            <option value="WARNING">注意</option>
+            <option value="INFO">余裕あり</option>
+            <option value="NONE">—</option>
+          </select>
+          <select value={itemTypeFilter} onChange={(e) => setItemTypeFilter(e.target.value)}>
+            <option value="">区分(すべて)</option>
+            <option value="raw_material">原料</option>
+            <option value="packaging">資材</option>
+          </select>
+          <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
+            条件クリア
+          </button>
+          <span className="filter-count">
+            {filteredRows.length} / {rows.length} 件
+          </span>
+        </div>
+      </CollapsiblePanel>
       {filteredRows.length === 0 ? (
         <div className="empty-state">条件に一致する発注はありません。</div>
       ) : (
@@ -553,22 +560,28 @@ export function ShortageForecastTable({ rows }: { rows: ShortageForecastRow[] })
 
   return (
     <>
-      <div className="filter-bar">
-        <input
-          className="filter-search"
-          type="search"
-          placeholder="品目コード・品目名で検索"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          aria-label="不足見込みを検索"
-        />
-        <button type="button" className="secondary" onClick={resetFilters} disabled={!search}>
-          条件クリア
-        </button>
-        <span className="filter-count">
-          {filtered.length} / {rows.length} 件
-        </span>
-      </div>
+      <CollapsiblePanel
+        title="表内検索"
+        summary={`${filtered.length} / ${rows.length} 件${search ? ` / ${search}` : ""}`}
+        open={!!search}
+      >
+        <div className="filter-bar compact-controls">
+          <input
+            className="filter-search"
+            type="search"
+            placeholder="品目コード・品目名で検索"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="不足見込みを検索"
+          />
+          <button type="button" className="secondary" onClick={resetFilters} disabled={!search}>
+            条件クリア
+          </button>
+          <span className="filter-count">
+            {filtered.length} / {rows.length} 件
+          </span>
+        </div>
+      </CollapsiblePanel>
       {filtered.length === 0 ? (
         <div className="empty-state">条件に一致する不足見込みはありません。</div>
       ) : (

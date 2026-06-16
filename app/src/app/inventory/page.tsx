@@ -1,4 +1,5 @@
 import type { StockMovement } from "@prisma/client";
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import {
   buildMonthlyInventorySheet,
   type MonthlyInventoryMovement,
@@ -99,17 +100,21 @@ export default async function InventoryPage({
 
   return (
     <>
-      <h1>在庫</h1>
-      <form className="panel toolbar" method="GET">
-        <input type="hidden" name="tab" value={active} />
-        <label>
-          <span>対象月</span>
-          <input type="month" name="month" defaultValue={month} />
-        </label>
-        <button type="submit" className="secondary">
-          更新
-        </button>
-      </form>
+      <div className="page-title-row">
+        <h1>在庫</h1>
+      </div>
+      <CollapsiblePanel title="表示条件" summary={`${formatMonthLabel(month)} / ${tabs.find((tab) => tab.key === active)?.label ?? ""}`}>
+        <form className="toolbar compact-controls" method="GET">
+          <input type="hidden" name="tab" value={active} />
+          <label>
+            <span>対象月</span>
+            <input type="month" name="month" defaultValue={month} />
+          </label>
+          <button type="submit" className="secondary">
+            更新
+          </button>
+        </form>
+      </CollapsiblePanel>
 
       <InventoryTabs
         active={active}
@@ -298,6 +303,11 @@ function inventoryTabHref(
 
 function normalizeMonth(value: string) {
   return /^\d{4}-\d{2}$/.test(value) ? value : new Date().toISOString().slice(0, 7);
+}
+
+function formatMonthLabel(month: string) {
+  const [year, monthPart] = month.split("-");
+  return `${year}年 ${monthPart}月`;
 }
 
 function endOfMonth(month: string) {

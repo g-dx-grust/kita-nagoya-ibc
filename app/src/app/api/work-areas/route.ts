@@ -25,6 +25,7 @@ export async function POST(req: Request) {
         maxPeopleCount: body.maxPeopleCount ?? 4,
         displayOrder: body.displayOrder ?? 0,
         equipmentKind: body.equipmentKind ?? "ROOM",
+        autoScheduleRole: body.autoScheduleRole ?? "SHARED",
         concurrentOperationAllowed: body.concurrentOperationAllowed ?? true,
         active: body.active ?? true,
         externalFlag: body.externalFlag ?? false,

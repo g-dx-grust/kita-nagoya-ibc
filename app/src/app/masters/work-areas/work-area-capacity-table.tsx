@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { areaTypeLabel, equipmentKindLabel } from "@/lib/labels";
+import { areaTypeLabel, autoScheduleRoleLabel, equipmentKindLabel } from "@/lib/labels";
 import { kitagoyaApiPath } from "@/lib/paths";
 import { matchesQuery } from "@/lib/search";
 import MasterDeleteButton from "../master-delete-button";
@@ -19,6 +19,7 @@ type WorkAreaRow = {
   externalFlag: boolean;
   displayOrder: number;
   equipmentKind: string;
+  autoScheduleRole: string;
   concurrentOperationAllowed: boolean;
   validFrom: string | null;
   validTo: string | null;
@@ -41,6 +42,7 @@ export default function WorkAreaCapacityTable({ rows }: { rows: WorkAreaRow[] })
           row.name,
           areaTypeLabel(row.areaType),
           equipmentKindLabel(row.equipmentKind),
+          autoScheduleRoleLabel(row.autoScheduleRole),
           row.externalFlag ? "外注" : "自社",
           row.concurrentOperationAllowed ? "同時稼働可" : "同時稼働不可",
           row.note,
@@ -96,6 +98,7 @@ export default function WorkAreaCapacityTable({ rows }: { rows: WorkAreaRow[] })
               <th>名称</th>
               <th>種別</th>
               <th>設備</th>
+              <th>自動予定</th>
               <th>同時稼働</th>
               <th>標準開始</th>
               <th>標準終了</th>
@@ -112,6 +115,7 @@ export default function WorkAreaCapacityTable({ rows }: { rows: WorkAreaRow[] })
                 <td>{row.name}</td>
                 <td>{areaTypeLabel(row.areaType)}</td>
                 <td>{equipmentKindLabel(row.equipmentKind)}</td>
+                <td>{autoScheduleRoleLabel(row.autoScheduleRole)}</td>
                 <td>{row.concurrentOperationAllowed ? "可" : "不可"}</td>
                 <td>{row.defaultStartTime ?? "-"}</td>
                 <td>{row.defaultEndTime ?? "-"}</td>
@@ -151,6 +155,7 @@ export default function WorkAreaCapacityTable({ rows }: { rows: WorkAreaRow[] })
                         maxPeopleCount: row.maxPeopleCount,
                         displayOrder: row.displayOrder,
                         equipmentKind: row.equipmentKind,
+                        autoScheduleRole: row.autoScheduleRole,
                         concurrentOperationAllowed: row.concurrentOperationAllowed,
                         externalFlag: row.externalFlag,
                         validFrom: row.validFrom,

@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import SearchableCombobox from "@/components/ui/searchable-combobox";
 import { kitagoyaApiPath } from "@/lib/paths";
 import { matchesQuery, normalizeForSearch } from "@/lib/search";
@@ -64,29 +65,35 @@ export default function MaterialsMasterTable({
 
   return (
     <>
-      <div className="filter-bar">
-        <input
-          type="search"
-          className="filter-search"
-          placeholder="原料番号・名称・仕入先・メモで検索"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="原料を検索"
-        />
-        <SearchableCombobox
-          value={supplierId}
-          options={supplierOptions}
-          emptyOptionLabel="仕入先(すべて)"
-          placeholder="仕入先で絞り込み"
-          onChange={setSupplierId}
-        />
-        <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
-          条件クリア
-        </button>
-        <span className="filter-count">
-          {filtered.length} / {rows.length} 件
-        </span>
-      </div>
+      <CollapsiblePanel
+        title="表内検索・絞り込み"
+        summary={`${filtered.length} / ${rows.length} 件${hasActiveFilters ? " / 条件あり" : ""}`}
+        open={hasActiveFilters}
+      >
+        <div className="filter-bar compact-controls">
+          <input
+            type="search"
+            className="filter-search"
+            placeholder="原料番号・名称・仕入先・メモで検索"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="原料を検索"
+          />
+          <SearchableCombobox
+            value={supplierId}
+            options={supplierOptions}
+            emptyOptionLabel="仕入先(すべて)"
+            placeholder="仕入先で絞り込み"
+            onChange={setSupplierId}
+          />
+          <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
+            条件クリア
+          </button>
+          <span className="filter-count">
+            {filtered.length} / {rows.length} 件
+          </span>
+        </div>
+      </CollapsiblePanel>
       <div className="table-frame">
         <table>
           <thead>

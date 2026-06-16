@@ -34,6 +34,7 @@ model WorkArea {
   maxPeopleCount             Int       @default(4)
   displayOrder               Int       @default(0)
   equipmentKind              String    @default("ROOM") // ROOM | LINE | MACHINE | OTHER
+  autoScheduleRole           String    @default("SHARED") // ORDER_PRIMARY | STOCK_PRIMARY | SHARED | EXCLUDED
   concurrentOperationAllowed Boolean   @default(true)
   active                     Boolean   @default(true)
   externalFlag               Boolean   @default(false)
@@ -242,6 +243,8 @@ model Employee {
   defaultStartTime    String   @default("09:00") // HH:MM
   defaultEndTime      String   @default("17:00")
   defaultBreakMinutes Int      @default(60)
+  shiftEntryToken     String?  @unique
+  shiftEntryEnabled   Boolean  @default(true)
   active              Boolean  @default(true)
   note                String?
   createdAt           DateTime @default(now())

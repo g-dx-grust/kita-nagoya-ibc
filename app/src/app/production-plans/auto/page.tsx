@@ -33,7 +33,7 @@ export default async function AutoSchedulePage({
         <Link href={kitagoyaPath(`/shifts?date=${initialDate}`)}>シフトを確認</Link>
       </div>
       <p className="section-note">
-        今日作る商品を選ぶと、対象日の出勤シフトに合わせて作業順、作業場所、スタッフ配置を自動作成します。休みまたはシフト未登録のスタッフは配置・印刷対象に含めません。
+        今日作る商品を選ぶと、対象日の出勤シフトに合わせて作業順、作業場所、スタッフ配置を自動作成します。受注生産を先に、在庫生産を後工程に配置します。休みまたはシフト未登録のスタッフは配置・印刷対象に含めません。
       </p>
       <AutoScheduleForm
         initialDate={initialDate}

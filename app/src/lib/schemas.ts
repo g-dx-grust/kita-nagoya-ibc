@@ -13,6 +13,7 @@ const yearMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "YYYY-MM");
 export const ProductionTypeEnum = z.enum(["stock", "make_to_order", "both"]);
 export const ForecastMethodEnum = z.enum(["MANUAL", "YEAR_RATIO", "SALES_INPUT", "NONE"]);
 export const EquipmentKindEnum = z.enum(["ROOM", "LINE", "MACHINE", "OTHER"]);
+export const AutoScheduleRoleEnum = z.enum(["ORDER_PRIMARY", "STOCK_PRIMARY", "SHARED", "EXCLUDED"]);
 export const CapacitySourceTypeEnum = z.enum(["MANUAL", "DAILY_REPORT_MEDIAN"]);
 export const EquivalenceCalculationModeEnum = z.enum(["SUM_AS_SAME_PRODUCT", "REFERENCE_ONLY"]);
 export const SpecialDemandEventTypeEnum = z.enum([
@@ -282,6 +283,7 @@ const WorkAreaBaseSchema = z.object({
   maxPeopleCount: z.number().int().positive().default(4),
   displayOrder: z.number().int().default(0),
   equipmentKind: EquipmentKindEnum.default("ROOM"),
+  autoScheduleRole: AutoScheduleRoleEnum.default("SHARED"),
   concurrentOperationAllowed: z.boolean().default(true),
   active: z.boolean().default(true),
   externalFlag: z.boolean().default(false),
@@ -306,6 +308,7 @@ export const EmployeeCreateSchema = z.object({
   defaultEndTime: hhmm.default("17:00"),
   defaultBreakMinutes: z.number().int().min(0).default(60),
   active: z.boolean().default(true),
+  shiftEntryEnabled: z.boolean().default(true),
   note: z.string().nullish(),
 });
 export const EmployeeUpdateSchema = EmployeeCreateSchema.partial();
@@ -392,6 +395,14 @@ export const ShiftMonthReplaceSchema = z.object({
   }),
   employeeDefaults: z.array(EmployeeDefaultWorkTimeSchema).optional(),
   cells: z.array(ShiftMonthCellSchema),
+});
+
+export const StaffShiftEntrySaveSchema = z.object({
+  yearMonth,
+  startTime: hhmm.default("09:00"),
+  endTime: hhmm.default("17:00"),
+  breakMinutes: z.number().int().min(0).default(60),
+  workingDays: z.array(z.number().int().min(1).max(31)),
 });
 
 const SupplierBaseSchema = z.object({

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DAILY_BREAK_LABEL } from "@/lib/calculations";
+import { productionTypeLabel } from "@/lib/labels";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 import { formatCases } from "@/lib/units";
 import ProductCombobox from "@/components/ui/product-combobox";
@@ -62,6 +63,7 @@ type Result = {
     tempId?: string;
     productId: string;
     productName: string;
+    productionType: string;
     workAreaId: string;
     workAreaName: string;
     startTime: string;
@@ -322,7 +324,7 @@ export default function AutoScheduleForm({
       <div className="panel">
         <p className="section-note">
           生産能力が1部屋分だけ登録されている商品は、外注以外の部屋にも同じ能力を仮適用して自動配置します。
-          部屋ごとに速度が違う場合は商品マスターの生産能力で上書きしてください。
+          自動作成では受注生産を先に配置し、在庫生産は後工程に回します。部屋の使い分けは作業場所マスターの「自動予定の役割」で設定します。
         </p>
         <table>
           <thead>
@@ -442,6 +444,7 @@ export default function AutoScheduleForm({
             <thead>
               <tr>
                 <th>商品</th>
+                <th>区分</th>
                 <th>作業場所</th>
                 <th>時間</th>
                 <th>数量</th>
@@ -454,6 +457,7 @@ export default function AutoScheduleForm({
               {result.plans.map((plan, planIndex) => (
                 <tr key={plan.id ?? plan.tempId}>
                   <td>{plan.productName}</td>
+                  <td>{productionTypeLabel(plan.productionType)}</td>
                   <td>
                     {result.persisted ? (
                       plan.workAreaName

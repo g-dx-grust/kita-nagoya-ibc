@@ -75,13 +75,14 @@ export default async function ProductionPlanDetail({
       <SectionTabs
         ariaLabel="生産予定詳細の表示切り替え"
         initialTabId="detail"
+        inlineHeader
         items={[
           {
             id: "detail",
             label: "登録内容",
+            heading: "登録内容",
             content: (
               <>
-                <h2>登録内容</h2>
                 <PlanForm
                   products={productOptions}
                   workAreas={workAreas}
@@ -107,10 +108,10 @@ export default async function ProductionPlanDetail({
           {
             id: "assignments",
             label: "スタッフ配置",
+            heading: "スタッフ配置",
             count: plan.assignments.length,
             content: (
               <>
-                <h2>スタッフ配置</h2>
                 <AssignmentEditor
                   planId={plan.id}
                   employees={employees.map((e) => ({
@@ -133,13 +134,13 @@ export default async function ProductionPlanDetail({
           {
             id: "requirements",
             label: "原料・資材",
+            heading: "原料・資材の予定使用量",
             count:
               shortageHard.length + shortageDep.length > 0
                 ? `警告 ${shortageHard.length + shortageDep.length}`
                 : plan.requirements.length,
             content: (
               <>
-                <h2>原料・資材の予定使用量</h2>
                 {plan.requirements.length === 0 ? (
                   <div className="empty-state">この商品にはBOMが登録されていません。</div>
                 ) : (
@@ -203,9 +204,9 @@ export default async function ProductionPlanDetail({
           {
             id: "cost",
             label: "原価見積",
+            heading: "原価見積",
             content: (
               <>
-                <h2>原価見積</h2>
                 <div className="panel grid grid-4">
                   <Stat label="作業費(手間賃)" value={plan.estLaborCost} suffix="円" />
                   <Stat label="原料原価" value={plan.estMaterialCost} suffix="円" />
@@ -218,10 +219,10 @@ export default async function ProductionPlanDetail({
           {
             id: "daily-report",
             label: "日報",
+            heading: "日報（実績入力）",
             count: dailyReport?.status === "confirmed" ? "確定" : dailyReport ? "下書き" : "未入力",
             content: (
               <>
-                <h2>日報（実績入力）</h2>
                 <DailyReportForm
                   planId={plan.id}
                   planStatus={plan.status}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BarChart3 } from "lucide-react";
 
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import { prisma } from "@/lib/prisma";
 import {
   aggregateProductDailyReports,
@@ -219,33 +220,41 @@ export default async function ProductionDailyReportsPage({
 
   return (
     <>
-      <h1>日報・商品別集計</h1>
-      <p className="section-note">
-        1製造の実績(複数原料・賞味期限・時間・生産数)を入力すると、手間賃・原価・売値・利率を自動計算し、
-        原料在庫を差引きます。蓄積した実績から月次の1袋手間賃を更新できます。
-      </p>
-
-      <form className="panel toolbar" method="GET">
-        <label>
-          <span>対象月</span>
-          <input name="month" type="month" defaultValue={month} />
-        </label>
-        <label>
-          <span>商品</span>
-          <ProductReportFilter products={productOptions} initialProductId={productId} />
-        </label>
-        <label className="filter-search">
-          <span>商品検索</span>
-          <input name="q" type="search" defaultValue={q} placeholder="商品名・管理コード" />
-        </label>
-        <button type="submit" className="secondary">
-          表示
-        </button>
+      <div className="page-title-row">
+        <h1>日報・商品別集計</h1>
         <Link className="button-link secondary-link gap-2" href={dashboardHref(month, productId, q)}>
           <BarChart3 className="h-4 w-4" />
           ダッシュボード
         </Link>
-      </form>
+      </div>
+
+      <CollapsiblePanel
+        title="検索・表示条件"
+        summary={`${formatMonthLabel(month)} / ${productId ? "商品指定あり" : "全商品"}${q ? ` / ${q}` : ""}`}
+        open={!!(productId || q)}
+      >
+        <p className="section-note">
+          1製造の実績(複数原料・賞味期限・時間・生産数)を入力すると、手間賃・原価・売値・利率を自動計算し、
+          原料在庫を差引きます。蓄積した実績から月次の1袋手間賃を更新できます。
+        </p>
+        <form className="toolbar compact-controls" method="GET">
+          <label>
+            <span>対象月</span>
+            <input name="month" type="month" defaultValue={month} />
+          </label>
+          <label>
+            <span>商品</span>
+            <ProductReportFilter products={productOptions} initialProductId={productId} />
+          </label>
+          <label className="filter-search">
+            <span>商品検索</span>
+            <input name="q" type="search" defaultValue={q} placeholder="商品名・管理コード" />
+          </label>
+          <button type="submit" className="secondary">
+            表示
+          </button>
+        </form>
+      </CollapsiblePanel>
 
       <ProductDailyReportClient
         selectedMonth={month}
@@ -270,6 +279,11 @@ function dashboardHref(month: string, productId: string, q: string) {
   if (productId) params.set("productId", productId);
   if (q) params.set("q", q);
   return `${kitagoyaPath("/production-daily-reports/dashboard")}?${params.toString()}`;
+}
+
+function formatMonthLabel(month: string) {
+  const [year, monthPart] = month.split("-");
+  return `${year}年 ${monthPart}月`;
 }
 
 function formatDate(value: Date | null) {

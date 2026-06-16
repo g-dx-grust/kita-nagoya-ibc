@@ -1,12 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import { employmentTypeLabel } from "@/lib/labels";
 import { kitagoyaApiPath } from "@/lib/paths";
 import { matchesQuery } from "@/lib/search";
 import MasterDeleteButton from "../master-delete-button";
 import MasterEditButton from "../master-edit-button";
 import type { MasterField } from "../master-form";
+import ShiftEntryLinkButton from "./shift-entry-link-button";
 
 export type EmployeeRow = {
   id: string;
@@ -16,6 +18,8 @@ export type EmployeeRow = {
   defaultStartTime: string;
   defaultEndTime: string;
   defaultBreakMinutes: number;
+  shiftEntryToken: string | null;
+  shiftEntryEnabled: boolean;
   note: string | null;
 };
 
@@ -53,30 +57,36 @@ export default function EmployeesMasterTable({
 
   return (
     <>
-      <div className="filter-bar">
-        <input
-          className="filter-search"
-          type="search"
-          placeholder="氏名・所属で検索"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          aria-label="従業員を検索"
-        />
-        <select value={employmentType} onChange={(event) => setEmploymentType(event.target.value)}>
-          <option value="">雇用区分: すべて</option>
-          {employmentTypes.map((value) => (
-            <option key={value} value={value}>
-              {employmentTypeLabel(value)}
-            </option>
-          ))}
-        </select>
-        <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
-          条件クリア
-        </button>
-        <span className="filter-count">
-          {filtered.length} / {rows.length} 件
-        </span>
-      </div>
+      <CollapsiblePanel
+        title="表内検索・絞り込み"
+        summary={`${filtered.length} / ${rows.length} 件${hasActiveFilters ? " / 条件あり" : ""}`}
+        open={hasActiveFilters}
+      >
+        <div className="filter-bar compact-controls">
+          <input
+            className="filter-search"
+            type="search"
+            placeholder="氏名・所属で検索"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            aria-label="従業員を検索"
+          />
+          <select value={employmentType} onChange={(event) => setEmploymentType(event.target.value)}>
+            <option value="">雇用区分: すべて</option>
+            {employmentTypes.map((value) => (
+              <option key={value} value={value}>
+                {employmentTypeLabel(value)}
+              </option>
+            ))}
+          </select>
+          <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
+            条件クリア
+          </button>
+          <span className="filter-count">
+            {filtered.length} / {rows.length} 件
+          </span>
+        </div>
+      </CollapsiblePanel>
       <div className="table-frame">
         <table>
           <thead>
@@ -85,6 +95,7 @@ export default function EmployeesMasterTable({
               <th>雇用区分</th>
               <th>所属</th>
               <th>基本勤務</th>
+              <th>本人入力URL</th>
               <th></th>
             </tr>
           </thead>
@@ -98,6 +109,14 @@ export default function EmployeesMasterTable({
                   {r.defaultStartTime}-{r.defaultEndTime} / 休憩 {r.defaultBreakMinutes}分
                 </td>
                 <td>
+                  <ShiftEntryLinkButton
+                    employeeId={r.id}
+                    employeeName={r.name}
+                    initialToken={r.shiftEntryToken}
+                    enabled={r.shiftEntryEnabled}
+                  />
+                </td>
+                <td>
                   <div className="table-actions">
                     <MasterEditButton
                       endpoint={kitagoyaApiPath(`/employees/${r.id}`)}
@@ -109,6 +128,7 @@ export default function EmployeesMasterTable({
                         defaultStartTime: r.defaultStartTime,
                         defaultEndTime: r.defaultEndTime,
                         defaultBreakMinutes: r.defaultBreakMinutes,
+                        shiftEntryEnabled: r.shiftEntryEnabled,
                         note: r.note,
                       }}
                       label={`従業員「${r.name}」`}

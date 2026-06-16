@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import { planStatusClass, planStatusLabel } from "@/lib/labels";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 import { formatCases } from "@/lib/units";
@@ -156,22 +157,28 @@ export default function PlanListTable({
 
   return (
     <>
-      <div className="filter-bar">
-        <input
-          className="filter-search"
-          type="search"
-          placeholder="管理コード・商品名・場所・状態で検索"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="生産予定を検索"
-        />
-        <button type="button" className="secondary" onClick={resetSearch} disabled={!query}>
-          条件クリア
-        </button>
-        <span className="filter-count">
-          {visiblePlans.length} / {plans.length} 件
-        </span>
-      </div>
+      <CollapsiblePanel
+        title="表内検索"
+        summary={`${visiblePlans.length} / ${plans.length} 件${query ? ` / ${query}` : ""}`}
+        open={!!query}
+      >
+        <div className="filter-bar compact-controls">
+          <input
+            className="filter-search"
+            type="search"
+            placeholder="管理コード・商品名・場所・状態で検索"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="生産予定を検索"
+          />
+          <button type="button" className="secondary" onClick={resetSearch} disabled={!query}>
+            条件クリア
+          </button>
+          <span className="filter-count">
+            {visiblePlans.length} / {plans.length} 件
+          </span>
+        </div>
+      </CollapsiblePanel>
 
       <div className="panel toolbar">
         <span className="muted">

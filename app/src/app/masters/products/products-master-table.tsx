@@ -2,6 +2,7 @@
 
 import { Fragment, useMemo, useState } from "react";
 import Link from "next/link";
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import { forecastMethodLabel, productionTypeLabel } from "@/lib/labels";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 import { matchesQuery, normalizeForSearch } from "@/lib/search";
@@ -114,64 +115,70 @@ export default function ProductsMasterTable({ products }: { products: ProductRow
 
   return (
     <>
-      <div className="filter-bar">
-        <input
-          type="search"
-          className="filter-search"
-          placeholder="管理コード・名称・規格・ブランド・作業場所で検索"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="商品を検索"
-        />
-        <select value={productionType} onChange={(e) => setProductionType(e.target.value)}>
-          <option value="">区分(すべて)</option>
-          {productionTypes.map((value) => (
-            <option key={value} value={value}>
-              {productionTypeLabel(value)}
-            </option>
-          ))}
-        </select>
-        <select value={forecastMethod} onChange={(e) => setForecastMethod(e.target.value)}>
-          <option value="">予測方式(すべて)</option>
-          {forecastMethods.map((value) => (
-            <option key={value} value={value}>
-              {forecastMethodLabel(value)}
-            </option>
-          ))}
-        </select>
-        {categories.length > 0 && (
-          <select value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="">カテゴリ(すべて)</option>
-            {categories.map((value) => (
+      <CollapsiblePanel
+        title="表内検索・絞り込み"
+        summary={`${filtered.length} / ${products.length} 件${hasActiveFilters ? " / 条件あり" : ""}`}
+        open={hasActiveFilters}
+      >
+        <div className="filter-bar compact-controls">
+          <input
+            type="search"
+            className="filter-search"
+            placeholder="管理コード・名称・規格・ブランド・作業場所で検索"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="商品を検索"
+          />
+          <select value={productionType} onChange={(e) => setProductionType(e.target.value)}>
+            <option value="">区分(すべて)</option>
+            {productionTypes.map((value) => (
               <option key={value} value={value}>
-                {value || "未設定"}
+                {productionTypeLabel(value)}
               </option>
             ))}
           </select>
-        )}
-        <label className="filter-check">
-          <input
-            type="checkbox"
-            checked={kitagoyaOnly}
-            onChange={(e) => setKitagoyaOnly(e.target.checked)}
-          />
-          北名古屋のみ
-        </label>
-        <label className="filter-check">
-          <input
-            type="checkbox"
-            checked={unsetupOnly}
-            onChange={(e) => setUnsetupOnly(e.target.checked)}
-          />
-          未整備のみ
-        </label>
-        <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
-          条件クリア
-        </button>
-        <span className="filter-count">
-          {filtered.length} / {products.length} 件
-        </span>
-      </div>
+          <select value={forecastMethod} onChange={(e) => setForecastMethod(e.target.value)}>
+            <option value="">予測方式(すべて)</option>
+            {forecastMethods.map((value) => (
+              <option key={value} value={value}>
+                {forecastMethodLabel(value)}
+              </option>
+            ))}
+          </select>
+          {categories.length > 0 && (
+            <select value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="">カテゴリ(すべて)</option>
+              {categories.map((value) => (
+                <option key={value} value={value}>
+                  {value || "未設定"}
+                </option>
+              ))}
+            </select>
+          )}
+          <label className="filter-check">
+            <input
+              type="checkbox"
+              checked={kitagoyaOnly}
+              onChange={(e) => setKitagoyaOnly(e.target.checked)}
+            />
+            北名古屋のみ
+          </label>
+          <label className="filter-check">
+            <input
+              type="checkbox"
+              checked={unsetupOnly}
+              onChange={(e) => setUnsetupOnly(e.target.checked)}
+            />
+            未整備のみ
+          </label>
+          <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
+            条件クリア
+          </button>
+          <span className="filter-count">
+            {filtered.length} / {products.length} 件
+          </span>
+        </div>
+      </CollapsiblePanel>
       <div className="table-frame">
         <table>
           <thead>

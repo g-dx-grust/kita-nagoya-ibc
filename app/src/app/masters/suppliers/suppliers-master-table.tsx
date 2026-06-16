@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import { kitagoyaApiPath } from "@/lib/paths";
 import { matchesQuery } from "@/lib/search";
 import MasterDeleteButton from "../master-delete-button";
@@ -40,22 +41,28 @@ export default function SuppliersMasterTable({
 
   return (
     <>
-      <div className="filter-bar">
-        <input
-          className="filter-search"
-          type="search"
-          placeholder="名称・連絡先・発注単位・締め情報で検索"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          aria-label="仕入先を検索"
-        />
-        <button type="button" className="secondary" onClick={resetFilters} disabled={!query}>
-          条件クリア
-        </button>
-        <span className="filter-count">
-          {filtered.length} / {rows.length} 件
-        </span>
-      </div>
+      <CollapsiblePanel
+        title="表内検索"
+        summary={`${filtered.length} / ${rows.length} 件${query ? ` / ${query}` : ""}`}
+        open={!!query}
+      >
+        <div className="filter-bar compact-controls">
+          <input
+            className="filter-search"
+            type="search"
+            placeholder="名称・連絡先・発注単位・締め情報で検索"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            aria-label="仕入先を検索"
+          />
+          <button type="button" className="secondary" onClick={resetFilters} disabled={!query}>
+            条件クリア
+          </button>
+          <span className="filter-count">
+            {filtered.length} / {rows.length} 件
+          </span>
+        </div>
+      </CollapsiblePanel>
       <div className="table-frame">
         <table>
           <thead>

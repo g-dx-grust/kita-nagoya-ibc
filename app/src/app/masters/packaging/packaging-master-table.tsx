@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import SearchableCombobox from "@/components/ui/searchable-combobox";
 import { packagingKindLabel } from "@/lib/labels";
 import { kitagoyaApiPath } from "@/lib/paths";
@@ -73,37 +74,43 @@ export default function PackagingMasterTable({
 
   return (
     <>
-      <div className="filter-bar">
-        <input
-          type="search"
-          className="filter-search"
-          placeholder="資材番号・名称・仕入先・メモで検索"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="資材を検索"
-        />
-        <select value={kind} onChange={(e) => setKind(e.target.value)}>
-          <option value="">種類(すべて)</option>
-          {kinds.map((value) => (
-            <option key={value} value={value}>
-              {packagingKindLabel(value)}
-            </option>
-          ))}
-        </select>
-        <SearchableCombobox
-          value={supplierId}
-          options={supplierOptions}
-          emptyOptionLabel="仕入先(すべて)"
-          placeholder="仕入先で絞り込み"
-          onChange={setSupplierId}
-        />
-        <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
-          条件クリア
-        </button>
-        <span className="filter-count">
-          {filtered.length} / {rows.length} 件
-        </span>
-      </div>
+      <CollapsiblePanel
+        title="表内検索・絞り込み"
+        summary={`${filtered.length} / ${rows.length} 件${hasActiveFilters ? " / 条件あり" : ""}`}
+        open={hasActiveFilters}
+      >
+        <div className="filter-bar compact-controls">
+          <input
+            type="search"
+            className="filter-search"
+            placeholder="資材番号・名称・仕入先・メモで検索"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="資材を検索"
+          />
+          <select value={kind} onChange={(e) => setKind(e.target.value)}>
+            <option value="">種類(すべて)</option>
+            {kinds.map((value) => (
+              <option key={value} value={value}>
+                {packagingKindLabel(value)}
+              </option>
+            ))}
+          </select>
+          <SearchableCombobox
+            value={supplierId}
+            options={supplierOptions}
+            emptyOptionLabel="仕入先(すべて)"
+            placeholder="仕入先で絞り込み"
+            onChange={setSupplierId}
+          />
+          <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
+            条件クリア
+          </button>
+          <span className="filter-count">
+            {filtered.length} / {rows.length} 件
+          </span>
+        </div>
+      </CollapsiblePanel>
       <div className="table-frame">
         <table>
           <thead>

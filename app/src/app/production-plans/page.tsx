@@ -1,4 +1,5 @@
 import Link from "next/link";
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import FormSearchableCombobox from "@/components/ui/form-searchable-combobox";
 import { prisma } from "@/lib/prisma";
 import { kitagoyaPath } from "@/lib/paths";
@@ -57,41 +58,9 @@ export default async function ProductionPlansPage({
 
   return (
     <>
-      <h1>生産予定</h1>
-      <form className="panel toolbar" method="GET">
-        <label>
-          <span>開始日</span>
-          <input name="dateFrom" type="date" defaultValue={dateFrom} />
-        </label>
-        <label>
-          <span>終了日</span>
-          <input name="dateTo" type="date" defaultValue={dateTo} />
-        </label>
-        <label>
-          <span>状態</span>
-          <select name="status" defaultValue={status}>
-            <option value="">すべて</option>
-            <option value="draft">仮</option>
-            <option value="confirmed">確定</option>
-            <option value="completed">完了</option>
-            <option value="cancelled">取消</option>
-          </select>
-        </label>
-        <label>
-          <span>作業場所</span>
-          <FormSearchableCombobox
-            name="workAreaId"
-            initialValue={workAreaId ?? ""}
-            options={workAreas.map((workArea) => ({ value: workArea.id, label: workArea.name }))}
-            emptyOptionLabel="すべて"
-            placeholder="作業場所名で検索"
-            ariaLabel="作業場所で絞り込み"
-          />
-        </label>
-        <button type="submit" className="secondary">
-          絞り込み
-        </button>
-        <div className="toolbar-actions">
+      <div className="page-title-row">
+        <h1>生産予定</h1>
+        <div className="page-title-actions">
           <Link className="button-link secondary-link" href={kitagoyaPath("/production-plans/monthly")}>
             月間生成
           </Link>
@@ -102,7 +71,49 @@ export default async function ProductionPlansPage({
             ＋ 新規予定
           </Link>
         </div>
-      </form>
+      </div>
+      <CollapsiblePanel
+        title="検索・表示条件"
+        summary={`${dateFrom || "開始日未指定"} 〜 ${dateTo || "終了日未指定"}${status ? ` / 状態 ${status}` : ""}${
+          workAreaId ? " / 作業場所指定あり" : ""
+        }`}
+        open={!!(dateFrom || dateTo || status || workAreaId)}
+      >
+        <form className="toolbar compact-controls" method="GET">
+          <label>
+            <span>開始日</span>
+            <input name="dateFrom" type="date" defaultValue={dateFrom} />
+          </label>
+          <label>
+            <span>終了日</span>
+            <input name="dateTo" type="date" defaultValue={dateTo} />
+          </label>
+          <label>
+            <span>状態</span>
+            <select name="status" defaultValue={status}>
+              <option value="">すべて</option>
+              <option value="draft">仮</option>
+              <option value="confirmed">確定</option>
+              <option value="completed">完了</option>
+              <option value="cancelled">取消</option>
+            </select>
+          </label>
+          <label>
+            <span>作業場所</span>
+            <FormSearchableCombobox
+              name="workAreaId"
+              initialValue={workAreaId ?? ""}
+              options={workAreas.map((workArea) => ({ value: workArea.id, label: workArea.name }))}
+              emptyOptionLabel="すべて"
+              placeholder="作業場所名で検索"
+              ariaLabel="作業場所で絞り込み"
+            />
+          </label>
+          <button type="submit" className="secondary">
+            絞り込み
+          </button>
+        </form>
+      </CollapsiblePanel>
 
       <PlanListTable
         plans={tableRows}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import SectionTabs from "@/components/ui/section-tabs";
 import { aggregateMonthlySuggestions } from "@/lib/monthly-production-schedule";
 import {
@@ -133,30 +134,35 @@ export default async function MonthlyProductionPlansPage({
         </Link>
       </div>
 
-      <form className="panel toolbar" method="GET">
-        <label>
-          <span>計画開始日</span>
-          <input name="dateFrom" type="date" defaultValue={dateFrom} />
-        </label>
-        <label>
-          <span>計画終了日</span>
-          <input name="dateTo" type="date" defaultValue={dateTo} />
-        </label>
-        <label>
-          <span>何日前に作る</span>
-          <input name="productionLeadDays" type="number" min={0} max={14} step={1} defaultValue={productionLeadDays} />
-        </label>
-        <label>
-          <span>計画基準</span>
-          <select name="planningBasis" defaultValue={planningBasis}>
-            <option value="historical_actual">前々月前年比予測</option>
-            <option value="inventory_shortage">在庫不足判定</option>
-          </select>
-        </label>
-        <button type="submit" className="secondary">
-          月間判定を再計算
-        </button>
-      </form>
+      <CollapsiblePanel
+        title="表示・再計算条件"
+        summary={`${dateFrom} 〜 ${dateTo} / ${planningBasisLabel(planningBasis)} / ${productionLeadDays}日前`}
+      >
+        <form className="toolbar compact-controls" method="GET">
+          <label>
+            <span>計画開始日</span>
+            <input name="dateFrom" type="date" defaultValue={dateFrom} />
+          </label>
+          <label>
+            <span>計画終了日</span>
+            <input name="dateTo" type="date" defaultValue={dateTo} />
+          </label>
+          <label>
+            <span>何日前に作る</span>
+            <input name="productionLeadDays" type="number" min={0} max={14} step={1} defaultValue={productionLeadDays} />
+          </label>
+          <label>
+            <span>計画基準</span>
+            <select name="planningBasis" defaultValue={planningBasis}>
+              <option value="historical_actual">前々月前年比予測</option>
+              <option value="inventory_shortage">在庫不足判定</option>
+            </select>
+          </label>
+          <button type="submit" className="secondary">
+            月間判定を再計算
+          </button>
+        </form>
+      </CollapsiblePanel>
 
       <div className="panel">
         <div className="stat-grid">
@@ -178,10 +184,12 @@ export default async function MonthlyProductionPlansPage({
 
       <SectionTabs
         ariaLabel="月間予定の表示切り替え"
+        inlineHeader
         items={[
           {
             id: "forecast",
             label: planningBasis === "historical_actual" ? "予測・予実" : "予実・過不足",
+            heading: planningBasis === "historical_actual" ? "予測・予実" : "予実・過不足",
             count:
               planningBasis === "historical_actual"
                 ? preview.historicalForecasts.length
@@ -207,10 +215,10 @@ export default async function MonthlyProductionPlansPage({
           {
             id: "schedule",
             label: "月間生産予定表",
+            heading: "月間生産予定表",
             count: productionSheetRows.length,
             content: (
               <>
-                <h2>月間生産予定表</h2>
                 <ProductionExcelSheet days={days} rows={productionSheetRows} />
               </>
             ),
@@ -218,10 +226,10 @@ export default async function MonthlyProductionPlansPage({
           {
             id: "suggestions",
             label: "生成候補",
+            heading: "生成候補",
             count: groupedSuggestions.length,
             content: (
               <>
-                <h2>生成候補</h2>
                 {groupedSuggestions.length === 0 ? (
                   <div className="empty-state">
                     {planningBasis === "historical_actual"
@@ -269,10 +277,10 @@ export default async function MonthlyProductionPlansPage({
           {
             id: "calendar",
             label: "月間カレンダー",
+            heading: "月間カレンダー",
             count: days.length,
             content: (
               <>
-                <h2>月間カレンダー</h2>
                 <div className="table-frame">
                   <table>
                     <thead>
@@ -303,10 +311,10 @@ export default async function MonthlyProductionPlansPage({
           {
             id: "product-inventory",
             label: "製品別の在庫見通し",
+            heading: "製品別の在庫見通し",
             count: preview.productSummaries.length,
             content: (
               <>
-                <h2>製品別の在庫見通し</h2>
                 <div className="table-frame">
                   <table>
                     <thead>

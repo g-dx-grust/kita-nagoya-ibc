@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import SearchableCombobox from "@/components/ui/searchable-combobox";
 import type { MonthlyInventorySheet, MonthlyInventorySheetRow } from "@/lib/monthly-inventory-sheet";
 import { formatCases } from "@/lib/units";
@@ -99,76 +100,85 @@ export function InventoryTabs({
 
   return (
     <section>
-      <div className="inv-tabs" role="tablist" aria-label="在庫の種類">
-        {tabs.map((tab) => (
-          <Link
-            key={tab.key}
-            role="tab"
-            aria-selected={active === tab.key}
-            className={`inv-tab${active === tab.key ? " is-active" : ""}`}
-            href={tab.href}
-          >
-            {tab.label}
-            <span className="inv-tab-count">{tab.count}</span>
-          </Link>
-        ))}
+      <div className="section-tabs-header inventory-table-header">
+        <h2>{title}</h2>
+        <div className="inv-tabs" role="tablist" aria-label="在庫の種類">
+          {tabs.map((tab) => (
+            <Link
+              key={tab.key}
+              role="tab"
+              aria-selected={active === tab.key}
+              className={`inv-tab${active === tab.key ? " is-active" : ""}`}
+              href={tab.href}
+            >
+              {tab.label}
+              <span className="inv-tab-count">{tab.count}</span>
+            </Link>
+          ))}
+        </div>
       </div>
-      <div className="filter-bar">
-        <input
-          type="search"
-          className="filter-search"
-          placeholder="コード・品名・仕入先で検索"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="在庫を検索"
-        />
-        {hasSupplier && (
-          <SearchableCombobox
-            value={supplier}
-            options={suppliers.map((name) => ({ value: name, label: name }))}
-            emptyOptionLabel="すべての仕入先"
-            placeholder="仕入先で絞り込み"
-            ariaLabel="仕入先で絞り込み"
-            onChange={setSupplier}
+      <CollapsiblePanel
+        title="表内検索・絞り込み"
+        summary={`${filteredRows.length} / ${sheet.rows.length} 件${hasActiveFilters ? " / 条件あり" : ""}`}
+        open={hasActiveFilters}
+      >
+        <div className="filter-bar compact-controls">
+          <input
+            type="search"
+            className="filter-search"
+            placeholder="コード・品名・仕入先で検索"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="在庫を検索"
           />
-        )}
-        {hasKitagoyaFilter && (
+          {hasSupplier && (
+            <SearchableCombobox
+              value={supplier}
+              options={suppliers.map((name) => ({ value: name, label: name }))}
+              emptyOptionLabel="すべての仕入先"
+              placeholder="仕入先で絞り込み"
+              ariaLabel="仕入先で絞り込み"
+              onChange={setSupplier}
+            />
+          )}
+          {hasKitagoyaFilter && (
+            <label className="filter-check">
+              <input
+                type="checkbox"
+                checked={kitagoyaOnly}
+                onChange={() => {
+                  window.location.href = productScopeHref;
+                }}
+              />
+              北名古屋のみ
+            </label>
+          )}
           <label className="filter-check">
+            <input type="checkbox" checked={inStockOnly} onChange={(e) => setInStockOnly(e.target.checked)} />
+            在庫がある品目のみ
+          </label>
+          <label className="filter-check">
+            <input type="checkbox" checked={negativeOnly} onChange={(e) => setNegativeOnly(e.target.checked)} />
+            マイナス在庫のみ
+          </label>
+          <label className="filter-check filter-admin">
             <input
               type="checkbox"
-              checked={kitagoyaOnly}
+              checked={adminMode}
               onChange={() => {
-                window.location.href = productScopeHref;
+                window.location.href = adminModeHref;
               }}
             />
-            北名古屋のみ
+            管理者モード（手入力）
           </label>
-        )}
-        <label className="filter-check">
-          <input type="checkbox" checked={inStockOnly} onChange={(e) => setInStockOnly(e.target.checked)} />
-          在庫がある品目のみ
-        </label>
-        <label className="filter-check">
-          <input type="checkbox" checked={negativeOnly} onChange={(e) => setNegativeOnly(e.target.checked)} />
-          マイナス在庫のみ
-        </label>
-        <label className="filter-check filter-admin">
-          <input
-            type="checkbox"
-            checked={adminMode}
-            onChange={() => {
-              window.location.href = adminModeHref;
-            }}
-          />
-          管理者モード（手入力）
-        </label>
-        <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
-          条件クリア
-        </button>
-        <span className="filter-count">
-          {filteredRows.length} / {sheet.rows.length} 件
-        </span>
-      </div>
+          <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
+            条件クリア
+          </button>
+          <span className="filter-count">
+            {filteredRows.length} / {sheet.rows.length} 件
+          </span>
+        </div>
+      </CollapsiblePanel>
       {adminMode && editableGrid ? (
         <InventoryEditableGrid
           key={itemType}
@@ -184,7 +194,6 @@ export function InventoryTabs({
         />
       ) : (
         <InventoryExcelTable
-          title={title}
           sheet={sheet}
           rows={filteredRows}
           secondaryHeader={secondaryHeader}
@@ -197,14 +206,12 @@ export function InventoryTabs({
 }
 
 function InventoryExcelTable({
-  title,
   sheet,
   rows,
   secondaryHeader,
   caseByItemId,
   showShelfLifeRows,
 }: {
-  title: string;
   sheet: MonthlyInventorySheet;
   rows: MonthlyInventorySheetRow[];
   secondaryHeader: string;
@@ -218,7 +225,6 @@ function InventoryExcelTable({
   const visibleRowLabels: InventoryRowLabel[] = showShelfLifeRows ? [...rowLabels] : ["使用量", "入荷", "残"];
   return (
     <section className="inventory-sheet-section">
-      <h2>{title}</h2>
       <div className="inventory-sheet-meta">
         <span className="badge info">{sheet.monthLabel}</span>
         <span className="muted">

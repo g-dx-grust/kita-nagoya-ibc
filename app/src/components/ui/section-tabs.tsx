@@ -6,6 +6,7 @@ export type SectionTabItem = {
   id: string;
   label: string;
   count?: number | string;
+  heading?: ReactNode;
   content: ReactNode;
 };
 
@@ -14,11 +15,13 @@ export default function SectionTabs({
   items,
   initialTabId,
   className,
+  inlineHeader = false,
 }: {
   ariaLabel: string;
   items: SectionTabItem[];
   initialTabId?: string;
   className?: string;
+  inlineHeader?: boolean;
 }) {
   const baseId = useId();
   const firstId = items[0]?.id ?? "";
@@ -53,30 +56,41 @@ export default function SectionTabs({
     }
   }
 
+  const tabs = (
+    <div className="section-tabs-list" role="tablist" aria-label={ariaLabel}>
+      {items.map((item, index) => {
+        const active = item.id === activeItem.id;
+        return (
+          <button
+            key={item.id}
+            id={tabDomId(baseId, item.id)}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            aria-controls={panelDomId(baseId, item.id)}
+            className={`section-tab${active ? " is-active" : ""}`}
+            tabIndex={active ? 0 : -1}
+            onClick={() => setActiveId(item.id)}
+            onKeyDown={(event) => onKeyDown(event, index)}
+          >
+            <span>{item.label}</span>
+            {item.count != null && <span className="section-tab-count">{item.count}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   return (
     <div className={className ? `section-tabs ${className}` : "section-tabs"}>
-      <div className="section-tabs-list" role="tablist" aria-label={ariaLabel}>
-        {items.map((item, index) => {
-          const active = item.id === activeItem.id;
-          return (
-            <button
-              key={item.id}
-              id={tabDomId(baseId, item.id)}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              aria-controls={panelDomId(baseId, item.id)}
-              className={`section-tab${active ? " is-active" : ""}`}
-              tabIndex={active ? 0 : -1}
-              onClick={() => setActiveId(item.id)}
-              onKeyDown={(event) => onKeyDown(event, index)}
-            >
-              <span>{item.label}</span>
-              {item.count != null && <span className="section-tab-count">{item.count}</span>}
-            </button>
-          );
-        })}
-      </div>
+      {inlineHeader ? (
+        <div className="section-tabs-header">
+          <h2>{activeItem.heading ?? activeItem.label}</h2>
+          {tabs}
+        </div>
+      ) : (
+        tabs
+      )}
       {items.map((item) => (
         <div
           key={item.id}

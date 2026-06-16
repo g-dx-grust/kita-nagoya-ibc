@@ -1,6 +1,12 @@
 import { computeMoveLinks } from "@/lib/assignment-move-link";
 import { audit } from "@/lib/audit";
 import { assignBalancedRooms } from "@/lib/auto-schedule-allocation";
+import {
+  compareAutoScheduleItems,
+  productionTypeScheduleRank,
+  sortCapacitiesForProductionType,
+  sortUsableCapacitiesForProductionType,
+} from "@/lib/auto-schedule-policy";
 import { loadActiveBreakWindows } from "@/lib/break-windows";
 import {
   computeMaxQuantityInTimeWindow,
@@ -202,7 +208,7 @@ export async function POST(req: Request) {
       scheduledPlans = [];
       for (const [index, item] of body.items.entries()) {
         const product = productMap.get(item.productId)!;
-        const capacities = getSchedulableCapacities(product, internalWorkAreas);
+        const capacities = getSchedulableCapacities(product, internalWorkAreas, item.productionType);
         const currentlyAvailableStaff = countAvailableStaffAt(staffStates, scheduleStart);
         const peopleLimit = estimatePeopleLimitForRemainingRooms(
           body.items.slice(index),
@@ -459,6 +465,7 @@ function toResponsePlan(plan: ScheduledPlan, id?: string) {
     tempId: plan.tempId,
     productId: plan.productId,
     productName: plan.productName,
+    productionType: plan.productionType,
     workAreaId: plan.workAreaId,
     workAreaName: plan.workAreaName,
     startTime: formatHM(plan.start),
@@ -492,6 +499,8 @@ async function loadInternalWorkAreas() {
 function getSchedulableCapacities(
   product: LoadedProduct,
   internalWorkAreas: LoadedWorkArea[],
+  productionType = product.productionType,
+  roleFiltered = true,
 ): CandidateCapacity[] {
   const registered = product.capacities.filter(
     (capacity) =>
@@ -523,7 +532,7 @@ function getSchedulableCapacities(
       sourceWorkAreaName: template.workArea.name,
     }));
 
-  return [...registeredCandidates, ...generatedCandidates].sort((a, b) => {
+  const sorted = [...registeredCandidates, ...generatedCandidates].sort((a, b) => {
     const priorityDiff = priorityKey(a.candidatePriority) - priorityKey(b.candidatePriority);
     const defaultScore =
       Number(b.workAreaId === product.defaultWorkAreaId) - Number(a.workAreaId === product.defaultWorkAreaId);
@@ -534,6 +543,9 @@ function getSchedulableCapacities(
       a.workArea.name.localeCompare(b.workArea.name, "ja")
     );
   });
+  return roleFiltered
+    ? sortCapacitiesForProductionType(sorted, productionType)
+    : sortUsableCapacitiesForProductionType(sorted, productionType);
 }
 
 function toCandidateCapacity(capacity: LoadedCapacity): CandidateCapacity {
@@ -628,7 +640,7 @@ function compareSlotChoices(
 }
 
 function estimatePeopleLimitForRemainingRooms(
-  items: { productId: string }[],
+  items: { productId: string; productionType: string }[],
   productMap: Map<string, LoadedProduct>,
   internalWorkAreas: LoadedWorkArea[],
   staffCount: number,
@@ -637,7 +649,7 @@ function estimatePeopleLimitForRemainingRooms(
   for (const item of items) {
     const product = productMap.get(item.productId);
     if (!product) continue;
-    for (const capacity of getSchedulableCapacities(product, internalWorkAreas)) {
+    for (const capacity of getSchedulableCapacities(product, internalWorkAreas, item.productionType)) {
       workAreaIds.add(capacity.workAreaId);
     }
   }
@@ -672,10 +684,16 @@ function buildMaxQuantityScheduledPlans({
     if (override.workAreaId) forcedRoomByTempId.set(override.tempId, override.workAreaId);
   }
 
-  const capacitiesByTempId = new Map<string, CandidateCapacity[]>();
-  items.forEach((item, index) => {
+  const itemRefs = items.map((item, index) => {
     const product = productMap.get(item.productId)!;
-    const capacities = getSchedulableCapacities(product, internalWorkAreas);
+    const tempId = tempIds[index];
+    const forced = forcedRoomByTempId.get(tempId);
+    const capacities = getSchedulableCapacities(
+      product,
+      internalWorkAreas,
+      item.productionType,
+      !forced,
+    );
     if (capacities.length === 0) {
       throw new AutoScheduleError("capacity_not_found", {
         productId: product.id,
@@ -684,42 +702,45 @@ function buildMaxQuantityScheduledPlans({
       });
     }
     // 部屋の強制指定が候補外なら従来同様エラー
-    const forced = forcedRoomByTempId.get(tempIds[index]);
     if (forced && !capacities.some((c) => c.workAreaId === forced)) {
       throw new AutoScheduleError("work_area_not_schedulable", {
         productName: product.officialName,
         workAreaId: forced,
       });
     }
-    capacitiesByTempId.set(tempIds[index], capacities);
+    return { item, index, tempId, product, capacities };
   });
 
-  const chosen = assignBalancedRooms(
-    tempIds.map((tempId) => ({ tempId })),
-    capacitiesByTempId,
-    forcedRoomByTempId,
+  const orderedRefs = [...itemRefs].sort((a, b) =>
+    compareAutoScheduleItems(
+      {
+        productionType: a.item.productionType,
+        productCode: a.product.productCode,
+        schedulePriority: a.product.schedulePriority,
+        originalIndex: a.index,
+      },
+      {
+        productionType: b.item.productionType,
+        productCode: b.product.productCode,
+        schedulePriority: b.product.schedulePriority,
+        originalIndex: b.index,
+      },
+    ),
   );
 
-  const jobs: AllocationJob[] = items.map((item, index) => {
-    const tempId = tempIds[index];
-    const product = productMap.get(item.productId)!;
-    const capacity = chosen.get(tempId)!;
-    const cursor = areaCursor.get(capacity.workAreaId);
-    const roomMaxPeople = Math.max(1, Math.floor(capacity.workArea.maxPeopleCount ?? capacity.standardPeople ?? 1));
-    return {
-      jobId: tempId,
-      productId: product.id,
-      productName: product.officialName,
-      workAreaId: capacity.workAreaId,
-      workAreaName: capacity.workArea.name,
-      workAreaDisplayOrder: capacity.workArea.displayOrder,
-      quantity: item.quantity,
-      unit: product.unit,
-      unitsPerPersonHour: capacity.unitsPerPersonHour,
-      roomMaxPeople,
-      earliestStart: cursor != null && cursor > scheduleStart ? formatHM(cursor) : undefined,
-    } satisfies AllocationJob;
-  });
+  const groupedRefs: (typeof orderedRefs)[] = [];
+  for (const ref of orderedRefs) {
+    const rank = productionTypeScheduleRank(ref.item.productionType);
+    const last = groupedRefs[groupedRefs.length - 1];
+    if (
+      last &&
+      productionTypeScheduleRank(last[0].item.productionType) === rank
+    ) {
+      last.push(ref);
+    } else {
+      groupedRefs.push([ref]);
+    }
+  }
 
   const staff: AllocationStaff[] = staffStates.map((s) => ({
     employeeId: s.employeeId,
@@ -729,67 +750,169 @@ function buildMaxQuantityScheduledPlans({
     unavailableWindows: s.busyRanges.map((r) => ({ startTime: formatHM(r.start), endTime: formatHM(r.end) })),
   }));
 
-  const allocation = allocateDayStaff({
-    dayStart: formatHM(scheduleStart),
-    dayEnd: formatHM(Math.max(scheduleStart, windowEnd)),
-    breakWindows,
-    staff,
-    jobs,
-  });
-  const jobById = new Map(allocation.jobs.map((job) => [job.jobId, job]));
+  const plansByTempId = new Map<string, ScheduledPlan>();
+  let phaseStart = scheduleStart;
 
-  return items.map((item, index) => {
-    const tempId = tempIds[index];
-    const product = productMap.get(item.productId)!;
-    const capacity = chosen.get(tempId)!;
-    const job = jobById.get(tempId);
+  for (const refs of groupedRefs) {
+    const capacitiesByTempId = new Map(refs.map((ref) => [ref.tempId, ref.capacities]));
+    const chosen = assignBalancedRooms(
+      refs.map((ref) => ({ tempId: ref.tempId })),
+      capacitiesByTempId,
+      forcedRoomByTempId,
+    );
 
-    const start = job?.startTime ? parseHM(job.startTime) : scheduleStart;
-    const end = job?.endTime ? parseHM(job.endTime) : scheduleStart;
-    const quantity = job?.scheduledQuantity ?? 0;
-    const targetPeople = job ? job.peopleSegments.reduce((max, seg) => Math.max(max, seg.peopleCount), 0) : 0;
-
-    // 表示用: 重複を除いた従業員一覧（初出順）
-    const seen = new Set<string>();
-    const assignedStaff: ScheduledAssignment[] = [];
-    const assignmentSegments: NonNullable<ScheduledPlan["assignmentSegments"]> = [];
-    for (const a of job?.assignments ?? []) {
-      assignmentSegments.push({ employeeId: a.employeeId, startTime: a.startTime, endTime: a.endTime });
-      if (!seen.has(a.employeeId)) {
-        seen.add(a.employeeId);
-        assignedStaff.push({ employeeId: a.employeeId, employeeName: a.employeeName, moveAfterPlanId: null });
+    if (phaseStart >= windowEnd) {
+      for (const ref of refs) {
+        const capacity = chosen.get(ref.tempId) ?? pickFallbackCapacity(ref.capacities, forcedRoomByTempId.get(ref.tempId));
+        plansByTempId.set(ref.tempId, buildUnscheduledPlan(ref, capacity, phaseStart));
       }
+      continue;
     }
 
-    const warnings: string[] = [];
-    if (capacity.synthetic) {
-      warnings.push(`${capacity.workArea.name}は${capacity.sourceWorkAreaName ?? "登録済み作業場所"}の生産能力を仮適用`);
-    }
-    if (capacity.unitsPerPersonHour <= 0) warnings.push("生産能力未登録");
-    const overflow = job?.overflowQuantity ?? item.quantity;
-    if (overflow > 0) warnings.push(`指定数量から ${round1(overflow)} 不足`);
-    if (job && job.scheduledQuantity > 0 && assignedStaff.length === 0) {
-      warnings.push("出勤シフト内で配置できるスタッフがいません");
+    const jobs: AllocationJob[] = refs.map((ref) => {
+      const capacity = chosen.get(ref.tempId)!;
+      const cursor = areaCursor.get(capacity.workAreaId);
+      const roomMaxPeople = Math.max(1, Math.floor(capacity.workArea.maxPeopleCount ?? capacity.standardPeople ?? 1));
+      return {
+        jobId: ref.tempId,
+        productId: ref.product.id,
+        productName: ref.product.officialName,
+        workAreaId: capacity.workAreaId,
+        workAreaName: capacity.workArea.name,
+        workAreaDisplayOrder: capacity.workArea.displayOrder,
+        quantity: ref.item.quantity,
+        unit: ref.product.unit,
+        unitsPerPersonHour: capacity.unitsPerPersonHour,
+        roomMaxPeople,
+        earliestStart: cursor != null && cursor > phaseStart ? formatHM(cursor) : undefined,
+      } satisfies AllocationJob;
+    });
+
+    const allocation = allocateDayStaff({
+      dayStart: formatHM(phaseStart),
+      dayEnd: formatHM(Math.max(phaseStart, windowEnd)),
+      breakWindows,
+      staff,
+      jobs,
+    });
+    const jobById = new Map(allocation.jobs.map((job) => [job.jobId, job]));
+    const scheduledEnds: number[] = [];
+
+    for (const ref of refs) {
+      const capacity = chosen.get(ref.tempId)!;
+      const job = jobById.get(ref.tempId);
+      const plan = buildScheduledPlanFromJob({
+        ref,
+        capacity,
+        job,
+        fallbackStart: phaseStart,
+      });
+      plansByTempId.set(ref.tempId, plan);
+      areaCursor.set(capacity.workAreaId, Math.max(areaCursor.get(capacity.workAreaId) ?? phaseStart, plan.end));
+      if (plan.quantity > 0 && plan.end > phaseStart) scheduledEnds.push(plan.end);
     }
 
-    return {
-      tempId,
-      productId: product.id,
-      productName: product.officialName,
-      productionType: item.productionType,
-      unit: product.unit,
-      workAreaId: capacity.workAreaId,
-      workAreaName: capacity.workArea.name,
-      capacity,
-      start,
-      end,
-      quantity,
-      targetPeople,
-      assignedStaff,
-      assignmentSegments: assignmentSegments.length > 0 ? assignmentSegments : undefined,
-      warnings,
-    } satisfies ScheduledPlan;
-  });
+    if (scheduledEnds.length > 0) {
+      phaseStart = Math.max(phaseStart, ...scheduledEnds);
+    } else {
+      phaseStart = windowEnd;
+    }
+  }
+
+  return orderedRefs.map((ref) => plansByTempId.get(ref.tempId)!);
+}
+
+function buildScheduledPlanFromJob({
+  ref,
+  capacity,
+  job,
+  fallbackStart,
+}: {
+  ref: {
+    item: { productId: string; quantity: number; productionType: string };
+    tempId: string;
+    product: LoadedProduct;
+  };
+  capacity: CandidateCapacity;
+  job: ReturnType<typeof allocateDayStaff>["jobs"][number] | undefined;
+  fallbackStart: number;
+}): ScheduledPlan {
+  const start = job?.startTime ? parseHM(job.startTime) : fallbackStart;
+  const end = job?.endTime ? parseHM(job.endTime) : fallbackStart;
+  const quantity = job?.scheduledQuantity ?? 0;
+  const targetPeople = job ? job.peopleSegments.reduce((max, seg) => Math.max(max, seg.peopleCount), 0) : 0;
+
+  // 表示用: 重複を除いた従業員一覧（初出順）
+  const seen = new Set<string>();
+  const assignedStaff: ScheduledAssignment[] = [];
+  const assignmentSegments: NonNullable<ScheduledPlan["assignmentSegments"]> = [];
+  for (const a of job?.assignments ?? []) {
+    assignmentSegments.push({ employeeId: a.employeeId, startTime: a.startTime, endTime: a.endTime });
+    if (!seen.has(a.employeeId)) {
+      seen.add(a.employeeId);
+      assignedStaff.push({ employeeId: a.employeeId, employeeName: a.employeeName, moveAfterPlanId: null });
+    }
+  }
+
+  const warnings: string[] = [];
+  if (capacity.synthetic) {
+    warnings.push(`${capacity.workArea.name}は${capacity.sourceWorkAreaName ?? "登録済み作業場所"}の生産能力を仮適用`);
+  }
+  if (capacity.unitsPerPersonHour <= 0) warnings.push("生産能力未登録");
+  const overflow = job?.overflowQuantity ?? ref.item.quantity;
+  if (overflow > 0) warnings.push(`指定数量から ${round1(overflow)} 不足`);
+  if (job && job.scheduledQuantity > 0 && assignedStaff.length === 0) {
+    warnings.push("出勤シフト内で配置できるスタッフがいません");
+  }
+
+  return {
+    tempId: ref.tempId,
+    productId: ref.product.id,
+    productName: ref.product.officialName,
+    productionType: ref.item.productionType,
+    unit: ref.product.unit,
+    workAreaId: capacity.workAreaId,
+    workAreaName: capacity.workArea.name,
+    capacity,
+    start,
+    end,
+    quantity,
+    targetPeople,
+    assignedStaff,
+    assignmentSegments: assignmentSegments.length > 0 ? assignmentSegments : undefined,
+    warnings,
+  } satisfies ScheduledPlan;
+}
+
+function buildUnscheduledPlan(
+  ref: {
+    item: { productId: string; quantity: number; productionType: string };
+    tempId: string;
+    product: LoadedProduct;
+  },
+  capacity: CandidateCapacity,
+  phaseStart: number,
+): ScheduledPlan {
+  return {
+    tempId: ref.tempId,
+    productId: ref.product.id,
+    productName: ref.product.officialName,
+    productionType: ref.item.productionType,
+    unit: ref.product.unit,
+    workAreaId: capacity.workAreaId,
+    workAreaName: capacity.workArea.name,
+    capacity,
+    start: phaseStart,
+    end: phaseStart,
+    quantity: 0,
+    targetPeople: 0,
+    assignedStaff: [],
+    warnings: [`指定数量から ${round1(ref.item.quantity)} 不足`, "優先度の高い生産で時間枠を使い切りました"],
+  };
+}
+
+function pickFallbackCapacity(capacities: CandidateCapacity[], forcedRoomId?: string): CandidateCapacity {
+  return capacities.find((capacity) => capacity.workAreaId === forcedRoomId) ?? capacities[0];
 }
 
 function round1(n: number) {
@@ -822,7 +945,7 @@ function applyOverrides({
     if (override.workAreaId && override.workAreaId !== plan.workAreaId) {
       const product = productMap.get(plan.productId);
       const capacity = product
-        ? getSchedulableCapacities(product, internalWorkAreas).find(
+        ? getSchedulableCapacities(product, internalWorkAreas, plan.productionType, false).find(
             (candidate) => candidate.workAreaId === override.workAreaId,
           )
         : null;

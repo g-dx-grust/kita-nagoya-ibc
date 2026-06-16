@@ -22,6 +22,7 @@ const employeeFields: MasterField[] = [
   { key: "defaultStartTime", label: "基本開始", type: "time", default: "09:00" },
   { key: "defaultEndTime", label: "基本終了", type: "time", default: "17:00" },
   { key: "defaultBreakMinutes", label: "基本休憩(分)", type: "number", default: 60 },
+  { key: "shiftEntryEnabled", label: "本人シフト入力を許可", type: "checkbox", default: true },
   { key: "note", label: "備考", type: "textarea", nullable: true },
 ];
 
@@ -39,6 +40,8 @@ export default async function EmployeesPage() {
     defaultStartTime: r.defaultStartTime,
     defaultEndTime: r.defaultEndTime,
     defaultBreakMinutes: r.defaultBreakMinutes,
+    shiftEntryToken: r.shiftEntryToken,
+    shiftEntryEnabled: r.shiftEntryEnabled,
     note: r.note,
   }));
 
