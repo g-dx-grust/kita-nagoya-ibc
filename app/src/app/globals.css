@@ -110,7 +110,14 @@ body {
 }
 
 main {
+  max-width: 100%;
+  min-width: 0;
   color: var(--text);
+}
+
+main > div {
+  max-width: 100%;
+  min-width: 0;
 }
 
 /* 縦スクロールバーの出没で中央寄せレイアウトが左右にずれるのを防ぐ（常にスクロールバー用の溝を確保） */
@@ -267,14 +274,15 @@ table {
   border-spacing: 0;
   border-collapse: separate;
   box-shadow: var(--shadow);
-  white-space: nowrap;
-  overflow: hidden;
+  white-space: normal;
 }
 
 .table-frame {
   width: 100%;
+  min-width: 0;
   max-width: 100%;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: visible;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
@@ -286,17 +294,18 @@ table {
 .table-frame table {
   border: none;
   border-radius: 0;
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
+  min-width: max(100%, 760px);
   box-shadow: none;
 }
 
-.table-frame thead th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+.table-frame th {
+  white-space: nowrap;
 }
 
+.table-frame td {
+  overflow-wrap: anywhere;
+}
 
 .daily-report-heading {
   display: flex;
@@ -1182,6 +1191,7 @@ button:disabled {
   gap: 12px;
   margin-bottom: 16px;
   min-width: 0;
+  max-width: 100%;
 }
 
 .panel.toolbar {
@@ -1196,7 +1206,9 @@ form.toolbar {
 
 .toolbar > h1,
 .toolbar > h2 {
+  min-width: 0;
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .toolbar-actions {
@@ -1207,6 +1219,7 @@ form.toolbar {
   justify-content: flex-end;
   gap: 10px;
   margin-left: auto;
+  min-width: 0;
 }
 
 .spacer {
@@ -1307,6 +1320,7 @@ form.toolbar {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 14px;
+  max-width: 100%;
   margin: 0 0 14px;
   padding-bottom: 14px;
   border-bottom: 1px solid var(--border);
@@ -1314,9 +1328,11 @@ form.toolbar {
 
 .page-title-row h1 {
   flex: 1 1 320px;
+  min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
+  overflow-wrap: anywhere;
 }
 
 .page-title-actions {
@@ -2705,6 +2721,7 @@ button.mini {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+  max-width: 100%;
   margin: 14px 0 16px;
   padding: 10px 12px;
   border: 1px solid var(--border);
@@ -2716,7 +2733,7 @@ button.mini {
 .filter-bar .filter-search {
   flex: 1 1 320px;
   width: auto;
-  min-width: 240px;
+  min-width: min(100%, 240px);
   max-width: 560px;
   min-height: 36px;
   padding: 7px 12px;
@@ -2731,7 +2748,7 @@ button.mini {
 }
 .filter-bar select {
   width: auto;
-  min-width: 156px;
+  min-width: min(100%, 156px);
   max-width: 260px;
   min-height: 36px;
   padding: 7px 10px;
@@ -2742,7 +2759,7 @@ button.mini {
 .filter-bar .combobox {
   flex: 0 1 260px;
   width: auto;
-  min-width: 220px;
+  min-width: min(100%, 220px);
   max-width: 280px;
 }
 .filter-bar .combobox-input {
@@ -2865,6 +2882,7 @@ mark.search-hit {
 
 .inventory-sheet-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin: -4px 0 10px;
@@ -2872,6 +2890,7 @@ mark.search-hit {
 
 .excel-inventory-scroll {
   width: 100%;
+  max-width: 100%;
   max-height: min(74vh, 780px);
   overflow: auto;
   border: 1px solid var(--border-strong);
@@ -2883,6 +2902,13 @@ mark.search-hit {
 }
 
 .excel-inventory-table {
+  --excel-no-w: 56px;
+  --excel-name-w: 268px;
+  --excel-supplier-w: 184px;
+  --excel-label-w: 94px;
+  --excel-carry-w: 112px;
+  --excel-day-w: 112px;
+  --excel-summary-w: 112px;
   width: max-content;
   min-width: 100%;
   border: none;
@@ -2894,41 +2920,48 @@ mark.search-hit {
   white-space: nowrap;
 }
 
+.excel-inventory-editable {
+  --excel-name-w: 280px;
+  --excel-carry-w: 132px;
+  --excel-day-w: 140px;
+  --excel-summary-w: 124px;
+}
+
 .excel-inventory-table col.excel-col-no {
-  width: 54px;
+  width: var(--excel-no-w);
 }
 
 .excel-inventory-table col.excel-col-name {
-  width: 240px;
+  width: var(--excel-name-w);
 }
 
 .excel-inventory-table col.excel-col-supplier {
-  width: 180px;
+  width: var(--excel-supplier-w);
 }
 
 .excel-inventory-table col.excel-col-label {
-  width: 92px;
+  width: var(--excel-label-w);
 }
 
 .excel-inventory-table col.excel-col-carry {
-  width: 86px;
+  width: var(--excel-carry-w);
 }
 
 .excel-inventory-table col.excel-col-day {
-  width: 84px;
+  width: var(--excel-day-w);
 }
 
 .excel-inventory-table col.excel-col-summary {
-  width: 92px;
+  width: var(--excel-summary-w);
 }
 
 .excel-inventory-table th,
 .excel-inventory-table td {
-  height: 34px;
-  padding: 6px 8px;
+  height: 38px;
+  padding: 6px 9px;
   border-right: 1px solid #aeb8b3;
   border-bottom: 1px solid #aeb8b3;
-  font-size: 12px;
+  font-size: 12.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: middle;
@@ -2958,18 +2991,26 @@ mark.search-hit {
 
 .excel-inventory-table .sticky-no {
   left: 0;
+  width: var(--excel-no-w);
+  min-width: var(--excel-no-w);
 }
 
 .excel-inventory-table .sticky-name {
-  left: 54px;
+  left: var(--excel-no-w);
+  width: var(--excel-name-w);
+  min-width: var(--excel-name-w);
 }
 
 .excel-inventory-table .sticky-supplier {
-  left: 294px;
+  left: calc(var(--excel-no-w) + var(--excel-name-w));
+  width: var(--excel-supplier-w);
+  min-width: var(--excel-supplier-w);
 }
 
 .excel-inventory-table .sticky-label {
-  left: 474px;
+  left: calc(var(--excel-no-w) + var(--excel-name-w) + var(--excel-supplier-w));
+  width: var(--excel-label-w);
+  min-width: var(--excel-label-w);
 }
 
 .excel-rowspan-cell {
@@ -2978,10 +3019,21 @@ mark.search-hit {
 }
 
 .excel-item-name {
-  max-width: 216px;
+  max-width: calc(var(--excel-name-w, var(--excel-product-w, 268px)) - 28px);
   white-space: normal;
   overflow-wrap: anywhere;
   line-height: 1.35;
+}
+
+.excel-inventory-table .sticky-supplier {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.excel-inventory-table td.right {
+  text-align: right;
+  white-space: nowrap;
 }
 
 .excel-line-label {
@@ -3050,6 +3102,12 @@ mark.search-hit {
 }
 
 .excel-production-table {
+  --excel-no-w: 56px;
+  --excel-product-w: 280px;
+  --excel-label-w: 94px;
+  --excel-carry-w: 116px;
+  --excel-day-w: 104px;
+  --excel-summary-w: 118px;
   width: max-content;
   min-width: 100%;
   border: none;
@@ -3062,36 +3120,36 @@ mark.search-hit {
 }
 
 .excel-production-table col.excel-col-no {
-  width: 54px;
+  width: var(--excel-no-w);
 }
 
 .excel-production-table col.excel-col-product {
-  width: 260px;
+  width: var(--excel-product-w);
 }
 
 .excel-production-table col.excel-col-label {
-  width: 92px;
+  width: var(--excel-label-w);
 }
 
 .excel-production-table col.excel-col-carry {
-  width: 96px;
+  width: var(--excel-carry-w);
 }
 
 .excel-production-table col.excel-col-day {
-  width: 78px;
+  width: var(--excel-day-w);
 }
 
 .excel-production-table col.excel-col-summary {
-  width: 98px;
+  width: var(--excel-summary-w);
 }
 
 .excel-production-table th,
 .excel-production-table td {
-  height: 32px;
-  padding: 5px 7px;
+  height: 36px;
+  padding: 6px 8px;
   border-right: 1px solid #aeb8b3;
   border-bottom: 1px solid #aeb8b3;
-  font-size: 12px;
+  font-size: 12.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: middle;
@@ -3121,14 +3179,31 @@ mark.search-hit {
 
 .excel-production-table .sticky-prod-no {
   left: 0;
+  width: var(--excel-no-w);
+  min-width: var(--excel-no-w);
 }
 
 .excel-production-table .sticky-prod-product {
-  left: 54px;
+  left: var(--excel-no-w);
+  width: var(--excel-product-w);
+  min-width: var(--excel-product-w);
 }
 
 .excel-production-table .sticky-prod-label {
-  left: 314px;
+  left: calc(var(--excel-no-w) + var(--excel-product-w));
+  width: var(--excel-label-w);
+  min-width: var(--excel-label-w);
+}
+
+.excel-production-table .sticky-prod-product {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.excel-production-table td.right {
+  text-align: right;
+  white-space: nowrap;
 }
 
 .production-row-demand td {
@@ -3356,16 +3431,17 @@ td .combobox {
 /* 編集セル: 入力欄＋自動値ヒント */
 .excel-inventory-editable .excel-cell-input {
   width: 100%;
-  min-width: 52px;
-  min-height: 28px;
-  padding: 3px 5px;
-  font-size: 12px;
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 6px;
+  font-size: 12.5px;
   text-align: right;
   border: 1px solid var(--border);
   border-radius: 4px;
 }
 .excel-inventory-editable .excel-cell-input.excel-cell-date {
-  min-width: 110px;
+  width: 100%;
+  min-width: 0;
   text-align: left;
 }
 .excel-inventory-editable .excel-cell-input:focus {
@@ -3375,8 +3451,9 @@ td .combobox {
 .excel-edit-cell {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 3px;
   align-items: stretch;
+  min-width: 0;
 }
 .excel-edit-cell.is-dirty .excel-cell-input,
 .excel-cell-input.is-dirty {
@@ -3385,9 +3462,10 @@ td .combobox {
 }
 .excel-auto-hint {
   font-size: 10px;
-  line-height: 1.1;
+  line-height: 1.15;
   color: var(--muted);
   text-align: right;
+  white-space: nowrap;
 }
 
 /* --- 日報: 当日一括入力 --- */
