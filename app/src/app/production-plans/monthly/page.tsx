@@ -1,5 +1,6 @@
 import Link from "next/link";
 import CollapsiblePanel from "@/components/ui/collapsible-panel";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import SectionTabs from "@/components/ui/section-tabs";
 import { aggregateMonthlySuggestions } from "@/lib/monthly-production-schedule";
 import {
@@ -198,16 +199,18 @@ export default async function MonthlyProductionPlansPage({
               <>
                 {planningBasis === "historical_actual" && (
                   <>
-                    <h2>前々月前年比 予測</h2>
-                    <p className="section-note">数量は基本単位とケース数を併記します。小数の数量は表示時に切り上げます。</p>
+                    <h2>
+                      前々月前年比 予測
+                      <HelpTooltip text="数量は基本単位とケース数を併記します。小数の数量は表示時に切り上げます。" />
+                    </h2>
                     <HistoricalForecastTable preview={preview} caseOf={caseOf} />
                   </>
                 )}
 
-                <h2>当月 予実・過不足</h2>
-                <p className="section-note">
-                  月次予測(目標)に対する確定実績の累計と残目標です。実績累計は確定日報のみを集計し、予定値とは分けています。最終的な追加判断は上の「シフト連動で仮予定生成」で行ってください。
-                </p>
+                <h2>
+                  当月 予実・過不足
+                  <HelpTooltip text="月次予測に対する確定実績の累計と残目標です。実績累計は確定日報のみを集計し、予定値とは分けています。追加判断はシフト連動の仮予定生成で行います。" />
+                </h2>
                 <MonthlyReconciliationTable rows={preview.reconciliation} caseOf={caseOf} />
               </>
             ),

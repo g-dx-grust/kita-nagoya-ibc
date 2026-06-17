@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import ShiftEditor from "./shift-editor";
 import ShiftMonthEditor from "./shift-month-editor";
 import CsvImport from "../masters/csv-import";
@@ -118,10 +119,10 @@ export default async function ShiftsPage({
       />
 
       <div className="panel after-table">
-        <strong>シフトCSV取り込み（前月15日公開の出勤表）</strong>
-        <p className="muted" style={{ fontSize: 12, margin: "4px 0 8px" }}>
-          従業員はマスター登録済みの正式名称で照合します。未登録の名称の行はスキップされ、従業員マスターの基本勤務時間は上書きされません。
-        </p>
+        <div className="toolbar flush-top">
+          <strong>シフトCSV取り込み（前月15日公開の出勤表）</strong>
+          <HelpTooltip text="従業員はマスター登録済みの正式名称で照合します。未登録の名称行はスキップされ、従業員マスターの基本勤務時間は上書きされません。" />
+        </div>
         <CsvImport endpoint={kitagoyaApiPath("/import/shifts")} templateType="shifts" />
       </div>
     </>

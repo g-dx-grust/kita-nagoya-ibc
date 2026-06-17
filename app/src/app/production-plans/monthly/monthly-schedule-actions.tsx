@@ -133,44 +133,46 @@ export default function MonthlyScheduleActions({
           )}
           {result.plans.length > 0 && (
             <>
-              <table>
-                <thead>
-                  <tr>
-                    <th>日付</th>
-                    <th>商品</th>
-                    <th>作業場所</th>
-                    <th>時間</th>
-                    <th>数量</th>
-                    <th>配置人数</th>
-                    <th>注意</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.plans.map((plan) => (
-                    <tr key={plan.id}>
-                      <td>{plan.date}</td>
-                      <td>
-                        {plan.productCode} · {plan.productName}
-                      </td>
-                      <td>{plan.workAreaName}</td>
-                      <td>
-                        {plan.startTime} - {plan.endTime}
-                      </td>
-                      <td className="right">
-                        {plan.quantity.toLocaleString()} {plan.unit}
-                      </td>
-                      <td className="right">{plan.assignedCount}</td>
-                      <td>
-                        <WarningBadges warnings={plan.warnings} />
-                      </td>
-                      <td>
-                        <Link href={kitagoyaPath(`/production-plans/${plan.id}`)}>開く</Link>
-                      </td>
+              <div className="table-frame">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>日付</th>
+                      <th>商品</th>
+                      <th>作業場所</th>
+                      <th>時間</th>
+                      <th>数量</th>
+                      <th>配置人数</th>
+                      <th>注意</th>
+                      <th></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {result.plans.map((plan) => (
+                      <tr key={plan.id}>
+                        <td>{plan.date}</td>
+                        <td>
+                          {plan.productCode} · {plan.productName}
+                        </td>
+                        <td>{plan.workAreaName}</td>
+                        <td>
+                          {plan.startTime} - {plan.endTime}
+                        </td>
+                        <td className="right">
+                          {plan.quantity.toLocaleString()} {plan.unit}
+                        </td>
+                        <td className="right">{plan.assignedCount}</td>
+                        <td>
+                          <WarningBadges warnings={plan.warnings} />
+                        </td>
+                        <td>
+                          <Link href={kitagoyaPath(`/production-plans/${plan.id}`)}>開く</Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               {result.listUrl && (
                 <div className="form-actions">
                   <Link className="button-link" href={kitagoyaPath(result.listUrl)}>
@@ -185,30 +187,32 @@ export default function MonthlyScheduleActions({
               <div className="alert warn">
                 シフト・部屋・生産能力に収まらない候補が {result.skipped.length} 件あります。
               </div>
-              <table>
-                <thead>
-                  <tr>
-                    <th>希望日</th>
-                    <th>商品</th>
-                    <th>未配置数量</th>
-                    <th>理由</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.skipped.map((row, index) => (
-                    <tr key={`${row.productCode}:${row.preferredDate}:${index}`}>
-                      <td>{row.preferredDate}</td>
-                      <td>
-                        {row.productCode} · {row.productName}
-                      </td>
-                      <td className="right">
-                        {row.remainingQuantity.toLocaleString()} {row.unit}
-                      </td>
-                      <td>{row.reason}</td>
+              <div className="table-frame">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>希望日</th>
+                      <th>商品</th>
+                      <th>未配置数量</th>
+                      <th>理由</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {result.skipped.map((row, index) => (
+                      <tr key={`${row.productCode}:${row.preferredDate}:${index}`}>
+                        <td>{row.preferredDate}</td>
+                        <td>
+                          {row.productCode} · {row.productName}
+                        </td>
+                        <td className="right">
+                          {row.remainingQuantity.toLocaleString()} {row.unit}
+                        </td>
+                        <td>{row.reason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </>
           )}
         </div>

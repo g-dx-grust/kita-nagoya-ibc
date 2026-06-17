@@ -1,3 +1,4 @@
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { prisma } from "@/lib/prisma";
 import CapacityReviewTable, { type CapacityReviewRow } from "./capacity-review-table";
 
@@ -63,11 +64,12 @@ export default async function CapacityReviewPage() {
 
   return (
     <>
-      <h1>生産能力チェック</h1>
-      <p className="section-note">
-        訪問時に、商品ごとの「普段何人で、何時間で、何袋作れるか」を聞きながら、
-        1時間1人あたり生産量を確認・修正する画面です。
-      </p>
+      <div className="page-title-row">
+        <h1>生産能力チェック</h1>
+        <div className="page-title-actions">
+          <HelpTooltip text="商品ごとの普段の人数、時間、生産数量から、1時間1人あたり生産量を確認・修正します。" />
+        </div>
+      </div>
       <CapacityReviewTable rows={rows} />
     </>
   );

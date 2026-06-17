@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import Link from "next/link";
 import { CalendarDays, Search, Table2 } from "lucide-react";
 
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { kitagoyaPath } from "@/lib/paths";
 import {
   buildProductDailyReportDashboard,
@@ -99,10 +100,10 @@ export default async function ProductionDailyReportDashboardPage({
     <>
       <div className="dashboard-header">
         <div>
-          <h1>製造実績ダッシュボード</h1>
-          <p className="section-note">
-            日報に確定済みの製造実績だけを集計しています。予定数量や未計上の日報は含めません。
-          </p>
+          <h1>
+            製造実績ダッシュボード
+            <HelpTooltip text="確定済みの製造実績だけを集計しています。予定数量や未計上の日報は含めません。" />
+          </h1>
         </div>
         <div className="dashboard-actions">
           <Link className="button-link secondary-link gap-2" href={dailyReportHref(month, productId, q)}>
@@ -382,9 +383,7 @@ export default async function ProductionDailyReportDashboardPage({
               </tbody>
             </table>
           </div>
-          {dashboard.alertRows.length > 12 && (
-            <p className="section-note">上位12件を表示しています。全件確認は日報一覧で行ってください。</p>
-          )}
+          {dashboard.alertRows.length > 12 && <HelpTooltip text="上位12件を表示しています。全件確認は日報一覧で行ってください。" />}
         </section>
       </div>
 

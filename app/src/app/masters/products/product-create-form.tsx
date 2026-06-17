@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import SearchableCombobox from "@/components/ui/searchable-combobox";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 
@@ -242,9 +243,10 @@ export default function ProductCreateForm({
 
   return (
     <form className="panel" onSubmit={submit}>
-      <p className="subtext">
-        ここで商品マスターの基本情報を登録します。レシピ（BOM:原料・資材）は登録後の編集画面で設定してください。
-      </p>
+      <div className="toolbar flush-top">
+        <strong>新規商品</strong>
+        <HelpTooltip text="ここでは商品マスターの基本情報を登録します。レシピ（BOM: 原料・資材）は登録後の編集画面で設定します。" />
+      </div>
 
       <fieldset>
         <legend>基本情報</legend>
@@ -322,7 +324,10 @@ export default function ProductCreateForm({
             />
           </label>
           <label>
-            <span>入数(c/s)</span>
+            <span className="inline-action">
+              入数(c/s)
+              <HelpTooltip text="元Excelの「入り数(c/s)」です。" />
+            </span>
             <input
               type="number"
               min={0}
@@ -331,7 +336,6 @@ export default function ProductCreateForm({
               placeholder="例: 24"
               onChange={(e) => setPackCount(e.target.value)}
             />
-            <span className="subtext">元Excelの「入り数(c/s)」です。</span>
           </label>
           <label>
             <span>入数表記</span>
@@ -342,7 +346,10 @@ export default function ProductCreateForm({
             />
           </label>
           <label>
-            <span>ケース入数（{unit || "袋"}/ケース）</span>
+            <span className="inline-action">
+              ケース入数（{unit || "袋"}/ケース）
+              <HelpTooltip text={`1ケースに入る${unit || "袋"}数です。空なら入数(c/s)を使います。`} />
+            </span>
             <input
               type="number"
               min={0}
@@ -351,7 +358,6 @@ export default function ProductCreateForm({
               placeholder="未設定なら袋表示"
               onChange={(e) => setCasePackQty(e.target.value)}
             />
-            <span className="subtext">1ケースに入る{unit || "袋"}数。空なら入数(c/s)を使います。</span>
           </label>
           <label>
             <span>結束</span>
@@ -454,8 +460,12 @@ export default function ProductCreateForm({
       </fieldset>
 
       <fieldset>
-        <legend>生産能力（任意）</legend>
-        <p className="subtext">1人時生産量を入力した場合のみ登録します。</p>
+        <legend>
+          <span className="inline-action">
+            生産能力（任意）
+            <HelpTooltip text="1人時生産量を入力した場合のみ登録します。" />
+          </span>
+        </legend>
         <div className="row">
           <label>
             <span>作業場所</span>
@@ -492,8 +502,12 @@ export default function ProductCreateForm({
       </fieldset>
 
       <fieldset>
-        <legend>手間賃単価（任意）</legend>
-        <p className="subtext">単価を入力した場合のみ登録します。</p>
+        <legend>
+          <span className="inline-action">
+            手間賃単価（任意）
+            <HelpTooltip text="単価を入力した場合のみ登録します。" />
+          </span>
+        </legend>
         <div className="row">
           <label>
             <span>単価</span>
@@ -506,23 +520,27 @@ export default function ProductCreateForm({
             />
           </label>
           <label>
-            <span>単位</span>
+            <span className="inline-action">
+              単位
+              <HelpTooltip text={`空なら商品単位（${unit || "袋"}）を使います。`} />
+            </span>
             <input
               className="unit-field"
               value={billingUnit}
               placeholder={unit || "袋"}
               onChange={(e) => setBillingUnit(e.target.value)}
             />
-            <span className="subtext">空なら商品単位（{unit || "袋"}）を使います。</span>
           </label>
           <label>
-            <span>適用開始日</span>
+            <span className="inline-action">
+              適用開始日
+              <HelpTooltip text="空なら有効開始日、または本日を使います。" />
+            </span>
             <input
               type="date"
               value={billingEffectiveFrom}
               onChange={(e) => setBillingEffectiveFrom(e.target.value)}
             />
-            <span className="subtext">空なら有効開始 / 本日を使います。</span>
           </label>
         </div>
       </fieldset>

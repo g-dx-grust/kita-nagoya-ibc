@@ -1,3 +1,4 @@
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { prisma } from "@/lib/prisma";
 import DailyReportDayEntry, { type DayPlanRow } from "./daily-report-day-entry";
 
@@ -64,11 +65,12 @@ export default async function DailyReportsPage({
 
   return (
     <>
-      <h1>日報</h1>
-      <p className="section-note">
-        当日の生産予定を一覧で表示します。各予定に実数量（必要なら実使用量も）を入力し、「当日分をまとめて確定」で
-        実績を在庫・原価に反映します。時間・人数は予定値を自動採用します（個別に細かく直す場合は各予定の詳細画面へ）。
-      </p>
+      <div className="page-title-row">
+        <h1>日報</h1>
+        <div className="page-title-actions">
+          <HelpTooltip text="当日の生産予定に実数量と必要な実使用量を入力し、当日分をまとめて確定すると実績を在庫・原価に反映します。時間・人数は予定値を自動採用します。" />
+        </div>
+      </div>
 
       <form className="panel toolbar" method="GET">
         <label>

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { kitagoyaApiPath } from "@/lib/paths";
 
 export type CapacityReviewRow = {
@@ -306,10 +307,10 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
       {error && <div className="alert danger">{error}</div>}
 
       <div className="panel">
-        <p className="section-note">
-          聞き方の例: 「この商品は、普段何人で、何時間で、何袋くらい作れますか？」
-          入力した数量・人数・時間から袋/人時を計算できます。時間は 0.25 時間 = 15分単位が目安です。
-        </p>
+        <div className="toolbar flush-top">
+          <strong>能力一覧</strong>
+          <HelpTooltip text="聞き取りした数量・人数・時間から袋/人時を計算できます。時間は 0.25 時間 = 15分単位が目安です。" />
+        </div>
         <div className="table-scroll capacity-review-scroll">
           <table className="capacity-review-table">
             <thead>

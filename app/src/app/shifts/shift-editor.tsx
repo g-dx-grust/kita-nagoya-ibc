@@ -156,7 +156,8 @@ export default function ShiftEditor({ date, rows }: { date: string; rows: Employ
       {error && <div className="alert danger">{error}</div>}
       {message && <div className="alert success">{message}</div>}
 
-      <table>
+      <div className="table-frame">
+        <table>
         <thead>
           <tr>
             <th>出勤</th>
@@ -271,7 +272,8 @@ export default function ShiftEditor({ date, rows }: { date: string; rows: Employ
             </tr>
           )}
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
   );
 }

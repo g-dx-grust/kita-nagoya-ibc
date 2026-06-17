@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { cn } from "@/lib/utils";
 
 interface MenuCardProps {
@@ -21,11 +22,11 @@ export function MenuCard({ title, buttonText, href, helpText, disabled }: MenuCa
         "menu-card h-full transition-colors",
         disabled ? "bg-[var(--surface-subtle)]" : "hover:border-[var(--primary)] hover:bg-[var(--surface-subtle)]",
       )}
-      title={helpText}
     >
       <CardHeader className="menu-card-header">
         <div className="flex items-center justify-between gap-3">
           <CardTitle className="text-[15px] font-semibold text-[var(--text)]">{title}</CardTitle>
+          {helpText && <HelpTooltip text={helpText} />}
         </div>
       </CardHeader>
       <CardContent className="menu-card-content mt-auto">

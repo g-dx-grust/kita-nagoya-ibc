@@ -9,6 +9,7 @@ import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 import { formatCases } from "@/lib/units";
 import ProductCombobox from "@/components/ui/product-combobox";
 import SearchableCombobox from "@/components/ui/searchable-combobox";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 type ProductOption = {
   id: string;
@@ -310,7 +311,10 @@ export default function AutoScheduleForm({
       </div>
 
       <div className="toolbar">
-        <h2>今日作る商品</h2>
+        <h2>
+          今日作る商品
+          <HelpTooltip text="生産能力が1部屋分だけ登録されている商品は、外注以外の部屋にも同じ能力を仮適用して自動配置します。自動作成では受注生産を先に配置し、在庫生産は後工程に回します。部屋の使い分けは作業場所マスターの自動予定の役割で設定します。" />
+        </h2>
         <div className="spacer" />
         <button
           type="button"
@@ -322,87 +326,85 @@ export default function AutoScheduleForm({
         </button>
       </div>
       <div className="panel">
-        <p className="section-note">
-          生産能力が1部屋分だけ登録されている商品は、外注以外の部屋にも同じ能力を仮適用して自動配置します。
-          自動作成では受注生産を先に配置し、在庫生産は後工程に回します。部屋の使い分けは作業場所マスターの「自動予定の役割」で設定します。
-        </p>
-        <table>
-          <thead>
-            <tr>
-              <th>No.</th>
-              <th>商品</th>
-              <th>数量</th>
-              <th>区分</th>
-              <th>標準作業場所</th>
-              <th>生産能力 / 人時</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, index) => {
-              const product = productMap.get(row.productId);
-              return (
-                <tr key={index}>
-                  <td className="right">{index + 1}</td>
-                  <td>
-                    <ProductCombobox
-                      products={products}
-                      value={row.productId}
-                      onChange={(id) => {
-                        const product = productMap.get(id);
-                        update(index, {
-                          productId: id,
-                          quantity: defaultQuantity(product),
-                          productionType:
-                            product?.productionType === "make_to_order" ? "make_to_order" : "stock",
-                        });
-                      }}
-                      required
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      min={1}
-                      step={1}
-                      value={row.quantity}
-                      onChange={(e) => update(index, { quantity: Number(e.target.value) })}
-                    />
-                    <span className="subtext">
-                      {product?.standardProductionLotSize
-                        ? `日報生産数: ${formatNumber(product.standardProductionLotSize)}${product.unit}`
-                        : product?.unit ?? ""}
-                    </span>
-                  </td>
-                  <td>
-                    <select
-                      value={row.productionType}
-                      onChange={(e) => update(index, { productionType: e.target.value })}
-                    >
-                      <option value="stock">在庫生産</option>
-                      <option value="make_to_order">受注生産</option>
-                      <option value="external">外注</option>
-                      <option value="trial">試作</option>
-                      <option value="other">その他</option>
-                    </select>
-                  </td>
-                  <td>{product?.defaultWorkAreaName ?? "自動選択"}</td>
-                  <td>{product?.capacitySummary ?? "未登録"}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="secondary"
-                      onClick={() => setRows(rows.filter((_, i) => i !== index))}
-                      disabled={rows.length === 1}
-                    >
-                      削除
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="table-frame">
+          <table>
+            <thead>
+              <tr>
+                <th>No.</th>
+                <th>商品</th>
+                <th>数量</th>
+                <th>区分</th>
+                <th>標準作業場所</th>
+                <th>生産能力 / 人時</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => {
+                const product = productMap.get(row.productId);
+                return (
+                  <tr key={index}>
+                    <td className="right">{index + 1}</td>
+                    <td>
+                      <ProductCombobox
+                        products={products}
+                        value={row.productId}
+                        onChange={(id) => {
+                          const product = productMap.get(id);
+                          update(index, {
+                            productId: id,
+                            quantity: defaultQuantity(product),
+                            productionType:
+                              product?.productionType === "make_to_order" ? "make_to_order" : "stock",
+                          });
+                        }}
+                        required
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={row.quantity}
+                        onChange={(e) => update(index, { quantity: Number(e.target.value) })}
+                      />
+                      <span className="subtext">
+                        {product?.standardProductionLotSize
+                          ? `日報生産数: ${formatNumber(product.standardProductionLotSize)}${product.unit}`
+                          : product?.unit ?? ""}
+                      </span>
+                    </td>
+                    <td>
+                      <select
+                        value={row.productionType}
+                        onChange={(e) => update(index, { productionType: e.target.value })}
+                      >
+                        <option value="stock">在庫生産</option>
+                        <option value="make_to_order">受注生産</option>
+                        <option value="external">外注</option>
+                        <option value="trial">試作</option>
+                        <option value="other">その他</option>
+                      </select>
+                    </td>
+                    <td>{product?.defaultWorkAreaName ?? "自動選択"}</td>
+                    <td>{product?.capacitySummary ?? "未登録"}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => setRows(rows.filter((_, i) => i !== index))}
+                        disabled={rows.length === 1}
+                      >
+                        削除
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
         <div className="row form-actions">
           <button
             type="button"
@@ -431,13 +433,18 @@ export default function AutoScheduleForm({
 
       {result && (
         <div className="panel">
-          <h2>{result.persisted ? "確定済みスケジュール" : "自動作成プレビュー"}</h2>
+          <h2>
+            {result.persisted ? "確定済みスケジュール" : "自動作成プレビュー"}
+            {!result.persisted && (
+              <HelpTooltip text="出勤者全員を複数部屋へ自動配置し、作業の終わった人は別部屋へ合流させています。作業場所は変更できます。細かな人の入れ替えは当日 人員割り当てで調整します。" />
+            )}
+          </h2>
           <div className={result.persisted ? "alert success" : "alert info"}>
             {result.persisted
-              ? "生産予定として確定しました。印刷や詳細画面で内容を確認できます。"
+              ? "生産予定として確定しました。"
               : result.mode === "max_quantity"
-                ? "まだ保存されていません。出勤者全員を複数部屋へ自動配置し、作業の終わった人は別部屋へ合流させています（人員はシフトから自動決定）。作業場所は変更でき、細かな人の入れ替えは「当日 人員割り当て」のドラッグ調整で行えます。"
-                : "まだ保存されていません。条件や数量を変えて何度でも試せます。問題なければこの内容で確定してください。"}
+                ? "プレビューです。必要に応じて調整してください。"
+                : "プレビューです。条件や数量を変更できます。"}
           </div>
           <div className="table-frame">
           <table>

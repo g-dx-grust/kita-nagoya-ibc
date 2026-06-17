@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, type CSSProperties, type ReactNode } from "react";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import SearchableCombobox from "@/components/ui/searchable-combobox";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 
@@ -407,17 +408,14 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
   return (
     <>
       <div className="toolbar">
-        <h1>当日 人員割り当て</h1>
+        <h1>
+          当日 人員割り当て
+          <HelpTooltip text="確定済みの生産予定と当日の出勤シフトをもとに、出勤者全員を作業場所へ割り当てます。部屋レーンと人タイムラインで、誰がどの部屋で何時から何を作るかを確認できます。" />
+        </h1>
         <div className="spacer" />
         <Link href={kitagoyaPath(`/shifts?date=${date}`)}>シフトを確認</Link>
         <Link href={kitagoyaPath(`/production-plans?date=${date}`)}>生産予定を確認</Link>
       </div>
-      <p className="section-note">
-        確定済みの生産予定と当日の出勤シフトをもとに、出勤者全員を作業場所へ割り当てます。
-        「誰がどの部屋で何時から何を、次に何を作るか」を部屋レーンと人タイムラインの両方で表示します。
-        手すき（宙ぶらりん）の人が出る場合は理由つきで表示します。ページ下部の部屋ボックスでカードをクリックまたはドラッグして人を微調整し、
-        商品ごとの割り当てから商品側の部屋も変更できます。
-      </p>
 
       <div className="card" style={{ display: "flex", gap: 16, alignItems: "flex-end", flexWrap: "wrap" }}>
         <label>
@@ -490,7 +488,12 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
                 </ul>
               </div>
             )}
-            {!persisted && <p className="subtext" style={{ marginTop: 8 }}>※ これはプレビューです。「この割り当てを保存」で確定し、印刷へ進めます。</p>}
+            {!persisted && (
+              <div className="inline-action after-table">
+                <span className="badge info">プレビュー</span>
+                <HelpTooltip text="この割り当てを保存すると確定し、印刷へ進めます。" />
+              </div>
+            )}
             <AreaLegend areas={areaOrder} colorOf={colorOf} />
           </div>
 
@@ -702,7 +705,10 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
           {view === "board" && (
             <div className="card">
               <div className="toolbar">
-                <h2 style={{ margin: 0 }}>部屋ボックス（クリック / ドラッグで配置変更）</h2>
+                <h2 style={{ margin: 0 }}>
+                  部屋ボックス
+                  <HelpTooltip text="各カードは人と作業時間帯です。カードをクリックして配置先の部屋を選ぶか、別の部屋ボックスへドラッグすると、その時間帯はその部屋に固定され、残りは自動で再配置します。手すき・未割当へ戻すと固定を解除します。" />
+                </h2>
                 <div className="spacer" />
                 {pins.length > 0 && (
                   <>
@@ -713,11 +719,6 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
                   </>
                 )}
               </div>
-              <p className="section-note">
-                各カードは「人＋作業時間帯」です。カードをクリックして配置先の部屋を選ぶか、別の部屋ボックスへドラッグすると、
-                その時間帯はその部屋に固定（📌）され、残りは自動で再配置します。「手すき・未割当」へ戻すと固定を解除します。
-              </p>
-
               <div className="alloc-board">
                 {areaOptions.map((area) => {
                   const cards = cardsByArea.get(area.workAreaId) ?? [];

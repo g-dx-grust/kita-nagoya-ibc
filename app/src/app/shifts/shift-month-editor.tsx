@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 import { matchesQuery } from "@/lib/search";
 
@@ -295,6 +296,7 @@ export default function ShiftMonthEditor({
         <span className="muted">
           出勤セル {presentCount} / {totalCells}
         </span>
+        <HelpTooltip text="セルクリックで出勤と休みを切り替えます。日付ヘッダークリックで全員分を一括切替できます。月一括保存では、その月の他シフト記録をセル選択された出勤者だけに置き換えます。個別の時刻変更は保存後に日単位画面で調整します。" />
         <input
           className="filter-search"
           type="search"
@@ -438,14 +440,9 @@ export default function ShiftMonthEditor({
         </table>
       </div>
 
-      <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>
-        ・セルクリックで出勤/休を切替。列の日付ヘッダーをクリックすると全員の出勤を一括切替できます。<br />
-        ・基本開始/終了/休憩は従業員ごとの基本勤務時間として保存され、月一括保存した出勤セルの時刻にも反映されます。<br />
-        ・個別に時刻を変えたい日は、保存後{" "}
-        <Link href={kitagoyaPath(`/shifts?date=${year}-${String(month).padStart(2, "0")}-01`)}>日単位画面</Link>{" "}
-        から調整してください。<br />
-        ・月一括保存を押すと、その月の他のシフト記録は <strong>セル選択された出勤者だけに置き換わります</strong>。
-      </p>
+      <div className="after-table">
+        <Link href={kitagoyaPath(`/shifts?date=${year}-${String(month).padStart(2, "0")}-01`)}>日単位画面</Link>
+      </div>
     </>
   );
 }

@@ -39,11 +39,11 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
       />
       <main
         className={cn(
-          "min-h-[calc(100vh-3.5rem)] min-w-0 overflow-x-auto pt-14 transition-[margin] duration-200",
+          "min-h-[calc(100vh-3.5rem)] min-w-0 overflow-x-hidden pt-14 transition-[margin] duration-200",
           isSidebarCollapsed ? "lg:ml-[72px]" : "lg:ml-[220px]",
         )}
       >
-        <div className="min-w-0 p-4 sm:p-5 lg:p-6 xl:p-7">{children}</div>
+        <div className="w-full min-w-0 max-w-full p-4 sm:p-5 lg:p-6 xl:p-7">{children}</div>
       </main>
     </div>
   );

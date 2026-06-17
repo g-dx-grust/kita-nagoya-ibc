@@ -1,3 +1,4 @@
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { prisma } from "@/lib/prisma";
 import { kitagoyaApiPath } from "@/lib/paths";
 import MasterForm, { type MasterField } from "../master-form";
@@ -38,10 +39,12 @@ export default async function SuppliersPage() {
 
   return (
     <>
-      <h1>仕入先マスター</h1>
-      <p className="section-note">
-        発注書に表示される仕入先はここで管理します。原料・資材マスターから仕入先を選んで紐付けてください。
-      </p>
+      <div className="page-title-row">
+        <h1>仕入先マスター</h1>
+        <div className="page-title-actions">
+          <HelpTooltip text="発注書に表示される仕入先を管理します。原料・資材マスターから仕入先を選んで紐付けます。" />
+        </div>
+      </div>
       <MasterForm
         endpoint={kitagoyaApiPath("/suppliers")}
         kind="仕入先"

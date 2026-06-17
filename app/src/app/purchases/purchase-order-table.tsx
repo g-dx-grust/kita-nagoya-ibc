@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import CollapsiblePanel from "@/components/ui/collapsible-panel";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import {
   purchaseOrderStatusLabel,
   purchaseOrderUrgencyClass,
@@ -249,11 +250,15 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
     <>
       {message && <div className="alert success">{message}</div>}
       {error && <div className="alert danger">{error}</div>}
-      {showCaseNote && (
-        <p className="section-note">資材はケース入数があれば基本単位とケース数を併記します。編集は基本単位で行います。</p>
-      )}
       <CollapsiblePanel
-        title="表内検索・絞り込み"
+        title={
+          <span className="inline-action">
+            表内検索・絞り込み
+            {showCaseNote && (
+              <HelpTooltip text="資材はケース入数があれば基本単位とケース数を併記します。編集は基本単位で行います。" />
+            )}
+          </span>
+        }
         summary={`${filteredRows.length} / ${rows.length} 件${hasActiveFilters ? " / 条件あり" : ""}`}
         open={hasActiveFilters}
       >

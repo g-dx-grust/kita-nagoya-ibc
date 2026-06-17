@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BarChart3 } from "lucide-react";
 
 import CollapsiblePanel from "@/components/ui/collapsible-panel";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { prisma } from "@/lib/prisma";
 import {
   aggregateProductDailyReports,
@@ -241,14 +242,15 @@ export default async function ProductionDailyReportsPage({
       )}
 
       <CollapsiblePanel
-        title="検索・表示条件"
+        title={
+          <span className="inline-action">
+            検索・表示条件
+            <HelpTooltip text="1製造の実績、複数原料、賞味期限、時間、生産数を入力すると、手間賃・原価・売値・利率を自動計算し、原料在庫を差し引きます。蓄積実績から月次の1袋手間賃を更新できます。" />
+          </span>
+        }
         summary={`${formatMonthLabel(month)} / ${productId ? "商品指定あり" : "全商品"}${q ? ` / ${q}` : ""}`}
         open={!!(productId || q)}
       >
-        <p className="section-note">
-          1製造の実績(複数原料・賞味期限・時間・生産数)を入力すると、手間賃・原価・売値・利率を自動計算し、
-          原料在庫を差引きます。蓄積した実績から月次の1袋手間賃を更新できます。
-        </p>
         <form className="toolbar compact-controls" method="GET">
           <label>
             <span>対象月</span>

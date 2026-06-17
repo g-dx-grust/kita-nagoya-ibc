@@ -5,6 +5,7 @@ import { CheckCircle, Image as ImageIcon, Pencil, Plus, RefreshCw, Save, Trash2,
 import { useRouter } from "next/navigation";
 
 import CollapsiblePanel from "@/components/ui/collapsible-panel";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import SectionTabs from "@/components/ui/section-tabs";
 import ProductCombobox, { type ProductComboOption } from "@/components/ui/product-combobox";
 import SearchableCombobox from "@/components/ui/searchable-combobox";
@@ -748,7 +749,7 @@ function MaterialsEditor({
       {!compact && (
         <div className="row" style={{ alignItems: "center" }}>
           <strong>使用原料（複数可）</strong>
-          <span className="subtext">原料を選び、使用量(kg)を入力してください。確定で在庫から差引きます。</span>
+          <HelpTooltip text="原料を選び、使用量(kg)を入力します。確定すると在庫から差し引きます。" />
         </div>
       )}
       <div className="table-frame">
@@ -863,15 +864,13 @@ function MonthlyLaborFeePanel({ selectedMonth, rows }: { selectedMonth: string; 
     <section className="panel">
       <div className="row" style={{ alignItems: "center" }}>
         <span className="muted">対象月 {selectedMonth}</span>
+        <HelpTooltip text="蓄積した日報の実績から1袋手間賃の中央値を商品別に算出します。反映すると売値の手間賃単価を翌月から更新します。" />
         <div className="spacer" />
         <button type="button" className="secondary gap-2" onClick={recompute} disabled={busy}>
           <RefreshCw className="h-4 w-4" />
           対象月の蓄積から再計算
         </button>
       </div>
-      <p className="section-note">
-        蓄積した日報の実績(1袋手間賃)の中央値を商品別に算出します。「反映」で売値（手間賃単価）を翌月から更新します。
-      </p>
       {msg && <div className="alert success">{msg}</div>}
       {err && <div className="alert danger">{err}</div>}
       <div className="table-frame">

@@ -144,34 +144,36 @@ export default async function HomePage() {
             発注期限が迫っている(または超過した)品目が {orderByAlerts.length} 件あります。{" "}
             <Link href={kitagoyaPath("/purchases")}>発注候補</Link> から発注してください。
           </div>
-          <table>
-            <thead>
-              <tr>
-                <th>区分</th>
-                <th>品目</th>
-                <th>発注数量</th>
-                <th>発注期限</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orderByAlerts.map((alert) => (
-                <tr key={alert.id}>
-                  <td>{alert.itemType === "raw_material" ? "原料" : "資材"}</td>
-                  <td>{alert.itemName}</td>
-                  <td className="right">
-                    {formatCases(alert.orderedQuantity, {
-                      casePackQty: alert.casePackQty,
-                      baseUnit: alert.unit,
-                    })}
-                  </td>
-                  <td>
-                    {alert.recommendedOrderDate || "—"}{" "}
-                    <span className="badge danger">緊急</span>
-                  </td>
+          <div className="table-frame">
+            <table>
+              <thead>
+                <tr>
+                  <th>区分</th>
+                  <th>品目</th>
+                  <th>発注数量</th>
+                  <th>発注期限</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {orderByAlerts.map((alert) => (
+                  <tr key={alert.id}>
+                    <td>{alert.itemType === "raw_material" ? "原料" : "資材"}</td>
+                    <td>{alert.itemName}</td>
+                    <td className="right">
+                      {formatCases(alert.orderedQuantity, {
+                        casePackQty: alert.casePackQty,
+                        baseUnit: alert.unit,
+                      })}
+                    </td>
+                    <td>
+                      {alert.recommendedOrderDate || "—"}{" "}
+                      <span className="badge danger">緊急</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
 
@@ -182,45 +184,47 @@ export default async function HomePage() {
           から開始してください。
         </div>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>日付</th>
-              <th>商品</th>
-              <th>作業場所</th>
-              <th>数量</th>
-              <th>開始</th>
-              <th>終了</th>
-              <th>状態</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {upcoming.map((p) => (
-              <tr key={p.id}>
-                <td>{p.date.toISOString().slice(0, 10)}</td>
-                <td>{p.product.officialName}</td>
-                <td>{p.workArea.name}</td>
-                <td className="right">
-                  {formatCases(p.plannedQuantity, { casePackQty: p.product.casePackQty, baseUnit: p.unit })}
-                </td>
-                <td>{p.plannedStartTime}</td>
-                <td>
-                  {p.plannedEndTime ?? "—"}
-                  {p.overtimeMinutes > 0 && <span className="badge warn"> 残{p.overtimeMinutes}分</span>}
-                </td>
-                <td>
-                  <span className={`badge ${planStatusClass(p.status)}`}>
-                    {planStatusLabel(p.status)}
-                  </span>
-                </td>
-                <td>
-                  <Link href={kitagoyaPath(`/production-plans/${p.id}`)}>開く</Link>
-                </td>
+        <div className="table-frame">
+          <table>
+            <thead>
+              <tr>
+                <th>日付</th>
+                <th>商品</th>
+                <th>作業場所</th>
+                <th>数量</th>
+                <th>開始</th>
+                <th>終了</th>
+                <th>状態</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {upcoming.map((p) => (
+                <tr key={p.id}>
+                  <td>{p.date.toISOString().slice(0, 10)}</td>
+                  <td>{p.product.officialName}</td>
+                  <td>{p.workArea.name}</td>
+                  <td className="right">
+                    {formatCases(p.plannedQuantity, { casePackQty: p.product.casePackQty, baseUnit: p.unit })}
+                  </td>
+                  <td>{p.plannedStartTime}</td>
+                  <td>
+                    {p.plannedEndTime ?? "—"}
+                    {p.overtimeMinutes > 0 && <span className="badge warn"> 残{p.overtimeMinutes}分</span>}
+                  </td>
+                  <td>
+                    <span className={`badge ${planStatusClass(p.status)}`}>
+                      {planStatusLabel(p.status)}
+                    </span>
+                  </td>
+                  <td>
+                    <Link href={kitagoyaPath(`/production-plans/${p.id}`)}>開く</Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </>
   );

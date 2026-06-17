@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 import { ceilDisplayQuantity, formatCases } from "@/lib/units";
 import ProductCombobox from "@/components/ui/product-combobox";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 type ProductOption = {
   id: string;
@@ -377,7 +378,10 @@ export default function ProductPlanningClient({
         </form>
 
         <form className="panel" onSubmit={submitMonthlyActual}>
-          <h2>月次実績を登録</h2>
+          <h2>
+            月次実績を登録
+            <HelpTooltip text="月間予定は、前年対象月の実績に「今年前々月 ÷ 前年前々月」の前年比を掛けて予測します。" />
+          </h2>
           <div className="row">
             <label>
               <span>商品</span>
@@ -402,9 +406,6 @@ export default function ProductPlanningClient({
               <input value={actualNote} onChange={(e) => setActualNote(e.target.value)} />
             </label>
           </div>
-          <p className="section-note">
-            月間予定は、前年対象月の実績に「今年前々月 ÷ 前年前々月」の前年比を掛けて予測します。
-          </p>
           <div className="form-actions">
             <button type="submit" disabled={busy || !actualProductId}>
               月次実績を保存
@@ -441,88 +442,93 @@ export default function ProductPlanningClient({
       </div>
 
       <h2>製品在庫</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>管理コード</th>
-            <th>商品名</th>
-            <th>現在庫</th>
-          </tr>
-        </thead>
-        <tbody>
-          {products.map((product) => (
-            <tr key={product.id}>
-              <td>{product.productCode}</td>
-              <td>{product.officialName}</td>
-              <td className="right">
-                {formatCases(stockByProductId[product.id] ?? 0, {
-                  casePackQty: product.casePackQty,
-                  baseUnit: product.unit,
-                })}
-              </td>
+      <div className="table-frame">
+        <table>
+          <thead>
+            <tr>
+              <th>管理コード</th>
+              <th>商品名</th>
+              <th>現在庫</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {products.map((product) => (
+              <tr key={product.id}>
+                <td>{product.productCode}</td>
+                <td>{product.officialName}</td>
+                <td className="right">
+                  {formatCases(stockByProductId[product.id] ?? 0, {
+                    casePackQty: product.casePackQty,
+                    baseUnit: product.unit,
+                  })}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       <h2>生産候補</h2>
       {suggestions.length === 0 ? (
         <div className="empty-state">対象期間で不足する商品はありません。</div>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>商品</th>
-              <th>現在庫</th>
-              <th>予定生産</th>
-              <th>受注/出荷</th>
-              <th>安全在庫</th>
-              <th>不足</th>
-              <th>推奨生産数</th>
-              <th>理由</th>
-            </tr>
-          </thead>
-          <tbody>
-            {suggestions.map((suggestion) => {
-              const cp = caseOf(suggestion.productId);
-              const fmt = (v: number) => formatCases(v, { casePackQty: cp, baseUnit: suggestion.unit });
-              return (
-                <tr key={suggestion.productId}>
-                  <td>
-                    {suggestion.productCode} · {suggestion.productName}
-                  </td>
-                  <td className="right">{fmt(suggestion.onHandQuantity)}</td>
-                  <td className="right">{fmt(suggestion.plannedProductionQuantity)}</td>
-                  <td className="right">{fmt(suggestion.openDemandQuantity)}</td>
-                  <td className="right">{fmt(suggestion.safetyStockQuantity)}</td>
-                  <td className="right">{fmt(suggestion.shortageQuantity)}</td>
-                  <td className="right">
-                    <strong>{fmt(suggestion.suggestedQuantity)}</strong>
-                  </td>
-                  <td>{suggestion.reason}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="table-frame">
+          <table>
+            <thead>
+              <tr>
+                <th>商品</th>
+                <th>現在庫</th>
+                <th>予定生産</th>
+                <th>受注/出荷</th>
+                <th>安全在庫</th>
+                <th>不足</th>
+                <th>推奨生産数</th>
+                <th>理由</th>
+              </tr>
+            </thead>
+            <tbody>
+              {suggestions.map((suggestion) => {
+                const cp = caseOf(suggestion.productId);
+                const fmt = (v: number) => formatCases(v, { casePackQty: cp, baseUnit: suggestion.unit });
+                return (
+                  <tr key={suggestion.productId}>
+                    <td>
+                      {suggestion.productCode} · {suggestion.productName}
+                    </td>
+                    <td className="right">{fmt(suggestion.onHandQuantity)}</td>
+                    <td className="right">{fmt(suggestion.plannedProductionQuantity)}</td>
+                    <td className="right">{fmt(suggestion.openDemandQuantity)}</td>
+                    <td className="right">{fmt(suggestion.safetyStockQuantity)}</td>
+                    <td className="right">{fmt(suggestion.shortageQuantity)}</td>
+                    <td className="right">
+                      <strong>{fmt(suggestion.suggestedQuantity)}</strong>
+                    </td>
+                    <td>{suggestion.reason}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <h2>月間予測に使う月次実績</h2>
       {monthlyActuals.length === 0 ? (
         <div className="empty-state">対象月の予測に必要な月次実績はまだ登録されていません。</div>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>対象年月</th>
-              <th>商品</th>
-              <th>実績数量</th>
-              <th>登録元</th>
-              <th>メモ</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
+        <div className="table-frame">
+          <table>
+            <thead>
+              <tr>
+                <th>対象年月</th>
+                <th>商品</th>
+                <th>実績数量</th>
+                <th>登録元</th>
+                <th>メモ</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
               {monthlyActuals.map((actual) => {
                 const editing = editingActualId === actual.id && actualDraft;
                 const actualCasePackQty = caseOf(actual.product.id);
@@ -617,28 +623,30 @@ export default function ProductPlanningClient({
                 </tr>
               );
             })}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
       )}
 
       <h2>未処理の受注/出荷予定</h2>
       {demands.length === 0 ? (
         <div className="empty-state">未処理の受注/出荷予定はありません。</div>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>必要日</th>
-              <th>種別</th>
-              <th>商品</th>
-              <th>数量</th>
-              <th>得意先/メモ</th>
-              <th>参照</th>
-              <th>状態</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
+        <div className="table-frame">
+          <table>
+            <thead>
+              <tr>
+                <th>必要日</th>
+                <th>種別</th>
+                <th>商品</th>
+                <th>数量</th>
+                <th>得意先/メモ</th>
+                <th>参照</th>
+                <th>状態</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
             {demands.map((demand) => {
               const editing = editingDemandId === demand.id && demandDraft;
               const demandCasePackQty = caseOf(demand.product.id);
@@ -751,8 +759,9 @@ export default function ProductPlanningClient({
                 </tr>
               );
             })}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
       )}
     </>
   );

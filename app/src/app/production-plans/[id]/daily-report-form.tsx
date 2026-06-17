@@ -209,40 +209,42 @@ export default function DailyReportForm({
       {requirements.length > 0 && (
         <>
           <h3>実使用量（原料・資材）</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>区分</th>
-                <th>名称</th>
-                <th>予定使用量</th>
-                <th>実使用量</th>
-              </tr>
-            </thead>
-            <tbody>
-              {requirements.map((r) => {
-                const key = `${r.itemType}:${r.itemId}`;
-                return (
-                  <tr key={key}>
-                    <td>{r.itemType === "raw_material" ? "原料" : "資材"}</td>
-                    <td>{r.itemName}</td>
-                    <td className="right">
-                      {r.plannedQuantity} {r.unit}
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.0001"
-                        value={consumptions[key] ?? 0}
-                        disabled={confirmed}
-                        onChange={(e) => setConsumptions({ ...consumptions, [key]: Number(e.target.value) })}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="table-frame">
+            <table>
+              <thead>
+                <tr>
+                  <th>区分</th>
+                  <th>名称</th>
+                  <th>予定使用量</th>
+                  <th>実使用量</th>
+                </tr>
+              </thead>
+              <tbody>
+                {requirements.map((r) => {
+                  const key = `${r.itemType}:${r.itemId}`;
+                  return (
+                    <tr key={key}>
+                      <td>{r.itemType === "raw_material" ? "原料" : "資材"}</td>
+                      <td>{r.itemName}</td>
+                      <td className="right">
+                        {r.plannedQuantity} {r.unit}
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.0001"
+                          value={consumptions[key] ?? 0}
+                          disabled={confirmed}
+                          onChange={(e) => setConsumptions({ ...consumptions, [key]: Number(e.target.value) })}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
 

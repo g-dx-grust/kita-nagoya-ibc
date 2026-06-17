@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import type { EditableGridRow } from "@/lib/inventory-editable-grid";
 import { computeGridBalances } from "@/lib/inventory-editable-grid";
 import { kitagoyaApiPath } from "@/lib/paths";
@@ -176,9 +177,7 @@ export function InventoryEditableGrid({
     <section className="panel manual-grid">
       <div className="manual-grid-head">
         <strong>在庫の手入力（管理者・セル編集）</strong>
-        <span className="muted">
-          入荷・使用量・賞味期限・出荷期限・前月繰越のセルに直接入力し、まとめて保存します。手入力分は自動値に加算されます（「自動」表示が元の確定値）。
-        </span>
+        <HelpTooltip text="入荷・使用量・賞味期限・出荷期限・前月繰越のセルに直接入力し、まとめて保存します。手入力分は自動値に加算されます。「自動」表示が元の確定値です。" />
         <span className="manual-grid-actions">
           {message && <span className="manual-grid-msg">{message}</span>}
           {hasChanges && <span className="badge warn">未保存 {dirtyCells.size} 件</span>}

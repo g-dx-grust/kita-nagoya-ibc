@@ -1,3 +1,4 @@
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { prisma } from "@/lib/prisma";
 import { kitagoyaApiPath } from "@/lib/paths";
 import MasterForm from "../master-form";
@@ -30,10 +31,12 @@ export default async function WorkAreasPage() {
 
   return (
     <>
-      <h1>作業場所マスター</h1>
-      <p className="section-note">
-        部屋名・外注先名は文字起こし上の表記が不確実なため、ここで自由に追加・変更してください。
-      </p>
+      <div className="page-title-row">
+        <h1>作業場所マスター</h1>
+        <div className="page-title-actions">
+          <HelpTooltip text="部屋名・外注先名はマスターで追加・変更できます。生産予定や能力設定ではここに登録した名称を使います。" />
+        </div>
+      </div>
       <MasterForm
         endpoint={kitagoyaApiPath("/work-areas")}
         kind="作業場所"

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import SearchableCombobox from "@/components/ui/searchable-combobox";
 import { kitagoyaApiPath } from "@/lib/paths";
 
@@ -296,9 +297,11 @@ export default function ProductEditor({
       <div className="panel">
         <div className="row">
           <label>
-            <span>管理コード *</span>
+            <span className="inline-action">
+              管理コード *
+              <HelpTooltip text="商品分類表にコード列がないため、システム内の管理コードとして扱います。" />
+            </span>
             <input value={productCode} onChange={(e) => setProductCode(e.target.value)} required />
-            <span className="subtext">商品分類表にコード列が無いため、システム内の管理コードとして扱います。</span>
           </label>
           <label>
             <span>正式名称</span>
@@ -348,7 +351,10 @@ export default function ProductEditor({
             />
           </label>
           <label>
-            <span>入数(c/s)</span>
+            <span className="inline-action">
+              入数(c/s)
+              <HelpTooltip text="元Excelの「入り数(c/s)」です。" />
+            </span>
             <input
               type="number"
               min={0}
@@ -357,14 +363,16 @@ export default function ProductEditor({
               placeholder="例: 24"
               onChange={(e) => setPackCount(e.target.value)}
             />
-            <span className="subtext">元Excelの「入り数(c/s)」です。</span>
           </label>
           <label>
             <span>入数表記</span>
             <input value={packCountExpression} onChange={(e) => setPackCountExpression(e.target.value)} />
           </label>
           <label>
-            <span>ケース入数（{unit || "袋"}/ケース）</span>
+            <span className="inline-action">
+              ケース入数（{unit || "袋"}/ケース）
+              <HelpTooltip text={`1ケースに入る${unit || "袋"}数です。空なら入数(c/s)を使います。`} />
+            </span>
             <input
               type="number"
               min={0}
@@ -373,7 +381,6 @@ export default function ProductEditor({
               placeholder="未設定なら袋表示"
               onChange={(e) => setCasePackQty(e.target.value)}
             />
-            <span className="subtext">1ケースに入る{unit || "袋"}数。空なら入数(c/s)を使います。</span>
           </label>
           <label>
             <span>結束</span>
@@ -507,7 +514,8 @@ export default function ProductEditor({
 
       <h2>手間賃単価</h2>
       <div className="panel">
-        <table>
+        <div className="table-frame">
+          <table>
           <thead>
             <tr>
               <th>単価</th>
@@ -598,7 +606,8 @@ export default function ProductEditor({
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
         <div className="row form-actions">
           <button
             type="button"
@@ -623,7 +632,8 @@ export default function ProductEditor({
 
       <h2>BOM (原料・資材)</h2>
       <div className="panel">
-        <table>
+        <div className="table-frame">
+          <table>
           <thead>
             <tr>
               <th>区分</th>
@@ -715,7 +725,8 @@ export default function ProductEditor({
               );
             })}
           </tbody>
-        </table>
+          </table>
+        </div>
         <div className="row form-actions">
           <button
             type="button"
@@ -737,7 +748,8 @@ export default function ProductEditor({
 
       <h2>生産能力 (1時間1人あたり生産量)</h2>
       <div className="panel">
-        <table>
+        <div className="table-frame">
+          <table>
           <thead>
             <tr>
               <th>作業場所</th>
@@ -815,7 +827,8 @@ export default function ProductEditor({
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
         <div className="row form-actions">
           <button
             type="button"

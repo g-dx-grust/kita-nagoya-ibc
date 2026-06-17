@@ -67,6 +67,8 @@
   --success-border: #5fb895;
   --info-border: #86a8ec;
   --shadow: 0 1px 2px rgba(31, 35, 41, 0.06);
+  --shadow-panel: 0 8px 22px rgba(31, 35, 41, 0.07);
+  --focus-soft: 0 0 0 3px rgba(31, 86, 210, 0.18);
 }
 
 * {
@@ -93,6 +95,7 @@
 
 html,
 body {
+  width: 100%;
   margin: 0;
   min-height: 100%;
   background: var(--bg);
@@ -103,6 +106,7 @@ body {
   line-height: 1.5;
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
+  overflow-x: hidden;
 }
 
 main {
@@ -227,6 +231,7 @@ h2::before {
 }
 
 .panel {
+  max-width: 100%;
   margin-bottom: 16px;
   padding: 18px;
   background: var(--surface);
@@ -254,6 +259,7 @@ h2::before {
 
 table {
   display: table;
+  max-width: 100%;
   width: 100%;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -267,20 +273,30 @@ table {
 
 .table-frame {
   width: 100%;
-  overflow-x: auto;
+  max-width: 100%;
+  overflow: auto;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
-  box-shadow: var(--shadow), inset -14px 0 14px -16px rgba(31, 35, 41, 0.55);
+  box-shadow: var(--shadow), inset -16px 0 16px -18px rgba(31, 35, 41, 0.7);
+  overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
 
 .table-frame table {
   border: none;
   border-radius: 0;
-  min-width: max-content;
+  width: max-content;
+  min-width: 100%;
   box-shadow: none;
 }
+
+.table-frame thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
 
 .daily-report-heading {
   display: flex;
@@ -812,7 +828,7 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--primary);
-  outline: 2px solid rgba(36, 91, 219, 0.18);
+  outline: 2px solid rgba(31, 86, 210, 0.18);
   outline-offset: 1px;
 }
 
@@ -1165,6 +1181,7 @@ button:disabled {
   align-items: center;
   gap: 12px;
   margin-bottom: 16px;
+  min-width: 0;
 }
 
 .panel.toolbar {
@@ -1228,6 +1245,63 @@ form.toolbar {
   font-weight: 500;
 }
 
+.help-tooltip {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  cursor: help;
+  vertical-align: middle;
+}
+
+.help-tooltip:hover,
+.help-tooltip:focus-visible {
+  border-color: var(--primary);
+  color: var(--primary);
+  outline: none;
+  box-shadow: var(--focus-soft);
+}
+
+.help-tooltip-bubble {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 8px);
+  left: 0;
+  display: none;
+  width: max-content;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 14px 32px rgba(31, 35, 41, 0.18);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.page-title-actions .help-tooltip-bubble,
+.menu-card .help-tooltip-bubble {
+  right: 0;
+  left: auto;
+}
+
+.help-tooltip:hover .help-tooltip-bubble,
+.help-tooltip:focus-visible .help-tooltip-bubble,
+.help-tooltip:focus-within .help-tooltip-bubble {
+  display: block;
+}
+
 .page-title-row {
   display: flex;
   flex-wrap: wrap;
@@ -1252,6 +1326,7 @@ form.toolbar {
   justify-content: flex-end;
   gap: 8px;
   margin-left: auto;
+  min-width: 0;
 }
 
 .collapsible-panel {
@@ -2631,17 +2706,18 @@ button.mini {
   align-items: center;
   gap: 10px;
   margin: 14px 0 16px;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
   box-shadow: var(--shadow);
+  min-width: 0;
 }
 .filter-bar .filter-search {
-  flex: 1 1 340px;
+  flex: 1 1 320px;
   width: auto;
-  min-width: 220px;
-  max-width: 520px;
+  min-width: 240px;
+  max-width: 560px;
   min-height: 36px;
   padding: 7px 12px;
   border: 1px solid var(--border-strong);
@@ -2655,7 +2731,7 @@ button.mini {
 }
 .filter-bar select {
   width: auto;
-  min-width: 168px;
+  min-width: 156px;
   max-width: 260px;
   min-height: 36px;
   padding: 7px 10px;
@@ -2796,10 +2872,10 @@ mark.search-hit {
 
 .excel-inventory-scroll {
   width: 100%;
-  max-height: 72vh;
+  max-height: min(74vh, 780px);
   overflow: auto;
-  border: 1px solid #9aa5a0;
-  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
   background: var(--surface);
   box-shadow: var(--shadow), inset -14px 0 14px -16px rgba(31, 35, 41, 0.55);
   overscroll-behavior: contain;
@@ -2823,11 +2899,11 @@ mark.search-hit {
 }
 
 .excel-inventory-table col.excel-col-name {
-  width: 220px;
+  width: 240px;
 }
 
 .excel-inventory-table col.excel-col-supplier {
-  width: 160px;
+  width: 180px;
 }
 
 .excel-inventory-table col.excel-col-label {
@@ -2839,7 +2915,7 @@ mark.search-hit {
 }
 
 .excel-inventory-table col.excel-col-day {
-  width: 78px;
+  width: 84px;
 }
 
 .excel-inventory-table col.excel-col-summary {
@@ -2848,8 +2924,8 @@ mark.search-hit {
 
 .excel-inventory-table th,
 .excel-inventory-table td {
-  height: 32px;
-  padding: 5px 7px;
+  height: 34px;
+  padding: 6px 8px;
   border-right: 1px solid #aeb8b3;
   border-bottom: 1px solid #aeb8b3;
   font-size: 12px;
@@ -2862,7 +2938,7 @@ mark.search-hit {
   position: sticky;
   top: 0;
   z-index: 4;
-  height: 46px;
+  height: 48px;
   background: #e9eef3;
   border-bottom: 2px solid #727f78;
   color: #23302a;
@@ -2889,11 +2965,11 @@ mark.search-hit {
 }
 
 .excel-inventory-table .sticky-supplier {
-  left: 274px;
+  left: 294px;
 }
 
 .excel-inventory-table .sticky-label {
-  left: 434px;
+  left: 474px;
 }
 
 .excel-rowspan-cell {
@@ -2902,7 +2978,7 @@ mark.search-hit {
 }
 
 .excel-item-name {
-  max-width: 196px;
+  max-width: 216px;
   white-space: normal;
   overflow-wrap: anywhere;
   line-height: 1.35;
@@ -2963,10 +3039,10 @@ mark.search-hit {
 /* --- Excel-like monthly production sheet --- */
 .excel-production-scroll {
   width: 100%;
-  max-height: 68vh;
+  max-height: min(70vh, 760px);
   overflow: auto;
-  border: 1px solid #9aa5a0;
-  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
   background: var(--surface);
   box-shadow: var(--shadow), inset -14px 0 14px -16px rgba(31, 35, 41, 0.55);
   overscroll-behavior: contain;
@@ -3254,18 +3330,20 @@ td .combobox {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 12px;
+  gap: 10px 12px;
 }
 .manual-grid-head > strong {
   flex: 0 0 auto;
 }
 .manual-grid-head > .muted {
-  flex: 1 1 320px;
+  flex: 1 1 280px;
   font-size: 12px;
 }
 .manual-grid-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
   margin-left: auto;
 }
@@ -3279,12 +3357,12 @@ td .combobox {
 .excel-inventory-editable .excel-cell-input {
   width: 100%;
   min-width: 52px;
-  min-height: 26px;
-  padding: 2px 4px;
+  min-height: 28px;
+  padding: 3px 5px;
   font-size: 12px;
   text-align: right;
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: 4px;
 }
 .excel-inventory-editable .excel-cell-input.excel-cell-date {
   min-width: 110px;
