@@ -274,11 +274,15 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
   }
 
   if (rows.length === 0) {
-    return <div className="empty-state">この日の生産予定はありません。生産予定を登録してください。</div>;
+    return (
+      <div id="daily-report-entry" className="empty-state anchor-offset">
+        この日の生産予定はありません。生産予定を登録してください。
+      </div>
+    );
   }
 
   return (
-    <section>
+    <section id="daily-report-entry" className="anchor-offset">
       {message && <div className="alert success">{message}</div>}
       {error && <div className="alert danger">{error}</div>}
 

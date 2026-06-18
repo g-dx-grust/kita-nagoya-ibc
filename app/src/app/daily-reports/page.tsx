@@ -1,6 +1,15 @@
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import Link from "next/link";
-import { CalendarDays, ChevronLeft, ChevronRight, ClipboardCheck } from "lucide-react";
+import {
+  BarChart3,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardCheck,
+  ClipboardList,
+  PackageCheck,
+  Save,
+} from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { kitagoyaPath } from "@/lib/paths";
 import DailyReportDayEntry, { type DayPlanRow } from "./daily-report-day-entry";
@@ -64,11 +73,67 @@ export default async function DailyReportsPage({
 
   const confirmedCount = rows.filter((r) => r.reportStatus === "confirmed").length;
   const draftCount = rows.filter((r) => r.reportStatus === "draft").length;
+  const unenteredCount = rows.filter((r) => r.reportStatus === "none").length;
   const pendingCount = rows.filter((r) => r.reportStatus !== "confirmed").length;
+  const materialLineCount = rows.reduce((count, row) => count + row.requirements.length, 0);
+  const noRequirementCount = rows.filter((row) => row.requirements.length === 0).length;
   const previousDate = shiftDate(date, -1);
   const nextDate = shiftDate(date, 1);
   const today = new Date().toISOString().slice(0, 10);
+  const month = date.slice(0, 7);
   const hasRows = rows.length > 0;
+  const productionPlansHref = kitagoyaPath(`/production-plans?dateFrom=${date}&dateTo=${date}`);
+  const monthlyReportHref = kitagoyaPath(`/production-daily-reports?month=${month}`);
+  const nextDailyReportAction =
+    rows.length === 0
+      ? { label: "生産予定を確認", href: productionPlansHref }
+      : pendingCount > 0
+        ? { label: "日報入力へ進む", href: "#daily-report-entry" }
+        : noRequirementCount > 0
+          ? { label: "BOMなしを確認", href: "#daily-report-entry" }
+          : { label: "月次集計へ進む", href: monthlyReportHref };
+  const dailyReportFlowCards = [
+    {
+      label: "生産日",
+      count: date,
+      detail: "表示条件",
+      href: "#daily-report-date",
+      tone: "info",
+      Icon: CalendarDays,
+    },
+    {
+      label: "生産予定",
+      count: rows.length,
+      detail: "当日予定",
+      href: productionPlansHref,
+      tone: rows.length > 0 ? "info" : "warn",
+      Icon: ClipboardList,
+    },
+    {
+      label: "入力対象",
+      count: pendingCount,
+      detail: `未入力 ${unenteredCount}`,
+      href: "#daily-report-entry",
+      tone: pendingCount > 0 ? "warn" : "success",
+      Icon: Save,
+    },
+    {
+      label: "使用量",
+      count: materialLineCount,
+      detail: noRequirementCount > 0 ? `BOMなし ${noRequirementCount}` : "原料・資材",
+      href: "#daily-report-entry",
+      tone: noRequirementCount > 0 ? "warn" : "info",
+      Icon: PackageCheck,
+    },
+    {
+      label: "月次集計",
+      count: confirmedCount,
+      detail: `${month} 商品別`,
+      href: monthlyReportHref,
+      tone: pendingCount === 0 && rows.length > 0 ? "success" : "info",
+      Icon: BarChart3,
+    },
+  ];
 
   return (
     <>
@@ -76,6 +141,14 @@ export default async function DailyReportsPage({
         <h1>日報</h1>
         <div className="page-title-actions">
           <HelpTooltip text="当日の生産予定に実数量と必要な実使用量を入力し、当日分をまとめて確定すると実績を在庫・原価に反映します。時間・人数は予定値を自動採用します。" />
+          <Link className="button-link secondary-link" href={productionPlansHref}>
+            <ClipboardList size={16} aria-hidden="true" />
+            生産予定
+          </Link>
+          <Link className="button-link" href={monthlyReportHref}>
+            <BarChart3 size={16} aria-hidden="true" />
+            月次集計
+          </Link>
         </div>
       </div>
 
@@ -89,12 +162,17 @@ export default async function DailyReportsPage({
             <CalendarDays size={16} aria-hidden="true" />
             {date} の日報確認
           </strong>
+          <Link className="daily-report-overview-next" href={nextDailyReportAction.href}>
+            次: {nextDailyReportAction.label}
+          </Link>
         </div>
         <div className="daily-report-overview-checks">
           <span className="badge info">予定 {rows.length}件</span>
           <span className="badge success">確定 {confirmedCount}件</span>
           <span className="badge info">下書き {draftCount}件</span>
+          <span className="badge muted">未入力 {unenteredCount}件</span>
           <span className={`badge ${pendingCount > 0 ? "warn" : "success"}`}>未確定 {pendingCount}件</span>
+          {noRequirementCount > 0 && <span className="badge warn">BOMなし {noRequirementCount}件</span>}
         </div>
         <div className="daily-report-overview-actions" aria-label="日報日付移動">
           <Link className="button-link secondary-link" href={kitagoyaPath(`/daily-reports?date=${previousDate}`)}>
@@ -111,7 +189,20 @@ export default async function DailyReportsPage({
         </div>
       </div>
 
-      <form className="panel toolbar" method="GET">
+      <div className="daily-report-overview-flow" aria-label="当日日報フロー">
+        {dailyReportFlowCards.map(({ label, count, detail, href, tone, Icon }) => (
+          <Link key={label} className={`daily-report-overview-card ${tone}`} href={href}>
+            <span>
+              <Icon size={15} aria-hidden="true" />
+              {label}
+            </span>
+            <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
+            <small>{detail}</small>
+          </Link>
+        ))}
+      </div>
+
+      <form id="daily-report-date" className="panel toolbar anchor-offset" method="GET">
         <label>
           <span>生産日</span>
           <input name="date" type="date" defaultValue={date} />

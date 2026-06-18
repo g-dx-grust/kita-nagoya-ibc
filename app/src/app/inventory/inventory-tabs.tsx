@@ -181,7 +181,7 @@ export function InventoryTabs({
   }
 
   return (
-    <section>
+    <section id="inventory-review" className="anchor-offset">
       <div className="section-tabs-header inventory-table-header">
         <h2>{title}</h2>
         <div className="inv-tabs" role="tablist" aria-label="在庫の種類">
@@ -450,7 +450,7 @@ function InventoryExcelTable({
     sheet.rows.length === 0 ? "表示する在庫マスターがありません。" : "該当する在庫がありません。";
   const visibleRowLabels: InventoryRowLabel[] = showShelfLifeRows ? [...rowLabels] : ["使用量", "入荷", "残"];
   return (
-    <section className="inventory-sheet-section">
+    <section id="inventory-sheet" className="inventory-sheet-section anchor-offset">
       <div className="inventory-sheet-meta">
         <span className="badge muted">
           <Table2 size={14} aria-hidden="true" />
