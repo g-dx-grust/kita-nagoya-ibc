@@ -219,7 +219,7 @@ export default function PlanListTable({
 
   return (
     <>
-      <div className={`plan-list-command panel ${commandTone}`}>
+      <div id="plan-list-review" className={`plan-list-command panel anchor-offset ${commandTone}`}>
         <div className="plan-list-command-main">
           <span className={`badge ${commandTone}`}>
             <ClipboardCheck size={14} aria-hidden="true" />

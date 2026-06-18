@@ -2,6 +2,16 @@
 
 import Link from "next/link";
 import { useState, type CSSProperties, type ReactNode } from "react";
+import {
+  AlertTriangle,
+  CalendarDays,
+  CheckCircle2,
+  ClipboardCheck,
+  ClipboardList,
+  Printer,
+  Save,
+  Users,
+} from "lucide-react";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import SearchableCombobox from "@/components/ui/searchable-combobox";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
@@ -419,12 +429,38 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
   const today = toDateInputValue(new Date());
   const previousDate = shiftDate(date, -1);
   const nextDate = shiftDate(date, 1);
+  const productionPlansHref = productionPlansDayHref(date);
+  const shiftsHref = kitagoyaPath(`/shifts?date=${date}`);
+  const staffPrintHref = kitagoyaPath(`/prints/staff-assignments?date=${date}`);
+  const schedulePrintHref = kitagoyaPath(`/prints/production-schedule?date=${date}`);
+  const allocationFlowTone = result && totalAlertCount === 0 && persisted ? "success" : "warn";
+  const nextAllocationLabel = !result
+    ? "プレビュー開始"
+    : totalAlertCount > 0
+      ? "商品別を確認"
+      : persisted
+        ? "スタッフ配置を印刷"
+        : "割り当てを保存";
   const reviewQueues = [
     { key: "room" as View, label: "部屋ボード", count: areaOrder.length },
     { key: "people" as View, label: "人タイムライン", count: summary?.idleStaffCount ?? 0 },
     { key: "jobs" as View, label: "商品別確認", count: totalAlertCount },
     { key: "board" as View, label: "部屋ボックス", count: manualAdjustmentCount },
   ];
+
+  function runNextAllocationAction() {
+    if (!result) {
+      void call(false);
+      return;
+    }
+    if (totalAlertCount > 0) {
+      setView("jobs");
+      return;
+    }
+    if (!persisted) {
+      void call(true);
+    }
+  }
 
   return (
     <>
@@ -434,13 +470,84 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
           <HelpTooltip text="確定済みの生産予定と当日の出勤シフトをもとに、出勤者全員を作業場所へ割り当てます。部屋レーンと人タイムラインで、誰がどの部屋で何時から何を作るかを確認できます。" />
         </h1>
         <div className="page-title-actions allocation-title-actions">
-          <Link className="button-link secondary-link" href={kitagoyaPath(`/shifts?date=${date}`)}>
+          <Link className="button-link secondary-link" href={shiftsHref}>
             シフトを確認
           </Link>
-          <Link className="button-link secondary-link" href={kitagoyaPath(`/production-plans?date=${date}`)}>
+          <Link className="button-link secondary-link" href={productionPlansHref}>
             生産予定を確認
           </Link>
         </div>
+      </div>
+
+      <div className={`allocation-flow-command ${allocationFlowTone}`}>
+        <div className="allocation-flow-title">
+          {allocationFlowTone === "success" ? (
+            <CheckCircle2 size={18} aria-hidden="true" />
+          ) : (
+            <AlertTriangle size={18} aria-hidden="true" />
+          )}
+          <span className={`badge ${allocationFlowTone}`}>
+            {allocationFlowTone === "success" ? "配置保存済み" : "配置確認中"}
+          </span>
+          <strong>当日割り当てフロー</strong>
+          <span className="subtext">
+            {date} / {result ? `出勤者 ${summary?.totalStaff ?? 0}名 / 注意 ${totalAlertCount}件` : "プレビュー前"}
+          </span>
+        </div>
+        {persisted ? (
+          <Link className="allocation-flow-next" href={staffPrintHref}>
+            次: {nextAllocationLabel}
+          </Link>
+        ) : (
+          <button type="button" className="allocation-flow-next" onClick={runNextAllocationAction} disabled={loading}>
+            次: {nextAllocationLabel}
+          </button>
+        )}
+      </div>
+      <div className="allocation-flow-queue" aria-label="当日割り当てフロー">
+        <Link className="allocation-flow-card info" href={productionPlansHref}>
+          <span>
+            <ClipboardList size={15} aria-hidden="true" />
+            生産予定
+          </span>
+          <strong>{allocation?.jobs.length ?? "確認"}</strong>
+          <small>{date}</small>
+        </Link>
+        <Link className="allocation-flow-card info" href={shiftsHref}>
+          <span>
+            <CalendarDays size={15} aria-hidden="true" />
+            シフト
+          </span>
+          <strong>{summary?.totalStaff ?? "確認"}</strong>
+          <small>出勤者</small>
+        </Link>
+        <button type="button" className={`allocation-flow-card ${result ? (totalAlertCount > 0 ? "warn" : "success") : "info"}`} onClick={() => call(false)} disabled={loading}>
+          <span>
+            <Users size={15} aria-hidden="true" />
+            プレビュー
+          </span>
+          <strong>{result ? (totalAlertCount > 0 ? totalAlertCount : "OK") : "未"}</strong>
+          <small>{result ? readinessLabel : "未計算"}</small>
+        </button>
+        {persisted ? (
+          <Link className="allocation-flow-card success" href={staffPrintHref}>
+            <span>
+              <Printer size={15} aria-hidden="true" />
+              保存・印刷
+            </span>
+            <strong>済</strong>
+            <small>配置表へ</small>
+          </Link>
+        ) : (
+          <button type="button" className={`allocation-flow-card ${result ? "warn" : "info"}`} onClick={() => (result ? call(true) : call(false))} disabled={loading || (!result && loading)}>
+            <span>
+              {result ? <Save size={15} aria-hidden="true" /> : <ClipboardCheck size={15} aria-hidden="true" />}
+              保存・印刷
+            </span>
+            <strong>{result ? "保存" : "未"}</strong>
+            <small>{result ? "確定して印刷へ" : "プレビュー後"}</small>
+          </button>
+        )}
       </div>
 
       <div className="panel allocation-control-panel">
@@ -561,10 +668,10 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
             </span>
           </div>
           <div className="allocation-start-actions">
-            <Link className="button-link secondary-link" href={kitagoyaPath(`/production-plans?date=${date}`)}>
+            <Link className="button-link secondary-link" href={productionPlansHref}>
               生産予定を確認
             </Link>
-            <Link className="button-link secondary-link" href={kitagoyaPath(`/shifts?date=${date}`)}>
+            <Link className="button-link secondary-link" href={shiftsHref}>
               シフトを確認
             </Link>
             <button type="button" onClick={() => call(false)} disabled={loading}>
@@ -577,11 +684,11 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
         <div className="alert success allocation-save-alert">
           <span>{savedMessage}</span>
           <div className="allocation-print-actions">
-            <Link className="button-link secondary-link" href={kitagoyaPath(`/prints/staff-assignments?date=${date}`)}>
+            <Link className="button-link secondary-link" href={staffPrintHref}>
               スタッフ配置を印刷
             </Link>
-            <Link className="button-link secondary-link" href={kitagoyaPath(`/prints/production-schedule?date=${date}`)}>
-              生産スケジュールを印刷
+            <Link className="button-link secondary-link" href={schedulePrintHref}>
+              作業日報を印刷
             </Link>
           </div>
         </div>
@@ -1024,6 +1131,10 @@ function isPinned(pins: Pin[], employeeId: string, start: string, end: string, w
   return pins.some(
     (p) => p.employeeId === employeeId && p.startTime === start && p.endTime === end && p.workAreaId === workAreaId,
   );
+}
+
+function productionPlansDayHref(date: string) {
+  return kitagoyaPath(`/production-plans?dateFrom=${date}&dateTo=${date}`);
 }
 
 function toDateInputValue(date: Date) {

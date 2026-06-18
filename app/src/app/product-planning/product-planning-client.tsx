@@ -3,7 +3,16 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ClipboardList, ListFilter, PackageCheck, RotateCcw, SlidersHorizontal } from "lucide-react";
+import {
+  BarChart3,
+  ClipboardList,
+  Database,
+  ListFilter,
+  PackageCheck,
+  RotateCcw,
+  SlidersHorizontal,
+  Truck,
+} from "lucide-react";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 import { ceilDisplayQuantity, formatCases } from "@/lib/units";
 import ProductCombobox from "@/components/ui/product-combobox";
@@ -163,14 +172,79 @@ export default function ProductPlanningClient({
       : "不足なし";
   const nextPlanningAction =
     planningStats.hardShortageCount > 0
-      ? "生産が必要な候補を確認"
+      ? { label: "生産が必要な候補を確認", filter: "hard" as SuggestionQuickFilter, sectionId: "product-planning-suggestions" }
       : planningStats.dependencyCount > 0
-        ? "入荷確認の候補を確認"
+        ? { label: "入荷確認の候補を確認", filter: "dependency" as SuggestionQuickFilter, sectionId: "product-planning-suggestions" }
         : planningStats.suggestedCount > 0
-          ? "推奨ありを確認"
+          ? { label: "推奨ありを確認", filter: "suggested" as SuggestionQuickFilter, sectionId: "product-planning-suggestions" }
           : demands.length > 0
-            ? "未処理予定を確認"
-            : "月間予定へ進めます";
+            ? { label: "未処理予定を確認", sectionId: "product-planning-demands" }
+            : { label: "月間予定へ進む", href: kitagoyaPath(`/production-plans/monthly?dateFrom=${initialDateFrom}&dateTo=${initialDateTo}`) };
+  const planningFlowCards = [
+    {
+      label: "登録",
+      count: showInputPanel ? "開" : "閉",
+      detail: "在庫・予定・実績",
+      action: () => {
+        setShowInputPanel(true);
+        scrollToSection("product-planning-inputs");
+      },
+      tone: "info",
+      Icon: SlidersHorizontal,
+    },
+    {
+      label: "在庫",
+      count: products.length,
+      detail: "製品別現在庫",
+      action: () => scrollToSection("product-planning-stock"),
+      tone: "info",
+      Icon: Database,
+    },
+    {
+      label: "生産候補",
+      count: planningStats.suggestedCount,
+      detail: `候補 ${planningStats.candidateCount}`,
+      action: () => {
+        setSuggestionFilter(planningStats.suggestedCount > 0 ? "suggested" : "all");
+        scrollToSection("product-planning-suggestions");
+      },
+      tone: planningStats.suggestedCount > 0 ? "warn" : "success",
+      Icon: PackageCheck,
+    },
+    {
+      label: "月次実績",
+      count: monthlyActuals.length,
+      detail: initialTargetMonth,
+      action: () => scrollToSection("product-planning-actuals"),
+      tone: monthlyActuals.length > 0 ? "success" : "warn",
+      Icon: BarChart3,
+    },
+    {
+      label: "未処理予定",
+      count: demands.length,
+      detail: "受注/出荷",
+      action: () => scrollToSection("product-planning-demands"),
+      tone: demands.length > 0 ? "warn" : "success",
+      Icon: Truck,
+    },
+  ];
+
+  function scrollToSection(id: string) {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function runNextPlanningAction() {
+    if ("filter" in nextPlanningAction && nextPlanningAction.filter) {
+      setSuggestionFilter(nextPlanningAction.filter);
+    }
+    if ("href" in nextPlanningAction && nextPlanningAction.href) {
+      window.location.href = nextPlanningAction.href;
+      return;
+    }
+    if ("sectionId" in nextPlanningAction && nextPlanningAction.sectionId) {
+      scrollToSection(nextPlanningAction.sectionId);
+    }
+  }
 
   async function submitStock(e: React.FormEvent) {
     e.preventDefault();
@@ -361,7 +435,9 @@ export default function ProductPlanningClient({
           <span className="subtext">
             {initialDateFrom} - {initialDateTo}
           </span>
-          <span className="product-planning-next">次: {nextPlanningAction}</span>
+          <button type="button" className="product-planning-next" onClick={runNextPlanningAction}>
+            次: {nextPlanningAction.label}
+          </button>
         </div>
         <div className="product-planning-checks">
           <span className={`badge ${planningStats.candidateCount > 0 ? "info" : "success"}`}>
@@ -397,6 +473,19 @@ export default function ProductPlanningClient({
             月間生産予定を生成
           </Link>
         </div>
+      </div>
+
+      <div className="product-planning-flow-grid" aria-label="製品計画フロー">
+        {planningFlowCards.map(({ label, count, detail, action, tone, Icon }) => (
+          <button key={label} type="button" className={`product-planning-flow-card ${tone}`} onClick={action}>
+            <span>
+              <Icon size={15} aria-hidden="true" />
+              {label}
+            </span>
+            <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
+            <small>{detail}</small>
+          </button>
+        ))}
       </div>
 
       <div className="product-planning-queue" aria-label="生産候補レビュー順">
@@ -451,7 +540,7 @@ export default function ProductPlanningClient({
       </div>
 
       {showInputPanel && (
-      <div className="grid grid-2 product-planning-input-grid">
+      <div id="product-planning-inputs" className="grid grid-2 product-planning-input-grid anchor-offset">
         <form className="panel" onSubmit={submitStock}>
           <h2>製品在庫を登録</h2>
           <div className="row">
@@ -586,6 +675,7 @@ export default function ProductPlanningClient({
       </div>
       )}
 
+      <section id="product-planning-stock" className="anchor-offset">
       <h2>製品在庫</h2>
       <div className="table-frame">
         <table>
@@ -612,7 +702,9 @@ export default function ProductPlanningClient({
           </tbody>
         </table>
       </div>
+      </section>
 
+      <section id="product-planning-suggestions" className="anchor-offset">
       <h2>生産候補</h2>
       {suggestions.length === 0 ? (
         <div className="empty-state">対象期間で不足する商品はありません。</div>
@@ -691,7 +783,9 @@ export default function ProductPlanningClient({
         </div>
         </>
       )}
+      </section>
 
+      <section id="product-planning-actuals" className="anchor-offset">
       <h2>月間予測に使う月次実績</h2>
       {monthlyActuals.length === 0 ? (
         <div className="empty-state">対象月の予測に必要な月次実績はまだ登録されていません。</div>
@@ -807,7 +901,9 @@ export default function ProductPlanningClient({
           </table>
         </div>
       )}
+      </section>
 
+      <section id="product-planning-demands" className="anchor-offset">
       <h2>未処理の受注/出荷予定</h2>
       {demands.length === 0 ? (
         <div className="empty-state">未処理の受注/出荷予定はありません。</div>
@@ -943,6 +1039,7 @@ export default function ProductPlanningClient({
           </table>
         </div>
       )}
+      </section>
     </>
   );
 }
