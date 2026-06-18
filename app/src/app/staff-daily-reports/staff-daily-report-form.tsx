@@ -118,6 +118,8 @@ export default function StaffDailyReportForm({
     () => [
       { label: "入力者", done: Boolean(form.submittedBy.trim()) },
       { label: "商品", done: Boolean(form.productId) },
+      { label: "時間", done: Boolean(form.startTime && form.endTime && preview.operatingMinutes > 0) },
+      { label: "人数", done: toNumber(form.workerCount) > 0 },
       { label: "生産数", done: toNumber(form.productionQty) > 0 },
       {
         label: "原料",
@@ -125,7 +127,17 @@ export default function StaffDailyReportForm({
       },
       { label: "写真", done: photos.length > 0 },
     ],
-    [form.materials, form.productId, form.productionQty, form.submittedBy, photos.length],
+    [
+      form.endTime,
+      form.materials,
+      form.productId,
+      form.productionQty,
+      form.startTime,
+      form.submittedBy,
+      form.workerCount,
+      photos.length,
+      preview.operatingMinutes,
+    ],
   );
   const staffComboboxOptions = useMemo(
     () =>
@@ -233,6 +245,9 @@ export default function StaffDailyReportForm({
       <div className="staff-entry-status panel">
         <div className="staff-entry-status-head">
           <strong>入力状況</strong>
+          <span className={`badge ${preview.warnings.length > 0 ? "warn" : "success"}`}>
+            {preview.warnings.length > 0 ? `確認 ${preview.warnings.length}` : "計算OK"}
+          </span>
           <span className="badge info">写真 {photos.length}/4</span>
         </div>
         <div className="staff-entry-status-list">

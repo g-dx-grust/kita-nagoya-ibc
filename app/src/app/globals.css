@@ -4907,6 +4907,13 @@ form.toolbar {
   margin-bottom: 14px;
 }
 
+.staff-report-date-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 .staff-report-date-form {
   display: flex;
   flex-wrap: wrap;
@@ -5335,6 +5342,18 @@ form.toolbar {
 }
 
 @media (max-width: 720px) {
+  .staff-report-date-nav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .staff-report-date-nav .button-link {
+    justify-content: center;
+    min-width: 0;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
   .staff-report-date-form,
   .staff-report-date-form label,
   .staff-report-date-form button {

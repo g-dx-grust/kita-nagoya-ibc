@@ -1,5 +1,8 @@
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import Link from "next/link";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { kitagoyaPath } from "@/lib/paths";
 import { loadProductDailyReportSnapshotsForProducts } from "@/lib/product-daily-report-service";
 import StaffDailyReportForm, {
   type StaffDailyReportLaborRateOption,
@@ -17,7 +20,10 @@ export default async function StaffDailyReportsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const sp = await searchParams;
-  const date = normalizeDate(sp.date ?? new Date().toISOString().slice(0, 10));
+  const date = normalizeDate(sp.date ?? toDateInputValue(new Date()));
+  const previousDate = shiftDate(date, -1);
+  const nextDate = shiftDate(date, 1);
+  const today = toDateInputValue(new Date());
   const dayStart = new Date(`${date}T00:00:00.000Z`);
   const dayEnd = new Date(`${date}T23:59:59.999Z`);
 
@@ -138,6 +144,19 @@ export default async function StaffDailyReportsPage({
         </div>
       </div>
       <div className="staff-report-top-panel">
+        <div className="staff-report-date-nav">
+          <Link className="button-link secondary-link gap-2" href={kitagoyaPath(`/staff-daily-reports?date=${previousDate}`)}>
+            <ChevronLeft className="h-4 w-4" />
+            前日
+          </Link>
+          <Link className="button-link secondary-link" href={kitagoyaPath(`/staff-daily-reports?date=${today}`)}>
+            今日
+          </Link>
+          <Link className="button-link secondary-link gap-2" href={kitagoyaPath(`/staff-daily-reports?date=${nextDate}`)}>
+            翌日
+            <ChevronRight className="h-4 w-4" />
+          </Link>
+        </div>
         <form className="staff-report-date-form" method="GET">
           <label>
             <span>対象日</span>
@@ -176,5 +195,18 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function normalizeDate(value: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : new Date().toISOString().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : toDateInputValue(new Date());
+}
+
+function shiftDate(date: string, days: number) {
+  const target = new Date(`${date}T00:00:00`);
+  target.setDate(target.getDate() + days);
+  return toDateInputValue(target);
+}
+
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
