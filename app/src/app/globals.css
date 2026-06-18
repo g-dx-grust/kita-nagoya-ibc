@@ -755,6 +755,23 @@ table {
   margin: 0;
 }
 
+.invoice-export-badges,
+.invoice-export-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.invoice-export-presets {
+  margin-top: -2px;
+}
+
+.invoice-export-presets button {
+  min-height: 32px;
+  padding: 6px 12px;
+}
+
 .invoice-export-grid {
   display: grid;
   grid-template-columns: minmax(140px, 170px) minmax(140px, 170px) minmax(160px, 190px) minmax(120px, auto);
@@ -822,6 +839,16 @@ table {
 
   .invoice-export-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .invoice-export-presets {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .invoice-export-presets button {
+    width: 100%;
+    min-width: 0;
   }
 
   .invoice-export-submit {
