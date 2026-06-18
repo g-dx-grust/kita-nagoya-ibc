@@ -1,6 +1,18 @@
-import { HelpTooltip } from "@/components/ui/help-tooltip";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  AlertTriangle,
+  BarChart3,
+  CalendarDays,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardList,
+  PackageCheck,
+  Send,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { prisma } from "@/lib/prisma";
 import { kitagoyaPath } from "@/lib/paths";
 import { loadProductDailyReportSnapshotsForProducts } from "@/lib/product-daily-report-service";
@@ -27,7 +39,7 @@ export default async function StaffDailyReportsPage({
   const dayStart = new Date(`${date}T00:00:00.000Z`);
   const dayEnd = new Date(`${date}T23:59:59.999Z`);
 
-  const [products, materialMaster, bomRows, laborRates, plans, shifts] = await Promise.all([
+  const [products, materialMaster, bomRows, laborRates, plans, shifts, submittedReports] = await Promise.all([
     prisma.product.findMany({
       where: { active: true },
       include: { aliases: true },
@@ -60,6 +72,10 @@ export default async function StaffDailyReportsPage({
       },
       include: { employee: true },
       orderBy: [{ startTime: "asc" }],
+    }),
+    prisma.productionDailyReportEntry.findMany({
+      where: { active: true, reportDate: { gte: dayStart, lte: dayEnd } },
+      select: { id: true, approvalStatus: true, inventoryReflected: true },
     }),
   ]);
 
@@ -134,16 +150,143 @@ export default async function StaffDailyReportsPage({
     startTime: shift.startTime,
     endTime: shift.endTime,
   }));
+  const month = date.slice(0, 7);
+  const uniqueStaffCount = new Set(staffOptions.map((staff) => staff.id)).size;
+  const plannedWorkAreaCount = new Set(planSuggestions.map((plan) => plan.workAreaName)).size;
+  const submittedCount = submittedReports.filter((report) => report.approvalStatus === "submitted").length;
+  const approvedCount = submittedReports.filter((report) => report.approvalStatus === "approved").length;
+  const reflectedCount = submittedReports.filter((report) => report.inventoryReflected).length;
+  const productionPlansHref = kitagoyaPath(`/production-plans?dateFrom=${date}&dateTo=${date}`);
+  const shiftsHref = kitagoyaPath(`/shifts?date=${date}`);
+  const adminDailyReportsHref = kitagoyaPath(`/production-daily-reports?month=${month}&review=1#daily-report-review`);
+  const readinessIssues =
+    (planSuggestions.length === 0 ? 1 : 0) +
+    (uniqueStaffCount === 0 ? 1 : 0) +
+    (productOptions.length === 0 ? 1 : 0) +
+    (materialOptions.length === 0 ? 1 : 0) +
+    (laborRateOptions.length === 0 ? 1 : 0);
+  const readinessTone = readinessIssues > 0 ? "warn" : "success";
+  const nextAction =
+    planSuggestions.length === 0
+      ? { label: "生産予定を確認", href: productionPlansHref }
+      : uniqueStaffCount === 0
+        ? { label: "シフトを確認", href: shiftsHref }
+        : productOptions.length === 0
+          ? { label: "商品を確認", href: kitagoyaPath("/masters/products") }
+          : materialOptions.length === 0
+            ? { label: "原料を確認", href: kitagoyaPath("/masters/materials") }
+            : { label: "入力を開始", href: "#staff-section-plans" };
+  const flowCards: {
+    label: string;
+    count: number | string;
+    detail: string;
+    href: string;
+    tone: "info" | "warn" | "danger" | "success";
+    Icon: LucideIcon;
+  }[] = [
+    {
+      label: "対象日",
+      count: date.slice(5).replace("-", "/"),
+      detail: date,
+      href: "#staff-report-date",
+      tone: "info",
+      Icon: CalendarDays,
+    },
+    {
+      label: "今日の予定",
+      count: planSuggestions.length,
+      detail: `${plannedWorkAreaCount} 作業場所`,
+      href: planSuggestions.length > 0 ? "#staff-section-plans" : productionPlansHref,
+      tone: planSuggestions.length > 0 ? "success" : "warn",
+      Icon: ClipboardList,
+    },
+    {
+      label: "出勤者",
+      count: uniqueStaffCount,
+      detail: `シフト ${staffOptions.length}`,
+      href: uniqueStaffCount > 0 ? "#staff-section-basic" : shiftsHref,
+      tone: uniqueStaffCount > 0 ? "success" : "warn",
+      Icon: Users,
+    },
+    {
+      label: "マスター",
+      count: productOptions.length,
+      detail: `原料 ${materialOptions.length} / 手間賃 ${laborRateOptions.length}`,
+      href: productOptions.length > 0 && materialOptions.length > 0 ? "#staff-section-basic" : kitagoyaPath("/masters/products"),
+      tone: productOptions.length > 0 && materialOptions.length > 0 && laborRateOptions.length > 0 ? "success" : "warn",
+      Icon: PackageCheck,
+    },
+    {
+      label: "提出済み",
+      count: submittedReports.length,
+      detail: `未計上 ${submittedCount} / 計上済 ${approvedCount}`,
+      href: submittedReports.length > 0 ? adminDailyReportsHref : "#staff-section-confirm",
+      tone: submittedCount > 0 ? "warn" : submittedReports.length > 0 ? "success" : "info",
+      Icon: submittedCount > 0 ? AlertTriangle : Send,
+    },
+    {
+      label: "管理確認",
+      count: reflectedCount,
+      detail: "在庫反映済み",
+      href: adminDailyReportsHref,
+      tone: submittedCount > 0 ? "warn" : "info",
+      Icon: BarChart3,
+    },
+  ];
 
   return (
     <>
       <div className="page-title-row">
         <h1>スタッフ日報</h1>
         <div className="page-title-actions">
+          <Link className="button-link secondary-link gap-2" href={productionPlansHref}>
+            <ClipboardList className="h-4 w-4" />
+            生産予定
+          </Link>
+          <Link className="button-link secondary-link gap-2" href={shiftsHref}>
+            <Users className="h-4 w-4" />
+            シフト
+          </Link>
+          <Link className="button-link secondary-link gap-2" href={adminDailyReportsHref}>
+            <BarChart3 className="h-4 w-4" />
+            管理確認
+          </Link>
           <HelpTooltip text="現場スタッフが当日の予定を選び、生産数・原料使用量・ラベル写真を提出します。提出後は日報画面で管理者が計上します。" />
         </div>
       </div>
-      <div className="staff-report-top-panel">
+      <div className={`production-plans-overview-command ${readinessTone}`}>
+        <div className="production-plans-overview-title">
+          {readinessTone === "success" ? (
+            <CheckCircle2 size={18} aria-hidden="true" />
+          ) : (
+            <AlertTriangle size={18} aria-hidden="true" />
+          )}
+          <span className={`badge ${readinessTone}`}>
+            {readinessIssues > 0 ? `準備確認 ${readinessIssues}件` : "入力準備OK"}
+          </span>
+          <strong>{date} のスタッフ日報フロー</strong>
+          <span className="subtext">
+            予定 {planSuggestions.length.toLocaleString()}件 / 出勤 {uniqueStaffCount.toLocaleString()}人 / 提出済み{" "}
+            {submittedReports.length.toLocaleString()}件
+          </span>
+        </div>
+        <Link className="production-plans-overview-next" href={nextAction.href}>
+          次: {nextAction.label}
+        </Link>
+      </div>
+      <div className="production-plans-overview-grid" aria-label="スタッフ日報の入力フロー">
+        {flowCards.map(({ label, count, detail, href, tone, Icon }) => (
+          <Link key={label} className={`production-plans-overview-card ${tone}`} href={href}>
+            <span>
+              <Icon size={15} aria-hidden="true" />
+              {label}
+            </span>
+            <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
+            <small>{detail}</small>
+          </Link>
+        ))}
+      </div>
+      <section id="staff-report-date" className="staff-report-top-panel anchor-offset">
         <div className="staff-report-date-nav">
           <Link className="button-link secondary-link gap-2" href={kitagoyaPath(`/staff-daily-reports?date=${previousDate}`)}>
             <ChevronLeft className="h-4 w-4" />
@@ -172,7 +315,7 @@ export default async function StaffDailyReportsPage({
           <Metric label="商品候補" value={`${productOptions.length}件`} />
           <Metric label="原料候補" value={`${materialOptions.length}件`} />
         </div>
-      </div>
+      </section>
       <StaffDailyReportForm
         date={date}
         plans={planSuggestions}

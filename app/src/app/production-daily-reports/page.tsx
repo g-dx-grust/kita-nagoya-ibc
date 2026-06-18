@@ -1,5 +1,15 @@
 import Link from "next/link";
-import { BarChart3 } from "lucide-react";
+import {
+  AlertTriangle,
+  BarChart3,
+  CheckCircle2,
+  ClipboardCheck,
+  ClipboardList,
+  FileText,
+  Plus,
+  Table2,
+  type LucideIcon,
+} from "lucide-react";
 
 import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
@@ -201,6 +211,22 @@ export default async function ProductionDailyReportsPage({
   );
   const total: ProductDailyReportSummaryRow = summarizeProductDailyReportTotals(summaries);
   const pendingApprovalCount = rows.filter((row) => row.approvalStatus === "submitted").length;
+  const approvedCount = rows.filter((row) => row.approvalStatus === "approved").length;
+  const rejectedCount = rows.filter((row) => row.approvalStatus === "rejected").length;
+  const unmatchedCount = rows.filter(
+    (row) => row.productMatchStatus === "unmatched" || row.productMatchStatus === "fuzzy",
+  ).length;
+  const missingPriceCount = rows.filter((row) => row.unitPriceSnapshot <= 0).length;
+  const warningCount = rows.filter((row) => row.calculationWarnings.length > 0).length;
+  const alertCount = rows.filter(
+    (row) =>
+      row.approvalStatus === "submitted" ||
+      row.approvalStatus === "rejected" ||
+      row.productMatchStatus === "unmatched" ||
+      row.productMatchStatus === "fuzzy" ||
+      row.unitPriceSnapshot <= 0 ||
+      row.calculationWarnings.length > 0,
+  ).length;
   const laborRateOptions: ProductDailyReportLaborRateOption[] = laborRates.map((rate) => ({
     id: rate.id,
     code: rate.code,
@@ -220,15 +246,130 @@ export default async function ProductionDailyReportsPage({
     appliedAt: row.appliedAt ? row.appliedAt.toISOString().slice(0, 10) : null,
     currentUnitPrice: unitPriceByProduct.get(row.productId) ?? 0,
   }));
+  const pendingLaborFeeCount = monthlyLaborFeeRows.filter((row) => row.status !== "applied").length;
+  const inventoryReflectedCount = rows.filter((row) => row.approvalStatus === "approved" && row.inventoryReflected).length;
+  const reviewHref = reviewAnchorHref(month, productId, q);
+  const invoiceHref = kitagoyaPath("/invoices");
+  const dailyReportTone = alertCount > 0 || pendingLaborFeeCount > 0 ? "warn" : "success";
+  const dailyReportNext =
+    pendingApprovalCount > 0
+      ? { label: "未計上を確認", href: reviewHref }
+      : alertCount > 0
+        ? { label: "要確認を編集", href: reviewHref }
+        : pendingLaborFeeCount > 0
+          ? { label: "月次手間賃を反映", href: "#daily-report-review" }
+          : rows.length === 0
+            ? { label: "日報を入力", href: "#daily-report-review" }
+            : { label: "ダッシュボードへ進む", href: dashboardHref(month, productId, q) };
+  const dailyReportFlowCards: {
+    label: string;
+    count: number | string;
+    detail: string;
+    href: string;
+    tone: "info" | "warn" | "danger" | "success";
+    Icon: LucideIcon;
+  }[] = [
+    {
+      label: "対象月",
+      count: month,
+      detail: productId || q ? "絞り込み中" : "全商品",
+      href: "#daily-report-filter",
+      tone: "info",
+      Icon: ClipboardList,
+    },
+    {
+      label: "日報確認",
+      count: alertCount,
+      detail: `未計上 ${pendingApprovalCount} / 差戻し ${rejectedCount}`,
+      href: reviewHref,
+      tone: alertCount > 0 ? "warn" : "success",
+      Icon: alertCount > 0 ? AlertTriangle : CheckCircle2,
+    },
+    {
+      label: "日報行数",
+      count: rows.length,
+      detail: `計上済 ${approvedCount} / 在庫反映 ${inventoryReflectedCount}`,
+      href: "#daily-report-review",
+      tone: rows.length > 0 ? "info" : "warn",
+      Icon: Table2,
+    },
+    {
+      label: "手間賃",
+      count: pendingLaborFeeCount,
+      detail: `算出 ${monthlyLaborFeeRows.length}`,
+      href: "#daily-report-review",
+      tone: pendingLaborFeeCount > 0 ? "warn" : "success",
+      Icon: ClipboardCheck,
+    },
+    {
+      label: "商品別集計",
+      count: summaries.length,
+      detail: `照合 ${unmatchedCount} / 計算注意 ${warningCount}`,
+      href: dashboardHref(month, productId, q),
+      tone: unmatchedCount + warningCount > 0 ? "warn" : "success",
+      Icon: BarChart3,
+    },
+    {
+      label: "請求CSV",
+      count: missingPriceCount,
+      detail: missingPriceCount > 0 ? "売値未設定" : "出力準備",
+      href: invoiceHref,
+      tone: missingPriceCount > 0 ? "warn" : "info",
+      Icon: FileText,
+    },
+  ];
 
   return (
     <>
       <div className="page-title-row">
         <h1>日報・商品別集計</h1>
-        <Link className="button-link secondary-link gap-2" href={dashboardHref(month, productId, q)}>
-          <BarChart3 className="h-4 w-4" />
-          ダッシュボード
+        <div className="page-title-actions">
+          <Link className="button-link secondary-link gap-2" href={dashboardHref(month, productId, q)}>
+            <BarChart3 className="h-4 w-4" />
+            ダッシュボード
+          </Link>
+          <Link className="button-link secondary-link gap-2" href={invoiceHref}>
+            <FileText className="h-4 w-4" />
+            請求CSV
+          </Link>
+          <a className="button-link gap-2" href="#daily-report-review">
+            <Plus className="h-4 w-4" />
+            日報入力
+          </a>
+        </div>
+      </div>
+
+      <div className={`production-plans-overview-command ${dailyReportTone}`}>
+        <div className="production-plans-overview-title">
+          {dailyReportTone === "success" ? (
+            <CheckCircle2 size={18} aria-hidden="true" />
+          ) : (
+            <AlertTriangle size={18} aria-hidden="true" />
+          )}
+          <span className={`badge ${dailyReportTone}`}>
+            {alertCount > 0 ? `要確認 ${alertCount}件` : pendingLaborFeeCount > 0 ? `未反映 ${pendingLaborFeeCount}件` : "確認済み"}
+          </span>
+          <strong>{formatMonthLabel(month)} の日報フロー</strong>
+          <span className="subtext">
+            日報 {rows.length.toLocaleString()}件 / 計上済 {approvedCount.toLocaleString()}件 / 商品別{" "}
+            {summaries.length.toLocaleString()}件
+          </span>
+        </div>
+        <Link className="production-plans-overview-next" href={dailyReportNext.href}>
+          次: {dailyReportNext.label}
         </Link>
+      </div>
+      <div className="production-plans-overview-grid" aria-label="日報・商品別集計の確認フロー">
+        {dailyReportFlowCards.map(({ label, count, detail, href, tone, Icon }) => (
+          <Link key={label} className={`production-plans-overview-card ${tone}`} href={href}>
+            <span>
+              <Icon size={15} aria-hidden="true" />
+              {label}
+            </span>
+            <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
+            <small>{detail}</small>
+          </Link>
+        ))}
       </div>
 
       {pendingApprovalCount > 0 && (
@@ -242,34 +383,36 @@ export default async function ProductionDailyReportsPage({
         </div>
       )}
 
-      <CollapsiblePanel
-        title={
-          <span className="inline-action">
-            検索・表示条件
-            <HelpTooltip text="1製造の実績、複数原料、賞味期限、時間、生産数を入力すると、手間賃・原価・売値・利率を自動計算し、原料在庫を差し引きます。蓄積実績から月次の1袋手間賃を更新できます。" />
-          </span>
-        }
-        summary={`${formatMonthLabel(month)} / ${productId ? "商品指定あり" : "全商品"}${q ? ` / ${q}` : ""}`}
-        open={!!(productId || q)}
-      >
-        <form className="toolbar compact-controls" method="GET">
-          <label>
-            <span>対象月</span>
-            <input name="month" type="month" defaultValue={month} />
-          </label>
-          <label>
-            <span>商品</span>
-            <ProductReportFilter products={productOptions} initialProductId={productId} />
-          </label>
-          <label className="filter-search">
-            <span>商品検索</span>
-            <input name="q" type="search" defaultValue={q} placeholder="商品名・管理コード" />
-          </label>
-          <button type="submit" className="secondary">
-            表示
-          </button>
-        </form>
-      </CollapsiblePanel>
+      <div id="daily-report-filter" className="anchor-offset">
+        <CollapsiblePanel
+          title={
+            <span className="inline-action">
+              検索・表示条件
+              <HelpTooltip text="1製造の実績、複数原料、賞味期限、時間、生産数を入力すると、手間賃・原価・売値・利率を自動計算し、原料在庫を差し引きます。蓄積実績から月次の1袋手間賃を更新できます。" />
+            </span>
+          }
+          summary={`${formatMonthLabel(month)} / ${productId ? "商品指定あり" : "全商品"}${q ? ` / ${q}` : ""}`}
+          open={!!(productId || q)}
+        >
+          <form className="toolbar compact-controls" method="GET">
+            <label>
+              <span>対象月</span>
+              <input name="month" type="month" defaultValue={month} />
+            </label>
+            <label>
+              <span>商品</span>
+              <ProductReportFilter products={productOptions} initialProductId={productId} />
+            </label>
+            <label className="filter-search">
+              <span>商品検索</span>
+              <input name="q" type="search" defaultValue={q} placeholder="商品名・管理コード" />
+            </label>
+            <button type="submit" className="secondary">
+              表示
+            </button>
+          </form>
+        </CollapsiblePanel>
+      </div>
 
       <div id="daily-report-review" className="anchor-offset" />
       <ProductDailyReportClient
@@ -296,6 +439,13 @@ function dashboardHref(month: string, productId: string, q: string) {
   if (productId) params.set("productId", productId);
   if (q) params.set("q", q);
   return `${kitagoyaPath("/production-daily-reports/dashboard")}?${params.toString()}`;
+}
+
+function reviewAnchorHref(month: string, productId: string, q: string) {
+  const params = new URLSearchParams({ month, review: "1" });
+  if (productId) params.set("productId", productId);
+  if (q) params.set("q", q);
+  return `${kitagoyaPath("/production-daily-reports")}?${params.toString()}#daily-report-review`;
 }
 
 function formatMonthLabel(month: string) {

@@ -9237,6 +9237,97 @@ form.toolbar {
   padding-bottom: 78px;
 }
 
+.self-shift-page-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, auto);
+  gap: 12px;
+  align-items: center;
+  margin: 0 0 12px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.self-shift-page-head.warn {
+  border-color: var(--warn-border);
+  border-left-color: var(--warn);
+}
+
+.self-shift-page-head.danger {
+  border-color: var(--danger-border);
+  border-left-color: var(--danger);
+}
+
+.self-shift-page-head.success {
+  border-color: var(--success-border);
+  border-left-color: var(--success);
+}
+
+.self-shift-page-title {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.self-shift-page-title h1 {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.self-shift-page-title .badge,
+.self-shift-page-meta,
+.self-shift-page-meta span,
+.self-shift-page-status strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.self-shift-page-title .badge {
+  width: fit-content;
+}
+
+.self-shift-page-meta {
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.self-shift-page-meta span,
+.self-shift-page-status strong,
+.self-shift-page-status small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.self-shift-page-status {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.self-shift-page-status strong {
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.self-shift-page-status small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .self-shift-hero,
 .self-shift-month {
   display: flex;
@@ -9532,6 +9623,15 @@ form.toolbar {
   .self-shift-page h1 {
     margin-bottom: 12px;
     font-size: 22px;
+  }
+
+  .self-shift-page-head {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 14px;
+  }
+
+  .self-shift-page-title h1 {
+    margin-bottom: 0;
   }
 
   .self-shift-hero {
