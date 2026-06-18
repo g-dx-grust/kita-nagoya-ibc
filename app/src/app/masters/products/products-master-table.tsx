@@ -179,8 +179,29 @@ export default function ProductsMasterTable({ products }: { products: ProductRow
           </span>
         </div>
       </CollapsiblePanel>
-      <div className="table-frame">
-        <table>
+      <div className="table-frame standard-list-frame">
+        <table className="standard-list-table products-master-list-table">
+          <colgroup>
+            <col className="product-code-col" />
+            <col className="product-name-col" />
+            <col className="product-spec-col" />
+            <col className="product-brand-col" />
+            <col className="product-site-col" />
+            <col className="product-setup-col" />
+            <col className="product-packaging-col" />
+            <col className="product-material-col" />
+            <col className="product-type-col" />
+            <col className="product-forecast-col" />
+            <col className="product-category-col" />
+            <col className="product-number-col" />
+            <col className="product-number-col" />
+            <col className="product-work-area-col" />
+            <col className="product-bom-col" />
+            <col className="product-capacity-col" />
+            <col className="product-billing-col" />
+            <col className="product-validity-col" />
+            <col className="product-action-col" />
+          </colgroup>
           <thead>
             <tr>
               <th>管理コード</th>
@@ -208,7 +229,7 @@ export default function ProductsMasterTable({ products }: { products: ProductRow
             {filtered.map((p) => (
               <tr key={p.id}>
                 <td>{highlight(p.productCode, query)}</td>
-                <td>
+                <td className="wrap-cell product-name-cell">
                   {highlight(p.officialName, query)}
                   {p.aliases.length > 0 && (
                     <div className="subtext">別名: {p.aliases.join(", ")}</div>
@@ -234,8 +255,8 @@ export default function ProductsMasterTable({ products }: { products: ProductRow
                   <SetupBadge set={p.hasCapacity} label="能力" />
                   <SetupBadge set={p.hasBilling} label="手間賃" />
                 </td>
-                <td>{packagingSummary(p)}</td>
-                <td>{materialSummary(p)}</td>
+                <td className="wrap-cell">{packagingSummary(p)}</td>
+                <td className="wrap-cell">{materialSummary(p)}</td>
                 <td>{productionTypeLabel(p.productionType)}</td>
                 <td>{forecastMethodLabel(p.forecastMethod)}</td>
                 <td>{p.category ?? "—"}</td>
@@ -243,14 +264,14 @@ export default function ProductsMasterTable({ products }: { products: ProductRow
                 <td className="right">{p.standardProductionLotSize}</td>
                 <td>{p.defaultWorkAreaName ?? "—"}</td>
                 <td className="right">{p.bomItemCount}</td>
-                <td>{p.capacitySummary}</td>
+                <td className="wrap-cell">{p.capacitySummary}</td>
                 <td>{p.billingEnabled ? "対象" : "—"}</td>
                 <td>
                   {p.validFromLabel}
                   {" 〜 "}
                   {p.validToLabel}
                 </td>
-                <td>
+                <td className="action-cell">
                   <div className="table-actions">
                     <Link href={kitagoyaPath(`/masters/products/${p.id}`)}>編集</Link>
                     <MasterDeleteButton

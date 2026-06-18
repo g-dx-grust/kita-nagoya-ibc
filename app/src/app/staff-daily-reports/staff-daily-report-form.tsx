@@ -114,6 +114,19 @@ export default function StaffDailyReportForm({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const preview = usePreview(form, products, materialOptions, laborRates);
+  const requiredProgress = useMemo(
+    () => [
+      { label: "入力者", done: Boolean(form.submittedBy.trim()) },
+      { label: "商品", done: Boolean(form.productId) },
+      { label: "生産数", done: toNumber(form.productionQty) > 0 },
+      {
+        label: "原料",
+        done: form.materials.some((row) => Boolean(row.materialId) && amountToKg(row) > 0),
+      },
+      { label: "写真", done: photos.length > 0 },
+    ],
+    [form.materials, form.productId, form.productionQty, form.submittedBy, photos.length],
+  );
   const staffComboboxOptions = useMemo(
     () =>
       staffOptions.map((staff) => ({
@@ -216,6 +229,20 @@ export default function StaffDailyReportForm({
     <form className="staff-report-form" onSubmit={submit}>
       {message && <div className="alert success">{message}</div>}
       {error && <div className="alert danger">{error}</div>}
+
+      <div className="staff-entry-status panel">
+        <div className="staff-entry-status-head">
+          <strong>入力状況</strong>
+          <span className="badge info">写真 {photos.length}/4</span>
+        </div>
+        <div className="staff-entry-status-list">
+          {requiredProgress.map((item) => (
+            <span key={item.label} className={`badge ${item.done ? "success" : "muted"}`}>
+              {item.label}
+            </span>
+          ))}
+        </div>
+      </div>
 
       <section className="panel staff-panel">
         <div className="staff-section-title">

@@ -293,9 +293,33 @@ export default function ProductEditor({
     <>
       {msg && <div className="alert info">{msg}</div>}
 
-      <h2>基本情報</h2>
-      <div className="panel">
-        <div className="row">
+      <div className="panel product-editor-overview">
+        <div className="product-editor-status-list">
+          <span className={`badge ${active ? "success" : "muted"}`}>{active ? "有効" : "無効"}</span>
+          <span className={`badge ${usedAtKitagoya ? "success" : "muted"}`}>
+            {usedAtKitagoya ? "北名古屋使用" : "北名古屋対象外"}
+          </span>
+          <span className={`badge ${billingEnabled ? "success" : "muted"}`}>
+            {billingEnabled ? "請求対象" : "請求対象外"}
+          </span>
+          <span className={`badge ${bomRows.length > 0 ? "success" : "warn"}`}>BOM {bomRows.length}件</span>
+          <span className={`badge ${capRows.length > 0 ? "success" : "warn"}`}>能力 {capRows.length}件</span>
+          <span className={`badge ${billingRows.length > 0 ? "success" : "muted"}`}>
+            手間賃 {billingRows.length}件
+          </span>
+        </div>
+        <nav className="product-editor-nav" aria-label="商品編集セクション">
+          <a href="#product-basic">基本情報</a>
+          <a href="#product-billing">手間賃単価</a>
+          <a href="#product-bom">BOM</a>
+          <a href="#product-capacity">生産能力</a>
+        </nav>
+      </div>
+
+      <section className="product-editor-section" id="product-basic">
+        <h2>基本情報</h2>
+        <div className="panel">
+          <div className="product-editor-basic-grid">
           <label>
             <span className="inline-action">
               管理コード *
@@ -482,20 +506,20 @@ export default function ProductEditor({
               readOnly
             />
           </label>
-        </div>
-        <div className="row field-row">
+          </div>
+          <div className="row field-row">
           <label className="full-field">
             <span>別名 (カンマ区切り)</span>
             <input value={aliases} onChange={(e) => setAliases(e.target.value)} />
           </label>
-        </div>
-        <div className="row field-row">
+          </div>
+          <div className="row field-row">
           <label className="full-field">
             <span>備考・メモ（原料/資材のOCR取込内容など）</span>
             <textarea rows={6} value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
-        </div>
-        <div className="row field-row">
+          </div>
+          <div className="row field-row product-editor-note-grid">
           <label className="full-field">
             <span>分類表備考</span>
             <textarea rows={3} value={classificationNote} onChange={(e) => setClassificationNote(e.target.value)} />
@@ -504,18 +528,20 @@ export default function ProductEditor({
             <span>原料メモ</span>
             <textarea rows={3} value={rawMaterialNote} onChange={(e) => setRawMaterialNote(e.target.value)} />
           </label>
-        </div>
-        <div className="form-actions">
+          </div>
+          <div className="form-actions">
           <button type="button" onClick={saveMeta} disabled={savingMeta}>
             {savingMeta ? "保存中..." : "基本情報を保存"}
           </button>
+          </div>
         </div>
-      </div>
+      </section>
 
+      <section className="product-editor-section" id="product-billing">
       <h2>手間賃単価</h2>
       <div className="panel">
         <div className="table-frame">
-          <table>
+          <table className="product-editor-table product-editor-billing-table">
           <thead>
             <tr>
               <th>単価</th>
@@ -629,11 +655,13 @@ export default function ProductEditor({
           </button>
         </div>
       </div>
+      </section>
 
+      <section className="product-editor-section" id="product-bom">
       <h2>BOM (原料・資材)</h2>
       <div className="panel">
         <div className="table-frame">
-          <table>
+          <table className="product-editor-table product-editor-bom-table">
           <thead>
             <tr>
               <th>区分</th>
@@ -745,11 +773,13 @@ export default function ProductEditor({
           </button>
         </div>
       </div>
+      </section>
 
+      <section className="product-editor-section" id="product-capacity">
       <h2>生産能力 (1時間1人あたり生産量)</h2>
       <div className="panel">
         <div className="table-frame">
-          <table>
+          <table className="product-editor-table product-editor-capacity-table">
           <thead>
             <tr>
               <th>作業場所</th>
@@ -850,6 +880,7 @@ export default function ProductEditor({
           </button>
         </div>
       </div>
+      </section>
     </>
   );
 }

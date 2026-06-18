@@ -1,3 +1,4 @@
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { prisma } from "@/lib/prisma";
 import { loadProductDailyReportSnapshotsForProducts } from "@/lib/product-daily-report-service";
 import StaffDailyReportForm, {
@@ -130,7 +131,29 @@ export default async function StaffDailyReportsPage({
 
   return (
     <>
-      <h1>スタッフ日報</h1>
+      <div className="page-title-row">
+        <h1>スタッフ日報</h1>
+        <div className="page-title-actions">
+          <HelpTooltip text="現場スタッフが当日の予定を選び、生産数・原料使用量・ラベル写真を提出します。提出後は日報画面で管理者が計上します。" />
+        </div>
+      </div>
+      <div className="staff-report-top-panel">
+        <form className="staff-report-date-form" method="GET">
+          <label>
+            <span>対象日</span>
+            <input name="date" type="date" defaultValue={date} />
+          </label>
+          <button type="submit" className="secondary">
+            表示
+          </button>
+        </form>
+        <div className="staff-report-overview-grid">
+          <Metric label="当日の予定" value={`${planSuggestions.length}件`} />
+          <Metric label="出勤者" value={`${staffOptions.length}人`} />
+          <Metric label="商品候補" value={`${productOptions.length}件`} />
+          <Metric label="原料候補" value={`${materialOptions.length}件`} />
+        </div>
+      </div>
       <StaffDailyReportForm
         date={date}
         plans={planSuggestions}
@@ -140,6 +163,15 @@ export default async function StaffDailyReportsPage({
         laborRates={laborRateOptions}
       />
     </>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="metric">
+      <div className="metric-label">{label}</div>
+      <div className="metric-value">{value}</div>
+    </div>
   );
 }
 

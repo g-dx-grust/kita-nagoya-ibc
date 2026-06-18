@@ -1,10 +1,21 @@
 "use client";
 
 import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
-import { CheckCircle, Image as ImageIcon, Pencil, Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle,
+  Image as ImageIcon,
+  ListFilter,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Save,
+  Table2,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 
-import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import SectionTabs from "@/components/ui/section-tabs";
 import ProductCombobox, { type ProductComboOption } from "@/components/ui/product-combobox";
@@ -119,6 +130,14 @@ export type ProductDailyReportRow = {
 };
 
 type MaterialFormRow = { materialId: string; materialName: string; usedKg: string };
+type DailyReportColumnMode = "review" | "input" | "cost" | "all";
+
+const dailyReportColumnModes: { id: DailyReportColumnMode; label: string }[] = [
+  { id: "review", label: "確認" },
+  { id: "input", label: "入力" },
+  { id: "cost", label: "原価" },
+  { id: "all", label: "全列" },
+];
 
 type EntryFormState = {
   reportDate: string;
@@ -144,6 +163,7 @@ export default function ProductDailyReportClient({
   materialOptions,
   laborRates,
   monthlyLaborFees,
+  initialReviewOnly = false,
 }: {
   selectedMonth: string;
   rows: ProductDailyReportRow[];
@@ -153,11 +173,15 @@ export default function ProductDailyReportClient({
   materialOptions: ProductDailyReportMaterialOption[];
   laborRates: ProductDailyReportLaborRateOption[];
   monthlyLaborFees: MonthlyLaborFeeRow[];
+  initialReviewOnly?: boolean;
 }) {
   const router = useRouter();
   const [form, setForm] = useState<EntryFormState>(() => emptyForm(selectedMonth, laborRates));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<EntryFormState | null>(null);
+  const [approvalReviewId, setApprovalReviewId] = useState<string | null>(null);
+  const [deleteReviewId, setDeleteReviewId] = useState<string | null>(null);
+  const [columnMode, setColumnMode] = useState<DailyReportColumnMode>("review");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -176,8 +200,57 @@ export default function ProductDailyReportClient({
     [rows],
   );
   const pendingApproval = useMemo(() => rows.filter((row) => row.approvalStatus === "submitted"), [rows]);
+  const approvedCount = useMemo(() => rows.filter((row) => row.approvalStatus === "approved").length, [rows]);
+  const unmatchedCount = useMemo(
+    () =>
+      rows.filter((row) => row.productMatchStatus === "unmatched" || row.productMatchStatus === "fuzzy")
+        .length,
+    [rows],
+  );
+  const missingPriceCount = useMemo(() => rows.filter((row) => row.unitPriceSnapshot <= 0).length, [rows]);
+  const warningCount = useMemo(() => rows.filter((row) => row.calculationWarnings.length > 0).length, [rows]);
+  const reviewListRows = useMemo(() => {
+    const pendingIds = new Set(pendingApproval.map((row) => row.id));
+    return [...pendingApproval, ...alerts.filter((row) => !pendingIds.has(row.id))].slice(0, 4);
+  }, [alerts, pendingApproval]);
+  const nextReviewRow = reviewListRows[0] ?? null;
+  const [showReviewOnly, setShowReviewOnly] = useState(initialReviewOnly && alerts.length > 0);
+  const displayRows = showReviewOnly ? alerts : rows;
+  const editingRow = useMemo(() => rows.find((row) => row.id === editingId) ?? null, [editingId, rows]);
+  const approvalReviewRow = useMemo(
+    () => rows.find((row) => row.id === approvalReviewId && row.approvalStatus === "submitted") ?? null,
+    [approvalReviewId, rows],
+  );
+  const deleteReviewRow = useMemo(() => rows.find((row) => row.id === deleteReviewId) ?? null, [deleteReviewId, rows]);
   const preview = usePreview(form, products, materialOptions, laborRates);
   const selectedProduct = useMemo(() => products.find((p) => p.id === form.productId) ?? null, [form.productId, products]);
+  const entryProductTitle = selectedProduct ? selectedProductDisplayName(selectedProduct) : form.productName.trim() || "商品未選択";
+  const lowestProfit = useMemo(() => lowestProfitSummary(summaries), [summaries]);
+  const highestLoss = useMemo(() => highestLossSummary(summaries), [summaries]);
+  const entryMaterialUsedKg = useMemo(
+    () => form.materials.reduce((sum, material) => sum + toNumber(material.usedKg), 0),
+    [form.materials],
+  );
+  const editPreview = usePreview(editForm ?? form, products, materialOptions, laborRates);
+  const entryChecks = useMemo(
+    () => [
+      { label: "商品", done: Boolean(form.productId || form.productName.trim()) },
+      { label: "時間", done: Boolean(form.startTime && form.endTime && preview.operatingMinutes > 0) },
+      { label: "人数", done: toNumber(form.workerCount) > 0 },
+      { label: "生産数", done: toNumber(form.productionQty) > 0 },
+      {
+        label: "原料",
+        done: form.materials.some(
+          (material) => Boolean(material.materialId || material.materialName.trim()) && toNumber(material.usedKg) > 0,
+        ),
+      },
+    ],
+    [form, preview.operatingMinutes],
+  );
+  const selectedEditProduct = useMemo(
+    () => (editForm ? products.find((p) => p.id === editForm.productId) ?? null : null),
+    [editForm, products],
+  );
 
   function onSelectProduct(setter: Dispatch<SetStateAction<EntryFormState>>, productId: string) {
     const product = products.find((p) => p.id === productId);
@@ -239,7 +312,6 @@ export default function ProductDailyReportClient({
   }
 
   async function deleteRow(row: ProductDailyReportRow) {
-    if (!window.confirm(`${row.reportDate} ${displayProductName(row)} を削除します。在庫差引も戻します。よろしいですか？`)) return;
     setBusy(true);
     setMessage(null);
     setError(null);
@@ -250,17 +322,16 @@ export default function ProductDailyReportClient({
       setError(`削除できませんでした: ${json.error ?? "unknown"}`);
       return;
     }
+    setDeleteReviewId(null);
     setMessage("日報を削除しました。");
     router.refresh();
   }
 
   async function approveRow(row: ProductDailyReportRow) {
-    if (
-      !window.confirm(
-        `${row.reportDate} ${displayProductName(row)} を計上し、在庫・月次実績・請求対象へ反映します。よろしいですか？`,
-      )
-    )
+    if (row.approvalStatus !== "submitted") {
+      setError("未計上の日報だけ計上できます。");
       return;
+    }
     setBusy(true);
     setMessage(null);
     setError(null);
@@ -275,8 +346,42 @@ export default function ProductDailyReportClient({
       setError(`計上できませんでした: ${json.error ?? "unknown"}`);
       return;
     }
+    setApprovalReviewId(null);
     setMessage(`${row.reportDate} ${displayProductName(row)} を計上しました。`);
     router.refresh();
+  }
+
+  function openApprovalReview(row: ProductDailyReportRow, options?: { reviewOnly?: boolean }) {
+    if (row.approvalStatus !== "submitted") return;
+    if (options?.reviewOnly) setShowReviewOnly(true);
+    setApprovalReviewId(row.id);
+    setDeleteReviewId(null);
+    setEditingId(null);
+    setEditForm(null);
+    window.setTimeout(() => {
+      document.getElementById("daily-report-approve-panel")?.scrollIntoView({ block: "start", inline: "nearest" });
+    }, 0);
+  }
+
+  function openDeleteReview(row: ProductDailyReportRow) {
+    setDeleteReviewId(row.id);
+    setApprovalReviewId(null);
+    setEditingId(null);
+    setEditForm(null);
+    window.setTimeout(() => {
+      document.getElementById("daily-report-delete-panel")?.scrollIntoView({ block: "start", inline: "nearest" });
+    }, 0);
+  }
+
+  function openEdit(row: ProductDailyReportRow, options?: { reviewOnly?: boolean }) {
+    if (options?.reviewOnly) setShowReviewOnly(true);
+    setApprovalReviewId(null);
+    setDeleteReviewId(null);
+    setEditingId(row.id);
+    setEditForm(formFromRow(row));
+    window.setTimeout(() => {
+      document.getElementById("daily-report-edit-panel")?.scrollIntoView({ block: "start", inline: "nearest" });
+    }, 0);
   }
 
   return (
@@ -284,23 +389,474 @@ export default function ProductDailyReportClient({
       {message && <div className="alert success">{message}</div>}
       {error && <div className="alert danger">{error}</div>}
 
-      <CollapsiblePanel
-        title="集計サマリー"
-        summary={`日報 ${rows.length}件 / 未計上 ${pendingApproval.length}件 / 要確認 ${alerts.length}件`}
-      >
-        <div className="stat-grid">
-          <Metric label="日報行数" value={`${rows.length} 件`} />
-          <Metric label="未計上" value={`${pendingApproval.length} 件`} />
-          <Metric label="生産数合計" value={formatNumber(total.totalProductionQty)} />
-          <Metric label="売値合計" value={formatYen(total.totalSales)} />
-          <Metric label="要確認" value={`${alerts.length} 件`} />
+      <div className={`daily-report-review-panel ${alerts.length > 0 ? "warn" : "success"}`}>
+        <div className="daily-report-review-status">
+          {alerts.length > 0 ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle className="h-5 w-5" />}
+          <div>
+            <span>確認対象</span>
+            <strong>{alerts.length} 件</strong>
+            <p>
+              {alerts.length > 0
+                ? "未計上・商品照合・売値・原価設定を先に確認します。"
+                : "この月の日報に確認対象はありません。"}
+            </p>
+          </div>
         </div>
-      </CollapsiblePanel>
+        <div className="daily-report-review-breakdown" aria-label="確認対象の内訳">
+          <span className="badge warn">未計上 {pendingApproval.length}</span>
+          <span className="badge warn">照合 {unmatchedCount}</span>
+          <span className="badge warn">売値未設定 {missingPriceCount}</span>
+          <span className="badge warn">計算注意 {warningCount}</span>
+        </div>
+        <div className="daily-report-review-actions">
+          {nextReviewRow &&
+            (nextReviewRow.approvalStatus === "submitted" ? (
+              <button
+                type="button"
+                className="gap-2 daily-report-primary-action"
+                onClick={() => openApprovalReview(nextReviewRow, { reviewOnly: true })}
+                disabled={busy}
+              >
+                <CheckCircle className="h-4 w-4" />
+                次の未計上を確認
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="gap-2 daily-report-primary-action"
+                onClick={() => openEdit(nextReviewRow, { reviewOnly: true })}
+                disabled={busy}
+              >
+                <Pencil className="h-4 w-4" />
+                要確認を編集
+              </button>
+            ))}
+          <button
+            type="button"
+            className={showReviewOnly ? "gap-2" : "secondary gap-2"}
+            onClick={() => setShowReviewOnly(true)}
+            disabled={alerts.length === 0}
+          >
+            <ListFilter className="h-4 w-4" />
+            確認対象だけ
+          </button>
+          <button
+            type="button"
+            className={showReviewOnly ? "secondary gap-2" : "gap-2"}
+            onClick={() => setShowReviewOnly(false)}
+          >
+            <Table2 className="h-4 w-4" />
+            全件表示
+          </button>
+        </div>
+        {alerts.length > 0 && (
+          <div className="daily-report-review-list">
+            {reviewListRows.map((row) => (
+              <div key={row.id} className="daily-report-review-item">
+                <div>
+                  <strong>{displayProductName(row)}</strong>
+                  <span>{row.reportDate}</span>
+                </div>
+                <div className="daily-report-review-reasons">
+                  {dailyReportAttentionLabels(row).map((label) => (
+                    <span key={label} className="badge warn">
+                      {label}
+                    </span>
+                  ))}
+                </div>
+                <div className="daily-report-review-item-actions">
+                  {row.approvalStatus === "submitted" && (
+                    <button
+                      type="button"
+                      className="gap-2"
+                      onClick={() => openApprovalReview(row, { reviewOnly: true })}
+                      disabled={busy}
+                    >
+                      <CheckCircle className="h-4 w-4" />
+                      計上前確認
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="secondary icon-button"
+                    onClick={() => openEdit(row, { reviewOnly: true })}
+                    aria-label="編集"
+                    title="編集"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    <span className="visually-hidden">編集</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
-      {alerts.length > 0 && (
-        <div className="alert warn">
-          マスタ照合・売値・原価の確認が必要な日報があります（{alerts.length}件）。
-        </div>
+      <div className="daily-report-summary-grid">
+        <Metric label="日報行数" value={`${rows.length} 件`} note={`計上済 ${approvedCount}件`} />
+        <Metric
+          label="未計上"
+          value={`${pendingApproval.length} 件`}
+          note="在庫・請求へ反映待ち"
+          tone={pendingApproval.length > 0 ? "warn" : "normal"}
+        />
+        <Metric label="生産数合計" value={formatNumber(total.totalProductionQty)} />
+        <Metric label="売値合計" value={formatYen(total.totalSales)} />
+        <Metric
+          label="要確認"
+          value={`${alerts.length} 件`}
+          note={`照合 ${unmatchedCount}件 / 売値未設定 ${missingPriceCount}件`}
+          tone={alerts.length > 0 ? "warn" : "normal"}
+        />
+      </div>
+
+      {approvalReviewRow && (
+        <section id="daily-report-approve-panel" className="panel daily-report-approve-panel anchor-offset">
+          <div className="daily-report-approve-head">
+            <div className="daily-report-approve-title">
+              <span className="badge warn">計上前確認</span>
+              <h2>{displayProductName(approvalReviewRow)}</h2>
+              <div className="daily-report-review-reasons">
+                {dailyReportAttentionLabels(approvalReviewRow).map((label) => (
+                  <span key={label} className="badge warn">
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="daily-report-approve-actions">
+              <button type="button" className="gap-2" onClick={() => approveRow(approvalReviewRow)} disabled={busy}>
+                <CheckCircle className="h-4 w-4" />
+                在庫・月次・請求へ計上
+              </button>
+              <button
+                type="button"
+                className="secondary gap-2"
+                onClick={() => openEdit(approvalReviewRow, { reviewOnly: showReviewOnly })}
+                disabled={busy}
+              >
+                <Pencil className="h-4 w-4" />
+                内容を編集
+              </button>
+              <button
+                type="button"
+                className="secondary gap-2"
+                onClick={() => setApprovalReviewId(null)}
+                disabled={busy}
+              >
+                <X className="h-4 w-4" />
+                取消
+              </button>
+            </div>
+          </div>
+
+          <div className="daily-report-approve-grid">
+            <div className="daily-report-approve-metrics">
+              <Metric label="日付" value={approvalReviewRow.reportDate} />
+              <Metric label="賞味期限" value={approvalReviewRow.expiryDate || "未設定"} />
+              <Metric label="生産数" value={formatNumber(approvalReviewRow.productionQty)} />
+              <Metric label="使用原料" value={`${formatNumber(approvalReviewRow.materialUsedKg)} kg`} />
+              <Metric label="稼動時間（M）" value={formatNumber(approvalReviewRow.operatingMinutes, 0)} />
+              <Metric label="作業人数" value={formatNumber(approvalReviewRow.workerCount)} />
+              <Metric label="売値" value={formatYen(approvalReviewRow.sales)} />
+              <Metric
+                label="利率"
+                value={formatPercent(approvalReviewRow.profitRate)}
+                tone={approvalReviewRow.profitRate <= 0 ? "warn" : "normal"}
+              />
+            </div>
+
+            <div className="daily-report-approve-side">
+              <div className="daily-report-approve-impact">
+                <h3>計上後の反映先</h3>
+                <ul>
+                  <li>原料在庫の使用実績</li>
+                  <li>月別商品集計・手間賃計算</li>
+                  <li>請求出力の対象データ</li>
+                </ul>
+              </div>
+              <div className="daily-report-approve-materials">
+                <h3>使用原料</h3>
+                {approvalReviewRow.materials.length > 0 ? (
+                  <ul>
+                    {approvalReviewRow.materials.map((material, index) => (
+                      <li key={`${material.materialId ?? material.materialName}-${index}`}>
+                        <span>{material.materialName}</span>
+                        <strong>{formatNumber(material.usedKg)} kg</strong>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>原料明細なし</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {deleteReviewRow && (
+        <section id="daily-report-delete-panel" className="panel daily-report-delete-panel anchor-offset">
+          <div className="daily-report-delete-head">
+            <div className="daily-report-delete-title">
+              <span className="badge danger">削除前確認</span>
+              <h2>{displayProductName(deleteReviewRow)}</h2>
+              <div className="daily-report-review-reasons">
+                <StatusBadges row={deleteReviewRow} />
+              </div>
+            </div>
+            <div className="daily-report-delete-actions">
+              <button type="button" className="danger gap-2" onClick={() => deleteRow(deleteReviewRow)} disabled={busy}>
+                <Trash2 className="h-4 w-4" />
+                日報を削除
+              </button>
+              <button
+                type="button"
+                className="secondary gap-2"
+                onClick={() => openEdit(deleteReviewRow, { reviewOnly: showReviewOnly })}
+                disabled={busy}
+              >
+                <Pencil className="h-4 w-4" />
+                内容を編集
+              </button>
+              <button type="button" className="secondary gap-2" onClick={() => setDeleteReviewId(null)} disabled={busy}>
+                <X className="h-4 w-4" />
+                取消
+              </button>
+            </div>
+          </div>
+
+          <div className="daily-report-delete-grid">
+            <div className="daily-report-delete-metrics">
+              <Metric label="日付" value={deleteReviewRow.reportDate} />
+              <Metric label="状態" value={deleteStatusLabel(deleteReviewRow)} />
+              <Metric label="生産数" value={formatNumber(deleteReviewRow.productionQty)} />
+              <Metric label="使用原料" value={`${formatNumber(deleteReviewRow.materialUsedKg)} kg`} />
+              <Metric label="売値" value={formatYen(deleteReviewRow.sales)} />
+              <Metric label="利率" value={formatPercent(deleteReviewRow.profitRate)} />
+            </div>
+
+            <div className="daily-report-delete-side">
+              <div className="daily-report-delete-impact">
+                <h3>削除後に戻る対象</h3>
+                <ul>
+                  <li>日報一覧・商品別集計から除外</li>
+                  {deleteReviewRow.inventoryReflected && <li>在庫差引の履歴を戻す</li>}
+                  {deleteReviewRow.productId && <li>月別実績を再集計</li>}
+                  {deleteReviewRow.approvalStatus === "approved" ? (
+                    <li>請求出力の対象から除外</li>
+                  ) : (
+                    <li>未計上・確認対象から除外</li>
+                  )}
+                </ul>
+              </div>
+              <div className="daily-report-delete-materials">
+                <h3>使用原料</h3>
+                {deleteReviewRow.materials.length > 0 ? (
+                  <ul>
+                    {deleteReviewRow.materials.map((material, index) => (
+                      <li key={`${material.materialId ?? material.materialName}-${index}`}>
+                        <span>{material.materialName}</span>
+                        <strong>{formatNumber(material.usedKg)} kg</strong>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>原料明細なし</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {editingRow && editForm && (
+        <section id="daily-report-edit-panel" className="panel daily-report-edit-panel anchor-offset">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveEdit(editingRow.id);
+            }}
+          >
+            <div className="daily-report-edit-head">
+              <div className="daily-report-edit-title">
+                <span className="badge info">編集中</span>
+                <h2>{displayProductName(editingRow)}</h2>
+                <div className="daily-report-review-reasons">
+                  {dailyReportAttentionLabels(editingRow).map((label) => (
+                    <span key={label} className="badge warn">
+                      {label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="daily-report-edit-actions">
+                <button type="submit" className="gap-2" disabled={busy}>
+                  <Save className="h-4 w-4" />
+                  保存
+                </button>
+                <button
+                  type="button"
+                  className="secondary gap-2"
+                  onClick={() => {
+                    setEditingId(null);
+                    setEditForm(null);
+                  }}
+                  disabled={busy}
+                >
+                  <X className="h-4 w-4" />
+                  取消
+                </button>
+              </div>
+            </div>
+
+            <div className="daily-report-edit-grid">
+              <div className="entry-card">
+                <h3>入力項目</h3>
+                <div className="grid grid-4">
+                  <label>
+                    <span>日付</span>
+                    <input
+                      type="date"
+                      required
+                      value={editForm.reportDate}
+                      onChange={(e) => setFormValue(setEditForm, "reportDate", e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>商品名</span>
+                    <ProductCombobox
+                      products={products}
+                      value={editForm.productId}
+                      onChange={(value) => {
+                        setFormValue(setEditForm, "productId", value);
+                        setFormValue(setEditForm, "productName", "");
+                      }}
+                      emptyOptionLabel="商品名を直接入力"
+                    />
+                  </label>
+                  {!editForm.productId && (
+                    <label>
+                      <span>商品名（直接入力）</span>
+                      <input
+                        type="text"
+                        value={editForm.productName}
+                        onChange={(e) => setFormValue(setEditForm, "productName", e.target.value)}
+                      />
+                    </label>
+                  )}
+                  <label>
+                    <span>賞味期限</span>
+                    <input
+                      type="date"
+                      value={editForm.expiryDate}
+                      onChange={(e) => setFormValue(setEditForm, "expiryDate", e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>開始時間</span>
+                    <input
+                      type="time"
+                      required
+                      value={editForm.startTime}
+                      onChange={(e) => setFormValue(setEditForm, "startTime", e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>終了時間</span>
+                    <input
+                      type="time"
+                      required
+                      value={editForm.endTime}
+                      onChange={(e) => setFormValue(setEditForm, "endTime", e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>休憩時間（M）</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={editForm.breakMinutes}
+                      onChange={(e) => setFormValue(setEditForm, "breakMinutes", e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>作業人数</span>
+                    <input
+                      type="number"
+                      required
+                      min={0.1}
+                      step={0.1}
+                      value={editForm.workerCount}
+                      onChange={(e) => setFormValue(setEditForm, "workerCount", e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>生産数</span>
+                    <input
+                      type="number"
+                      required
+                      min={0}
+                      step="any"
+                      value={editForm.productionQty}
+                      onChange={(e) => setFormValue(setEditForm, "productionQty", e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>手間賃区分</span>
+                    <select
+                      value={editForm.laborFeeRateId}
+                      onChange={(e) => setFormValue(setEditForm, "laborFeeRateId", e.target.value)}
+                    >
+                      {laborRates.length === 0 && <option value="">標準</option>}
+                      {laborRates.map((rate) => (
+                        <option key={rate.id} value={rate.id}>
+                          {rate.name}（{formatYen(rate.hourlyRate)}/時）
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>備考</span>
+                    <input
+                      type="text"
+                      value={editForm.note}
+                      onChange={(e) => setFormValue(setEditForm, "note", e.target.value)}
+                    />
+                  </label>
+                </div>
+
+                <MaterialsEditor
+                  materials={editForm.materials}
+                  materialOptions={materialOptions}
+                  onChange={(next) => setEditForm((prev) => (prev ? { ...prev, materials: next } : prev))}
+                />
+              </div>
+
+              <div className="entry-card calculated">
+                <h3>自動計算</h3>
+                <div className="stat-grid compact-metrics">
+                  <Metric label="入り数(g)" value={formatOptionalNumber(selectedEditProduct?.capacityG ?? null)} />
+                  <Metric label="商品名合算" value={selectedProductDisplayName(selectedEditProduct)} />
+                  <Metric label="稼動時間（M）" value={formatNumber(editPreview.operatingMinutes, 0)} />
+                  <Metric label="合計稼動時間（M）" value={formatNumber(editPreview.totalOperatingMinutes, 0)} />
+                  <Metric label="1人当たりの1hの生産数(個)" value={formatNumber(editPreview.perHourQty)} />
+                  <Metric label="1個の生産時間（M）" value={formatNumber(editPreview.perUnitTimeMinutes)} />
+                  <Metric label="1袋の手間賃（円）" value={formatYen(editPreview.laborFeePerUnit)} />
+                  <Metric label="1袋の量（g）" value={formatNumber(editPreview.bagWeightG)} />
+                  <Metric label="ロス率（％）" value={formatPercent(editPreview.lossRate)} />
+                  <Metric label="原料原価" value={formatYen(editPreview.materialCost)} />
+                  <Metric label="資材原価" value={formatYen(editPreview.packageCost)} />
+                  <Metric label="合計原価" value={formatYen(editPreview.totalCost)} />
+                  <Metric label="売値" value={formatYen(editPreview.sales)} />
+                  <Metric label="利率" value={formatPercent(editPreview.profitRate)} />
+                </div>
+              </div>
+            </div>
+          </form>
+        </section>
       )}
 
       <SectionTabs
@@ -312,42 +868,59 @@ export default function ProductDailyReportClient({
             id: "review",
             label: "日報確認",
             heading: "月別製造日報",
-            count: pendingApproval.length > 0 ? `未計上 ${pendingApproval.length}` : rows.length,
+            count: showReviewOnly ? `確認 ${displayRows.length}` : pendingApproval.length > 0 ? `未計上 ${pendingApproval.length}` : rows.length,
             content: (
               <section>
                 <div className="daily-report-heading">
+                  <div className="daily-report-view-state">
+                    <strong>{showReviewOnly ? "確認対象だけ表示中" : "全件表示中"}</strong>
+                    <span>{displayRows.length} 件</span>
+                  </div>
+                  <div className="daily-report-column-toggle" role="group" aria-label="一覧列の表示切り替え">
+                    {dailyReportColumnModes.map((mode) => (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        className={columnMode === mode.id ? "is-active" : ""}
+                        aria-pressed={columnMode === mode.id}
+                        onClick={() => setColumnMode(mode.id)}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
                   <div className="column-legend" aria-label="列種別">
                     <span className="column-kind input">入力</span>
                     <span className="column-kind auto">自動計算</span>
                   </div>
                 </div>
                 <div className="table-frame daily-report-frame">
-                  <table className="daily-report-table">
+                  <table className={`daily-report-table daily-report-column-mode-${columnMode}`}>
                     <colgroup>
                       <col className="daily-col-date" />
                       <col className="daily-col-product" />
-                      <col className="daily-col-small" />
-                      <col className="daily-col-name" />
-                      <col className="daily-col-date-input" />
-                      <col className="daily-col-time" />
-                      <col className="daily-col-time" />
-                      <col className="daily-col-time" />
-                      <col className="daily-col-number" />
-                      <col className="daily-col-number" />
-                      <col className="daily-col-number" />
-                      <col className="daily-col-material" />
-                      <col className="daily-col-wide-number" />
-                      <col className="daily-col-wide-number" />
-                      <col className="daily-col-wide-number" />
-                      <col className="daily-col-wide-number" />
-                      <col className="daily-col-number" />
-                      <col className="daily-col-number" />
-                      <col className="daily-col-number" />
-                      <col className="daily-col-number" />
-                      <col className="daily-col-number" />
-                      <col className="daily-col-number" />
-                      <col className="daily-col-number" />
-                      <col className="daily-col-note" />
+                      <col className="daily-col-small daily-report-col-cost" />
+                      <col className="daily-col-name daily-report-col-cost daily-report-col-review" />
+                      <col className="daily-col-date-input daily-report-col-input" />
+                      <col className="daily-col-time daily-report-col-input" />
+                      <col className="daily-col-time daily-report-col-input" />
+                      <col className="daily-col-time daily-report-col-input" />
+                      <col className="daily-col-number daily-report-col-cost" />
+                      <col className="daily-col-number daily-report-col-input" />
+                      <col className="daily-col-number daily-report-col-input daily-report-col-review" />
+                      <col className="daily-col-material daily-report-col-input daily-report-col-review" />
+                      <col className="daily-col-wide-number daily-report-col-cost" />
+                      <col className="daily-col-wide-number daily-report-col-cost" />
+                      <col className="daily-col-wide-number daily-report-col-cost" />
+                      <col className="daily-col-wide-number daily-report-col-cost" />
+                      <col className="daily-col-number daily-report-col-cost" />
+                      <col className="daily-col-number daily-report-col-cost" />
+                      <col className="daily-col-number daily-report-col-cost" />
+                      <col className="daily-col-number daily-report-col-cost" />
+                      <col className="daily-col-number daily-report-col-cost" />
+                      <col className="daily-col-number daily-report-col-cost daily-report-col-review" />
+                      <col className="daily-col-number daily-report-col-cost daily-report-col-review" />
+                      <col className="daily-col-note daily-report-col-input" />
                       <col className="daily-col-status" />
                       <col className="daily-col-actions" />
                     </colgroup>
@@ -355,72 +928,62 @@ export default function ProductDailyReportClient({
                       <tr>
                         <th className="sticky-date">日付 <ColumnKind kind="input" /></th>
                         <th className="sticky-product">商品名 <ColumnKind kind="input" /></th>
-                        <th className="right">入り数(g) <ColumnKind kind="auto" /></th>
-                        <th>商品名合算 <ColumnKind kind="auto" /></th>
-                        <th>賞味期限 <ColumnKind kind="input" /></th>
-                        <th>開始時間 <ColumnKind kind="input" /></th>
-                        <th>終了時間 <ColumnKind kind="input" /></th>
-                        <th>休憩時間 <ColumnKind kind="input" /></th>
-                        <th className="right">稼動時間（M） <ColumnKind kind="auto" /></th>
-                        <th className="right">作業人数 <ColumnKind kind="input" /></th>
-                        <th className="right">生産数 <ColumnKind kind="input" /></th>
-                        <th className="right">使用原料（kg） <ColumnKind kind="input" /></th>
-                        <th className="right">合計稼動時間（M） <ColumnKind kind="auto" /></th>
-                        <th className="right">1人当たりの1hの生産数(個) <ColumnKind kind="auto" /></th>
-                        <th className="right">1個の生産時間（M） <ColumnKind kind="auto" /></th>
-                        <th className="right">1袋の手間賃（円） <ColumnKind kind="auto" /></th>
-                        <th className="right">1袋の量（g） <ColumnKind kind="auto" /></th>
-                        <th className="right">ロス率（％） <ColumnKind kind="auto" /></th>
-                        <th className="right">原料原価 <ColumnKind kind="auto" /></th>
-                        <th className="right">資材原価 <ColumnKind kind="auto" /></th>
-                        <th className="right">合計原価 <ColumnKind kind="auto" /></th>
-                        <th className="right">売値 <ColumnKind kind="auto" /></th>
-                        <th className="right">利率 <ColumnKind kind="auto" /></th>
-                        <th>備考 <ColumnKind kind="input" /></th>
+                        <th className="right daily-report-col-cost">入り数(g) <ColumnKind kind="auto" /></th>
+                        <th className="daily-report-col-cost daily-report-col-review">商品名合算 <ColumnKind kind="auto" /></th>
+                        <th className="daily-report-col-input">賞味期限 <ColumnKind kind="input" /></th>
+                        <th className="daily-report-col-input">開始時間 <ColumnKind kind="input" /></th>
+                        <th className="daily-report-col-input">終了時間 <ColumnKind kind="input" /></th>
+                        <th className="daily-report-col-input">休憩時間 <ColumnKind kind="input" /></th>
+                        <th className="right daily-report-col-cost">稼動時間（M） <ColumnKind kind="auto" /></th>
+                        <th className="right daily-report-col-input">作業人数 <ColumnKind kind="input" /></th>
+                        <th className="right daily-report-col-input daily-report-col-review">生産数 <ColumnKind kind="input" /></th>
+                        <th className="right daily-report-col-input daily-report-col-review">使用原料（kg） <ColumnKind kind="input" /></th>
+                        <th className="right daily-report-col-cost">合計稼動時間（M） <ColumnKind kind="auto" /></th>
+                        <th className="right daily-report-col-cost">1人当たりの1hの生産数(個) <ColumnKind kind="auto" /></th>
+                        <th className="right daily-report-col-cost">1個の生産時間（M） <ColumnKind kind="auto" /></th>
+                        <th className="right daily-report-col-cost">1袋の手間賃（円） <ColumnKind kind="auto" /></th>
+                        <th className="right daily-report-col-cost">1袋の量（g） <ColumnKind kind="auto" /></th>
+                        <th className="right daily-report-col-cost">ロス率（％） <ColumnKind kind="auto" /></th>
+                        <th className="right daily-report-col-cost">原料原価 <ColumnKind kind="auto" /></th>
+                        <th className="right daily-report-col-cost">資材原価 <ColumnKind kind="auto" /></th>
+                        <th className="right daily-report-col-cost">合計原価 <ColumnKind kind="auto" /></th>
+                        <th className="right daily-report-col-cost daily-report-col-review">売値 <ColumnKind kind="auto" /></th>
+                        <th className="right daily-report-col-cost daily-report-col-review">利率 <ColumnKind kind="auto" /></th>
+                        <th className="daily-report-col-input">備考 <ColumnKind kind="input" /></th>
                         <th>確認</th>
-                        <th></th>
+                        <th className="sticky-action"></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map((row) =>
-                        editingId === row.id && editForm ? (
-                          <EditRow
+                      {displayRows.map((row) => (
+                          <tr
                             key={row.id}
-                            form={editForm}
-                            products={products}
-                            materialOptions={materialOptions}
-                            laborRates={laborRates}
-                            busy={busy}
-                            onChange={(key, value) => setFormValue(setEditForm, key, value)}
-                            onChangeMaterials={(next) =>
-                              setEditForm((prev) => (prev ? { ...prev, materials: next } : prev))
-                            }
-                            onSave={() => saveEdit(row.id)}
-                            onCancel={() => {
-                              setEditingId(null);
-                              setEditForm(null);
-                            }}
-                          />
-                        ) : (
-                          <tr key={row.id}>
+                            id={dailyReportRowId(row.id)}
+                            className={dailyReportRowClass(
+                              row,
+                              editingId === row.id,
+                              approvalReviewId === row.id,
+                              deleteReviewId === row.id,
+                            )}
+                          >
                             <td className="sticky-date">{row.reportDate}</td>
                             <td className="sticky-product product-name-cell">
                               <div>{row.productName}</div>
                               {row.productCode && <div className="subtext">{row.productCode}</div>}
                             </td>
-                            <td className="right">{formatOptionalNumber(row.capacityGSnapshot)}</td>
-                            <td>
+                            <td className="right daily-report-col-cost">{formatOptionalNumber(row.capacityGSnapshot)}</td>
+                            <td className="daily-report-col-cost daily-report-col-review">
                               <div>{consolidatedProductName(row)}</div>
                               {row.productMatchStatus === "unmatched" && <div className="subtext">商品未照合</div>}
                             </td>
-                            <td>{row.expiryDate || "—"}</td>
-                            <td>{row.startTime}</td>
-                            <td>{row.endTime}</td>
-                            <td>{formatDuration(row.breakMinutes)}</td>
-                            <td className="right">{formatNumber(row.operatingMinutes, 0)}</td>
-                            <td className="right">{formatNumber(row.workerCount)}</td>
-                            <td className="right">{formatNumber(row.productionQty)}</td>
-                            <td className="right material-summary-cell">
+                            <td className="daily-report-col-input">{row.expiryDate || "—"}</td>
+                            <td className="daily-report-col-input">{row.startTime}</td>
+                            <td className="daily-report-col-input">{row.endTime}</td>
+                            <td className="daily-report-col-input">{formatDuration(row.breakMinutes)}</td>
+                            <td className="right daily-report-col-cost">{formatNumber(row.operatingMinutes, 0)}</td>
+                            <td className="right daily-report-col-input">{formatNumber(row.workerCount)}</td>
+                            <td className="right daily-report-col-input daily-report-col-review">{formatNumber(row.productionQty)}</td>
+                            <td className="right material-summary-cell daily-report-col-input daily-report-col-review">
                               <div>{formatNumber(row.materialUsedKg)} kg</div>
                               {row.materials.length > 0 && (
                                 <div className="subtext">
@@ -430,70 +993,67 @@ export default function ProductDailyReportClient({
                                 </div>
                               )}
                             </td>
-                            <td className="right">{formatNumber(row.totalOperatingMinutes, 0)}</td>
-                            <td className="right">{formatNumber(row.perHourQty)}</td>
-                            <td className="right">{formatNumber(row.perUnitTimeMinutes)}</td>
-                            <td className="right">{formatYen(row.laborFeePerUnit)}</td>
-                            <td className="right">{formatNumber(row.bagWeightG)}</td>
-                            <td className="right">{formatPercent(row.lossRate)}</td>
-                            <td className="right">{formatYen(row.materialCost)}</td>
-                            <td className="right">{formatYen(row.packageCost)}</td>
-                            <td className="right">{formatYen(row.totalCost)}</td>
-                            <td className="right">{formatYen(row.sales)}</td>
-                            <td className="right">{formatPercent(row.profitRate)}</td>
-                            <td className="note-cell">{row.note || "—"}</td>
+                            <td className="right daily-report-col-cost">{formatNumber(row.totalOperatingMinutes, 0)}</td>
+                            <td className="right daily-report-col-cost">{formatNumber(row.perHourQty)}</td>
+                            <td className="right daily-report-col-cost">{formatNumber(row.perUnitTimeMinutes)}</td>
+                            <td className="right daily-report-col-cost">{formatYen(row.laborFeePerUnit)}</td>
+                            <td className="right daily-report-col-cost">{formatNumber(row.bagWeightG)}</td>
+                            <td className="right daily-report-col-cost">{formatPercent(row.lossRate)}</td>
+                            <td className="right daily-report-col-cost">{formatYen(row.materialCost)}</td>
+                            <td className="right daily-report-col-cost">{formatYen(row.packageCost)}</td>
+                            <td className="right daily-report-col-cost">{formatYen(row.totalCost)}</td>
+                            <td className="right daily-report-col-cost daily-report-col-review">{formatYen(row.sales)}</td>
+                            <td className="right daily-report-col-cost daily-report-col-review">{formatPercent(row.profitRate)}</td>
+                            <td className="note-cell daily-report-col-input">{row.note || "—"}</td>
                             <td>
                               <StatusBadges row={row} />
+                              {editingId === row.id && <span className="badge info">編集中</span>}
                               <SubmissionInfo row={row} />
                             </td>
-                            <td className="action-cell">
+                            <td className="action-cell sticky-action">
                               <div className="table-actions">
                                 {row.approvalStatus === "submitted" && (
                                   <button
                                     type="button"
-                                    className="icon-button"
-                                    onClick={() => approveRow(row)}
+                                    className={approvalReviewId === row.id ? "icon-button" : "secondary icon-button"}
+                                    onClick={() => openApprovalReview(row)}
                                     disabled={busy}
-                                    aria-label="計上"
-                                    title="計上"
+                                    aria-label="計上前確認"
+                                    title="計上前確認"
                                   >
                                     <CheckCircle className="h-4 w-4" />
-                                    <span className="visually-hidden">計上</span>
+                                    <span className="visually-hidden">計上前確認</span>
                                   </button>
                                 )}
                                 <button
                                   type="button"
-                                  className="secondary icon-button"
-                                  onClick={() => {
-                                    setEditingId(row.id);
-                                    setEditForm(formFromRow(row));
-                                  }}
-                                  aria-label="編集"
-                                  title="編集"
+                                  className={editingId === row.id ? "icon-button" : "secondary icon-button"}
+                                  onClick={() => openEdit(row)}
+                                  aria-label={editingId === row.id ? "編集中" : "編集"}
+                                  title={editingId === row.id ? "編集中" : "編集"}
                                 >
                                   <Pencil className="h-4 w-4" />
-                                  <span className="visually-hidden">編集</span>
+                                  <span className="visually-hidden">{editingId === row.id ? "編集中" : "編集"}</span>
                                 </button>
                                 <button
                                   type="button"
-                                  className="danger icon-button"
-                                  onClick={() => deleteRow(row)}
+                                  className={deleteReviewId === row.id ? "danger icon-button" : "secondary danger icon-button"}
+                                  onClick={() => openDeleteReview(row)}
                                   disabled={busy}
-                                  aria-label="削除"
-                                  title="削除"
+                                  aria-label="削除前確認"
+                                  title="削除前確認"
                                 >
                                   <Trash2 className="h-4 w-4" />
-                                  <span className="visually-hidden">削除</span>
+                                  <span className="visually-hidden">削除前確認</span>
                                 </button>
                               </div>
                             </td>
                           </tr>
-                        ),
-                      )}
-                      {rows.length === 0 && (
+                      ))}
+                      {displayRows.length === 0 && (
                         <tr>
                           <td colSpan={26} className="muted">
-                            対象月の日報はありません。
+                            {showReviewOnly ? "確認対象の日報はありません。" : "対象月の日報はありません。"}
                           </td>
                         </tr>
                       )}
@@ -509,130 +1069,182 @@ export default function ProductDailyReportClient({
             heading: "日報入力",
             count: "手入力",
             content: (
-              <section className="panel">
+              <section className="panel daily-report-entry-panel">
                 <form onSubmit={createEntry}>
+                  <div className="daily-report-entry-command">
+                    <div className="daily-report-entry-command-title">
+                      <span className="badge info">新規日報</span>
+                      <strong>{entryProductTitle}</strong>
+                      <span>{form.reportDate}</span>
+                      <div className="daily-report-entry-checks" aria-label="入力状況">
+                        {entryChecks.map((check) => (
+                          <span key={check.label} className={`badge ${check.done ? "success" : "muted"}`}>
+                            {check.label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="daily-report-entry-command-metrics">
+                      <Metric
+                        label="生産数"
+                        value={form.productionQty ? formatNumber(toNumber(form.productionQty)) : "未入力"}
+                      />
+                      <Metric label="使用原料" value={`${formatNumber(entryMaterialUsedKg)} kg`} />
+                      <Metric label="稼動時間（M）" value={formatNumber(preview.operatingMinutes, 0)} />
+                      <Metric label="売値" value={formatYen(preview.sales)} />
+                      <Metric
+                        label="利率"
+                        value={formatPercent(preview.profitRate)}
+                        tone={preview.profitRate <= 0 ? "warn" : "normal"}
+                      />
+                    </div>
+                    <div className="daily-report-entry-command-actions">
+                      <button type="submit" className="gap-2" disabled={busy}>
+                        <Plus className="h-4 w-4" />
+                        保存
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="daily-report-form-layout">
                     <div className="entry-card">
                       <h3>入力項目</h3>
-                      <div className="grid grid-4">
-                        <label>
-                          <span>日付</span>
-                          <input
-                            type="date"
-                            required
-                            value={form.reportDate}
-                            onChange={(e) => setFormValue(setForm, "reportDate", e.target.value)}
-                          />
-                        </label>
-                        <label className="min-w-[260px]">
-                          <span>商品名</span>
-                          <ProductCombobox
-                            products={products}
-                            value={form.productId}
-                            onChange={(value) => onSelectProduct(setForm, value)}
-                            emptyOptionLabel="商品名を直接入力"
-                          />
-                        </label>
-                        {!form.productId && (
-                          <label>
-                            <span>商品名（直接入力）</span>
-                            <input
-                              type="text"
-                              value={form.productName}
-                              onChange={(e) => setFormValue(setForm, "productName", e.target.value)}
-                            />
-                          </label>
-                        )}
-                        <label>
-                          <span>賞味期限</span>
-                          <input
-                            type="date"
-                            value={form.expiryDate}
-                            onChange={(e) => setFormValue(setForm, "expiryDate", e.target.value)}
-                          />
-                        </label>
-                        <label>
-                          <span>開始時間</span>
-                          <input
-                            type="time"
-                            required
-                            value={form.startTime}
-                            onChange={(e) => setFormValue(setForm, "startTime", e.target.value)}
-                          />
-                        </label>
-                        <label>
-                          <span>終了時間</span>
-                          <input
-                            type="time"
-                            required
-                            value={form.endTime}
-                            onChange={(e) => setFormValue(setForm, "endTime", e.target.value)}
-                          />
-                        </label>
-                        <label>
-                          <span>休憩時間（M）</span>
-                          <input
-                            type="number"
-                            min={0}
-                            step={1}
-                            value={form.breakMinutes}
-                            onChange={(e) => setFormValue(setForm, "breakMinutes", e.target.value)}
-                          />
-                        </label>
-                        <label>
-                          <span>作業人数</span>
-                          <input
-                            type="number"
-                            required
-                            min={0.1}
-                            step={0.1}
-                            value={form.workerCount}
-                            onChange={(e) => setFormValue(setForm, "workerCount", e.target.value)}
-                          />
-                        </label>
-                        <label>
-                          <span>生産数</span>
-                          <input
-                            type="number"
-                            required
-                            min={0}
-                            step="any"
-                            value={form.productionQty}
-                            onChange={(e) => setFormValue(setForm, "productionQty", e.target.value)}
-                          />
-                        </label>
-                        <label>
-                          <span>手間賃区分</span>
-                          <select
-                            value={form.laborFeeRateId}
-                            onChange={(e) => setFormValue(setForm, "laborFeeRateId", e.target.value)}
-                          >
-                            {laborRates.length === 0 && <option value="">標準</option>}
-                            {laborRates.map((rate) => (
-                              <option key={rate.id} value={rate.id}>
-                                {rate.name}（{formatYen(rate.hourlyRate)}/時）
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="min-w-[220px]">
-                          <span>備考</span>
-                          <input
-                            type="text"
-                            value={form.note}
-                            onChange={(e) => setFormValue(setForm, "note", e.target.value)}
-                          />
-                        </label>
-                      </div>
+                      <div className="daily-report-entry-sections">
+                        <div className="daily-report-entry-group">
+                          <h4>基本情報</h4>
+                          <div className="grid grid-4 daily-report-field-grid">
+                            <label>
+                              <span>日付</span>
+                              <input
+                                type="date"
+                                required
+                                value={form.reportDate}
+                                onChange={(e) => setFormValue(setForm, "reportDate", e.target.value)}
+                              />
+                            </label>
+                            <label className="min-w-[260px]">
+                              <span>商品名</span>
+                              <ProductCombobox
+                                products={products}
+                                value={form.productId}
+                                onChange={(value) => onSelectProduct(setForm, value)}
+                                emptyOptionLabel="商品名を直接入力"
+                              />
+                            </label>
+                            {!form.productId && (
+                              <label>
+                                <span>商品名（直接入力）</span>
+                                <input
+                                  type="text"
+                                  value={form.productName}
+                                  onChange={(e) => setFormValue(setForm, "productName", e.target.value)}
+                                />
+                              </label>
+                            )}
+                            <label>
+                              <span>賞味期限</span>
+                              <input
+                                type="date"
+                                value={form.expiryDate}
+                                onChange={(e) => setFormValue(setForm, "expiryDate", e.target.value)}
+                              />
+                            </label>
+                          </div>
+                        </div>
 
-                      <MaterialsEditor
-                        materials={form.materials}
-                        materialOptions={materialOptions}
-                        onChange={(next) => setForm((prev) => ({ ...prev, materials: next }))}
-                      />
+                        <div className="daily-report-entry-group">
+                          <h4>作業実績</h4>
+                          <div className="grid grid-4 daily-report-field-grid">
+                            <label>
+                              <span>開始時間</span>
+                              <input
+                                type="time"
+                                required
+                                value={form.startTime}
+                                onChange={(e) => setFormValue(setForm, "startTime", e.target.value)}
+                              />
+                            </label>
+                            <label>
+                              <span>終了時間</span>
+                              <input
+                                type="time"
+                                required
+                                value={form.endTime}
+                                onChange={(e) => setFormValue(setForm, "endTime", e.target.value)}
+                              />
+                            </label>
+                            <label>
+                              <span>休憩時間（M）</span>
+                              <input
+                                type="number"
+                                min={0}
+                                step={1}
+                                value={form.breakMinutes}
+                                onChange={(e) => setFormValue(setForm, "breakMinutes", e.target.value)}
+                              />
+                            </label>
+                            <label>
+                              <span>作業人数</span>
+                              <input
+                                type="number"
+                                required
+                                min={0.1}
+                                step={0.1}
+                                value={form.workerCount}
+                                onChange={(e) => setFormValue(setForm, "workerCount", e.target.value)}
+                              />
+                            </label>
+                            <label>
+                              <span>生産数</span>
+                              <input
+                                type="number"
+                                required
+                                min={0}
+                                step="any"
+                                value={form.productionQty}
+                                onChange={(e) => setFormValue(setForm, "productionQty", e.target.value)}
+                              />
+                            </label>
+                          </div>
+                        </div>
+
+                        <div className="daily-report-entry-group">
+                          <h4>原料・備考</h4>
+                          <div className="grid grid-4 daily-report-field-grid">
+                            <label>
+                              <span>手間賃区分</span>
+                              <select
+                                value={form.laborFeeRateId}
+                                onChange={(e) => setFormValue(setForm, "laborFeeRateId", e.target.value)}
+                              >
+                                {laborRates.length === 0 && <option value="">標準</option>}
+                                {laborRates.map((rate) => (
+                                  <option key={rate.id} value={rate.id}>
+                                    {rate.name}（{formatYen(rate.hourlyRate)}/時）
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="min-w-[220px]">
+                              <span>備考</span>
+                              <input
+                                type="text"
+                                value={form.note}
+                                onChange={(e) => setFormValue(setForm, "note", e.target.value)}
+                              />
+                            </label>
+                          </div>
+
+                          <MaterialsEditor
+                            materials={form.materials}
+                            materialOptions={materialOptions}
+                            onChange={(next) => setForm((prev) => ({ ...prev, materials: next }))}
+                          />
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="entry-card calculated">
+                    <div className="entry-card calculated daily-report-preview-card">
                       <h3>自動計算</h3>
                       <div className="stat-grid compact-metrics">
                         <Metric label="入り数(g)" value={formatOptionalNumber(selectedProduct?.capacityG ?? null)} />
@@ -678,8 +1290,32 @@ export default function ProductDailyReportClient({
             count: summaries.length,
             content: (
               <section>
-                <div className="table-frame">
-                  <table>
+                <div className="daily-report-product-summary-grid">
+                  <Metric label="集計商品" value={`${formatNumber(summaries.length, 0)} 件`} />
+                  <Metric label="製造回数" value={`${formatNumber(total.manufacturingCount, 0)} 回`} />
+                  <Metric
+                    label="最低利率"
+                    value={lowestProfit ? formatPercent(lowestProfit.averageProfitRate) : "—"}
+                    note={lowestProfit?.productName}
+                  />
+                  <Metric
+                    label="最大ロス率"
+                    value={highestLoss ? formatPercent(highestLoss.averageLossRate) : "—"}
+                    note={highestLoss?.productName}
+                  />
+                </div>
+                <div className="table-frame product-summary-frame">
+                  <table className="product-summary-table">
+                    <colgroup>
+                      <col className="product-summary-product-col" />
+                      <col className="product-summary-count-col" />
+                      <col className="product-summary-number-col" />
+                      <col className="product-summary-number-col" />
+                      <col className="product-summary-money-col" />
+                      <col className="product-summary-rate-col" />
+                      <col className="product-summary-rate-col" />
+                      <col className="product-summary-status-col" />
+                    </colgroup>
                     <thead>
                       <tr>
                         <th>商品</th>
@@ -689,6 +1325,7 @@ export default function ProductDailyReportClient({
                         <th className="right">売値合計</th>
                         <th className="right">平均利率</th>
                         <th className="right">平均ロス率</th>
+                        <th>確認</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -698,7 +1335,7 @@ export default function ProductDailyReportClient({
                       <SummaryRow summary={total} total />
                       {summaries.length === 0 && (
                         <tr>
-                          <td colSpan={7} className="muted">
+                          <td colSpan={8} className="muted">
                             対象月の日報はありません。
                           </td>
                         </tr>
@@ -815,6 +1452,16 @@ function MonthlyLaborFeePanel({ selectedMonth, rows }: { selectedMonth: string; 
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const stats = useMemo(() => {
+    const pendingRows = rows.filter((row) => row.status !== "applied");
+    return {
+      appliedCount: rows.length - pendingRows.length,
+      pendingCount: pendingRows.length,
+      totalSamples: rows.reduce((sum, row) => sum + row.sampleCount, 0),
+      averageLaborFee: averageNumber(rows.map((row) => row.perBagLaborFee)),
+      highestLaborFeeRow: maxBy(rows, (row) => row.perBagLaborFee),
+    };
+  }, [rows]);
 
   async function recompute() {
     setBusy(true);
@@ -861,20 +1508,48 @@ function MonthlyLaborFeePanel({ selectedMonth, rows }: { selectedMonth: string; 
   }
 
   return (
-    <section className="panel">
-      <div className="row" style={{ alignItems: "center" }}>
-        <span className="muted">対象月 {selectedMonth}</span>
-        <HelpTooltip text="蓄積した日報の実績から1袋手間賃の中央値を商品別に算出します。反映すると売値の手間賃単価を翌月から更新します。" />
-        <div className="spacer" />
+    <section className="panel daily-report-labor-panel">
+      <div className="daily-report-labor-command">
+        <div className="daily-report-labor-command-title">
+          <div className="row">
+            <span className="badge info">対象月 {selectedMonth}</span>
+            <HelpTooltip text="蓄積した日報の実績から1袋手間賃の中央値を商品別に算出します。反映すると売値の手間賃単価を翌月から更新します。" />
+          </div>
+          <strong>実績から翌月適用の手間賃を確認</strong>
+        </div>
         <button type="button" className="secondary gap-2" onClick={recompute} disabled={busy}>
           <RefreshCw className="h-4 w-4" />
           対象月の蓄積から再計算
         </button>
       </div>
+      <div className="daily-report-labor-summary-grid">
+        <Metric label="算出商品" value={`${formatNumber(rows.length, 0)} 件`} />
+        <Metric
+          label="未反映"
+          value={`${formatNumber(stats.pendingCount, 0)} 件`}
+          note={`反映済 ${formatNumber(stats.appliedCount, 0)} 件`}
+          tone={stats.pendingCount > 0 ? "warn" : "normal"}
+        />
+        <Metric label="根拠日報" value={`${formatNumber(stats.totalSamples, 0)} 件`} />
+        <Metric
+          label="平均1袋手間賃"
+          value={rows.length > 0 ? formatYen(stats.averageLaborFee) : "—"}
+          note={stats.highestLaborFeeRow ? `最大 ${stats.highestLaborFeeRow.productName}` : undefined}
+        />
+      </div>
       {msg && <div className="alert success">{msg}</div>}
       {err && <div className="alert danger">{err}</div>}
-      <div className="table-frame">
-        <table>
+      <div className="table-frame monthly-labor-frame">
+        <table className="monthly-labor-table">
+          <colgroup>
+            <col className="monthly-labor-product-col" />
+            <col className="monthly-labor-count-col" />
+            <col className="monthly-labor-number-col" />
+            <col className="monthly-labor-money-col" />
+            <col className="monthly-labor-money-col" />
+            <col className="monthly-labor-status-col" />
+            <col className="monthly-labor-action-col" />
+          </colgroup>
           <thead>
             <tr>
               <th>商品</th>
@@ -888,7 +1563,7 @@ function MonthlyLaborFeePanel({ selectedMonth, rows }: { selectedMonth: string; 
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.id}>
+              <tr key={row.id} className={row.status === "applied" ? "is-applied" : "needs-apply"}>
                 <td>
                   <div>{row.productName}</div>
                   <div className="subtext">{row.productCode}</div>
@@ -909,10 +1584,10 @@ function MonthlyLaborFeePanel({ selectedMonth, rows }: { selectedMonth: string; 
                     type="button"
                     className="gap-2"
                     onClick={() => apply(row)}
-                    disabled={busy || !(row.perBagLaborFee > 0)}
+                    disabled={busy || row.status === "applied" || !(row.perBagLaborFee > 0)}
                   >
                     <Save className="h-4 w-4" />
-                    反映
+                    {row.status === "applied" ? "反映済" : "反映"}
                   </button>
                 </td>
               </tr>
@@ -931,127 +1606,95 @@ function MonthlyLaborFeePanel({ selectedMonth, rows }: { selectedMonth: string; 
   );
 }
 
-function EditRow({
-  form,
-  products,
-  materialOptions,
-  laborRates,
-  busy,
-  onChange,
-  onChangeMaterials,
-  onSave,
-  onCancel,
-}: {
-  form: EntryFormState;
-  products: ProductDailyReportProductOption[];
-  materialOptions: ProductDailyReportMaterialOption[];
-  laborRates: ProductDailyReportLaborRateOption[];
-  busy: boolean;
-  onChange: (key: keyof EntryFormState, value: string) => void;
-  onChangeMaterials: (rows: MaterialFormRow[]) => void;
-  onSave: () => void;
-  onCancel: () => void;
-}) {
+function dailyReportRowClass(row: ProductDailyReportRow, isEditing = false, isApproving = false, isDeleting = false) {
+  const classes = ["daily-report-row"];
+  if (row.approvalStatus === "submitted") classes.push("is-submitted");
+  if (needsDailyReportAttention(row)) classes.push("needs-review");
+  if (isEditing) classes.push("is-editing");
+  if (isApproving) classes.push("is-approving");
+  if (isDeleting) classes.push("is-deleting");
+  return classes.join(" ");
+}
+
+function needsDailyReportAttention(row: ProductDailyReportRow) {
   return (
-    <tr>
-      <td className="sticky-date">
-        <input type="date" value={form.reportDate} onChange={(e) => onChange("reportDate", e.target.value)} />
-      </td>
-      <td className="sticky-product min-w-[260px]">
-        <ProductCombobox
-          products={products}
-          value={form.productId}
-          onChange={(value) => {
-            onChange("productId", value);
-            onChange("productName", "");
-          }}
-          emptyOptionLabel="商品名を直接入力"
-        />
-        {!form.productId && (
-          <input
-            className="mt-2"
-            type="text"
-            value={form.productName}
-            onChange={(e) => onChange("productName", e.target.value)}
-          />
-        )}
-      </td>
-      <td className="right muted">自動</td>
-      <td className="muted">照合後</td>
-      <td>
-        <input type="date" value={form.expiryDate} onChange={(e) => onChange("expiryDate", e.target.value)} />
-      </td>
-      <td>
-        <input type="time" value={form.startTime} onChange={(e) => onChange("startTime", e.target.value)} />
-      </td>
-      <td>
-        <input type="time" value={form.endTime} onChange={(e) => onChange("endTime", e.target.value)} />
-      </td>
-      <td>
-        <input type="number" min={0} step={1} value={form.breakMinutes} onChange={(e) => onChange("breakMinutes", e.target.value)} />
-      </td>
-      <td className="right muted">自動</td>
-      <td className="right">
-        <input type="number" min={0.1} step={0.1} value={form.workerCount} onChange={(e) => onChange("workerCount", e.target.value)} />
-      </td>
-      <td className="right">
-        <input type="number" min={0} step="any" value={form.productionQty} onChange={(e) => onChange("productionQty", e.target.value)} />
-      </td>
-      <td>
-        <MaterialsEditor materials={form.materials} materialOptions={materialOptions} onChange={onChangeMaterials} compact />
-      </td>
-      <td colSpan={11}>
-        <div className="edit-auto-note">
-          <span className="column-kind auto">自動計算</span>
-          <select value={form.laborFeeRateId} onChange={(e) => onChange("laborFeeRateId", e.target.value)}>
-            {laborRates.length === 0 && <option value="">標準</option>}
-            {laborRates.map((rate) => (
-              <option key={rate.id} value={rate.id}>
-                {rate.name}（{formatYen(rate.hourlyRate)}/時）
-              </option>
-            ))}
-          </select>
-        </div>
-      </td>
-      <td>
-        <input type="text" value={form.note} onChange={(e) => onChange("note", e.target.value)} />
-      </td>
-      <td>
-        <span className="muted">状態保持</span>
-      </td>
-      <td className="action-cell">
-        <div className="table-actions">
-          <button type="button" className="icon-button" onClick={onSave} disabled={busy} aria-label="保存" title="保存">
-            <Save className="h-4 w-4" />
-            <span className="visually-hidden">保存</span>
-          </button>
-          <button
-            type="button"
-            className="secondary icon-button"
-            onClick={onCancel}
-            disabled={busy}
-            aria-label="取消"
-            title="取消"
-          >
-            <X className="h-4 w-4" />
-            <span className="visually-hidden">取消</span>
-          </button>
-        </div>
-      </td>
-    </tr>
+    row.approvalStatus === "submitted" ||
+    row.approvalStatus === "rejected" ||
+    row.productMatchStatus === "unmatched" ||
+    row.productMatchStatus === "fuzzy" ||
+    row.unitPriceSnapshot <= 0 ||
+    row.calculationWarnings.length > 0
   );
 }
 
+function dailyReportAttentionLabels(row: ProductDailyReportRow) {
+  const labels: string[] = [];
+  if (row.approvalStatus === "submitted") labels.push("未計上");
+  if (row.approvalStatus === "rejected") labels.push("差戻し");
+  if (row.productMatchStatus === "unmatched") labels.push("商品未照合");
+  if (row.productMatchStatus === "fuzzy") labels.push("曖昧照合");
+  if (row.unitPriceSnapshot <= 0) labels.push("売値未設定");
+  if (row.calculationWarnings.includes("missing_material_unit_cost")) labels.push("原料単価未設定");
+  if (row.calculationWarnings.includes("missing_package_cost")) labels.push("資材単価未設定");
+  if (row.calculationWarnings.includes("missing_capacity_g")) labels.push("入り数未設定");
+  return labels.length > 0 ? labels : ["確認"];
+}
+
+function dailyReportRowId(id: string) {
+  return `daily-report-row-${id}`;
+}
+
+function deleteStatusLabel(row: ProductDailyReportRow) {
+  if (row.approvalStatus === "approved") {
+    return row.inventoryReflected ? "計上済・在庫反映済" : "計上済・履歴のみ";
+  }
+  if (row.approvalStatus === "submitted") return "未計上";
+  if (row.approvalStatus === "rejected") return "差戻し";
+  return row.approvalStatus;
+}
+
+function productSummaryBadges(summary: ProductDailyReportSummaryRow, isTotal: boolean) {
+  if (isTotal) return [{ label: "月計", tone: "info" }];
+  const badges: { label: string; tone: "success" | "warn" | "danger" | "info" | "muted" }[] = [];
+  if (summary.totalSales <= 0) badges.push({ label: "売値未設定", tone: "danger" });
+  if (summary.averageProfitRate < 0) badges.push({ label: "赤字", tone: "danger" });
+  if (summary.averageProfitRate === 0 && summary.totalSales > 0) badges.push({ label: "利率0", tone: "warn" });
+  if (summary.averageLossRate > 0) badges.push({ label: "内容量超過側", tone: "warn" });
+  if (summary.averageLossRate < 0) badges.push({ label: "内容量不足側", tone: "warn" });
+  return badges.length > 0 ? badges : [{ label: "確認済", tone: "success" }];
+}
+
+function lowestProfitSummary(summaries: ProductDailyReportSummaryRow[]) {
+  return minBy(summaries, (summary) => summary.averageProfitRate);
+}
+
+function highestLossSummary(summaries: ProductDailyReportSummaryRow[]) {
+  return maxBy(summaries, (summary) => summary.averageLossRate);
+}
+
 function SummaryRow({ summary, total: isTotal }: { summary: ProductDailyReportSummaryRow; total?: boolean }) {
+  const badges = productSummaryBadges(summary, Boolean(isTotal));
   return (
     <tr className={isTotal ? "row-total" : undefined}>
-      <td>{summary.productName}</td>
-      <td className="right">{summary.manufacturingCount}</td>
+      <td className="product-summary-product-cell">
+        <div>{summary.productName}</div>
+        {!isTotal && <div className="subtext">月次集計</div>}
+      </td>
+      <td className="right">{formatNumber(summary.manufacturingCount, 0)}</td>
       <td className="right">{formatNumber(summary.totalProductionQty)}</td>
       <td className="right">{formatNumber(summary.totalMaterialUsedKg)}</td>
       <td className="right">{formatYen(summary.totalSales)}</td>
       <td className="right">{formatPercent(summary.averageProfitRate)}</td>
       <td className="right">{formatPercent(summary.averageLossRate)}</td>
+      <td className="summary-status-cell">
+        <div className="summary-status-badges">
+          {badges.map((badge) => (
+            <span key={badge.label} className={`badge ${badge.tone}`}>
+              {badge.label}
+            </span>
+          ))}
+        </div>
+      </td>
     </tr>
   );
 }
@@ -1103,11 +1746,22 @@ function ColumnKind({ kind }: { kind: "input" | "auto" }) {
   return <span className={`column-kind ${kind}`}>{kind === "input" ? "入力" : "自動"}</span>;
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({
+  label,
+  value,
+  note,
+  tone = "normal",
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  tone?: "normal" | "warn";
+}) {
   return (
     <div className="metric">
       <div className="metric-label">{label}</div>
-      <div className="metric-value">{value}</div>
+      <div className={`metric-value ${tone === "warn" ? "warn-value" : ""}`}>{value}</div>
+      {note && <div className="metric-note">{note}</div>}
     </div>
   );
 }
@@ -1236,6 +1890,26 @@ function selectedProductDisplayName(product: ProductDailyReportProductOption | n
 function toNumber(value: string) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+function averageNumber(values: number[]) {
+  const finiteValues = values.filter(Number.isFinite);
+  if (finiteValues.length === 0) return 0;
+  return finiteValues.reduce((sum, value) => sum + value, 0) / finiteValues.length;
+}
+
+function minBy<T>(values: T[], score: (value: T) => number) {
+  return values.reduce<T | null>((best, value) => {
+    if (!best) return value;
+    return score(value) < score(best) ? value : best;
+  }, null);
+}
+
+function maxBy<T>(values: T[], score: (value: T) => number) {
+  return values.reduce<T | null>((best, value) => {
+    if (!best) return value;
+    return score(value) > score(best) ? value : best;
+  }, null);
 }
 
 function formatOptionalNumber(value: number | null | undefined, maximumFractionDigits = 2) {

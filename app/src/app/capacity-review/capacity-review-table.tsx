@@ -56,11 +56,23 @@ const statusLabels: Record<CapacityReviewRow["reviewStatus"], string> = {
   needs_review: "要再確認",
 };
 
+const filterLabels: Record<Filter, string> = {
+  all: "すべて",
+  action_needed: "確認が必要",
+  unreviewed: "未確認",
+  needs_review: "要再確認",
+  confirmed: "確認済み",
+  low: "10以下",
+  high: "300以上",
+  missing_room: "部屋別未登録",
+  missing_product: "商品能力未登録",
+};
+
 export default function CapacityReviewTable({ rows: initialRows }: { rows: CapacityReviewRow[] }) {
   const router = useRouter();
   const [rows, setRows] = useState(initialRows);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>("action_needed");
   const [query, setQuery] = useState("");
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -269,50 +281,123 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
 
   return (
     <>
-      <div className="grid grid-4">
-        <Metric label="確認が必要" value={stats.actionNeeded} />
-        <Metric label="登録済み" value={stats.registered} />
-        <Metric label="能力未登録商品" value={stats.missingProduct} />
-        <Metric label="部屋別未登録" value={stats.missingRoom} />
+      <div className="capacity-summary-grid">
+        <Metric
+          label="確認が必要"
+          value={stats.actionNeeded}
+          note={`未確認 ${stats.unreviewed.toLocaleString()} / 要再確認 ${stats.needsReview.toLocaleString()}`}
+          tone={stats.actionNeeded > 0 ? "warn" : "normal"}
+        />
+        <Metric
+          label="登録済み"
+          value={stats.registered}
+          note={`${stats.total.toLocaleString()}件中`}
+        />
+        <Metric
+          label="能力未登録"
+          value={stats.missingProduct}
+          note={`部屋別未登録 ${stats.missingRoom.toLocaleString()}件`}
+          tone={stats.missingProduct > 0 ? "warn" : "normal"}
+        />
+        <Metric
+          label="異常値候補"
+          value={stats.low + stats.high}
+          note={`10以下 ${stats.low.toLocaleString()} / 300以上 ${stats.high.toLocaleString()}`}
+          tone={stats.low + stats.high > 0 ? "warn" : "normal"}
+        />
       </div>
 
-      <div className="panel toolbar">
-        <label>
-          <span>検索</span>
+      <div className="panel capacity-filter-panel">
+        <div className="capacity-filter-head">
+          <div>
+            <h2>確認対象</h2>
+            <div className="subtext">商品コード・商品名・作業場所で絞り込みます。</div>
+          </div>
+          <span className="badge info">表示 {filteredRows.length.toLocaleString()}件</span>
+        </div>
+        <div className="filter-bar compact-controls capacity-filter-bar">
           <input
+            className="filter-search"
+            type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="管理コード・商品名・部屋名"
+            aria-label="生産能力を検索"
           />
-        </label>
-        <label>
-          <span>絞り込み</span>
           <select value={filter} onChange={(event) => setFilter(event.target.value as Filter)}>
-            <option value="all">すべて ({stats.total})</option>
-            <option value="action_needed">確認が必要 ({stats.actionNeeded})</option>
-            <option value="unreviewed">未確認 ({stats.unreviewed})</option>
-            <option value="needs_review">要再確認 ({stats.needsReview})</option>
-            <option value="confirmed">確認済み ({stats.confirmed})</option>
-            <option value="low">10以下 ({stats.low})</option>
-            <option value="high">300以上 ({stats.high})</option>
-            <option value="missing_room">部屋別能力未登録 ({stats.missingRoom})</option>
-            <option value="missing_product">商品能力未登録 ({stats.missingProduct})</option>
+            <option value="all">すべて ({stats.total.toLocaleString()})</option>
+            <option value="action_needed">確認が必要 ({stats.actionNeeded.toLocaleString()})</option>
+            <option value="unreviewed">未確認 ({stats.unreviewed.toLocaleString()})</option>
+            <option value="needs_review">要再確認 ({stats.needsReview.toLocaleString()})</option>
+            <option value="confirmed">確認済み ({stats.confirmed.toLocaleString()})</option>
+            <option value="low">10以下 ({stats.low.toLocaleString()})</option>
+            <option value="high">300以上 ({stats.high.toLocaleString()})</option>
+            <option value="missing_room">部屋別能力未登録 ({stats.missingRoom.toLocaleString()})</option>
+            <option value="missing_product">商品能力未登録 ({stats.missingProduct.toLocaleString()})</option>
           </select>
-        </label>
-        <div className="spacer" />
-        <span className="muted">表示 {filteredRows.length} 件</span>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              setFilter("action_needed");
+              setQuery("");
+            }}
+            disabled={filter === "action_needed" && !query}
+          >
+            条件クリア
+          </button>
+        </div>
+        <div className="capacity-filter-chips" aria-label="生産能力の絞り込み">
+          {(
+            [
+              ["action_needed", stats.actionNeeded],
+              ["needs_review", stats.needsReview],
+              ["missing_product", stats.missingProduct],
+              ["missing_room", stats.missingRoom],
+              ["low", stats.low],
+              ["high", stats.high],
+              ["all", stats.total],
+            ] as const
+          ).map(([value, count]) => (
+            <button
+              key={value}
+              type="button"
+              className={`capacity-filter-chip ${filter === value ? "active" : ""}`}
+              onClick={() => setFilter(value)}
+            >
+              {filterLabels[value]} {count.toLocaleString()}
+            </button>
+          ))}
+        </div>
       </div>
 
       {message && <div className="alert success">{message}</div>}
       {error && <div className="alert danger">{error}</div>}
 
-      <div className="panel">
-        <div className="toolbar flush-top">
-          <strong>能力一覧</strong>
+      <div className="capacity-table-section">
+        <div className="capacity-table-head">
+          <div>
+            <h2>能力一覧</h2>
+            <div className="subtext">
+              {filterLabels[filter]}を表示中
+              {query ? ` / ${query}` : ""}
+            </div>
+          </div>
           <HelpTooltip text="聞き取りした数量・人数・時間から袋/人時を計算できます。時間は 0.25 時間 = 15分単位が目安です。" />
         </div>
-        <div className="table-scroll capacity-review-scroll">
-          <table className="capacity-review-table">
+        <div className="table-frame standard-list-frame capacity-review-frame">
+          <table className="standard-list-table capacity-review-table">
+            <colgroup>
+              <col className="capacity-product-col" />
+              <col className="capacity-work-area-col" />
+              <col className="capacity-priority-col" />
+              <col className="capacity-rate-col" />
+              <col className="capacity-sample-col" />
+              <col className="capacity-people-col" />
+              <col className="capacity-status-col" />
+              <col className="capacity-memo-col" />
+              <col className="capacity-action-col" />
+            </colgroup>
             <thead>
               <tr>
                 <th>商品</th>
@@ -327,12 +412,19 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
               </tr>
             </thead>
             <tbody>
+              {filteredRows.length === 0 ? (
+                <tr>
+                  <td className="capacity-empty-cell" colSpan={9}>
+                    条件に一致する生産能力はありません。
+                  </td>
+                </tr>
+              ) : null}
               {filteredRows.map((row) => {
                 const draft = draftFor(row);
                 const key = keyOf(row);
                 return (
-                  <tr key={key}>
-                    <td>
+                  <tr key={key} className={needsAction(row) ? "capacity-review-row needs-action" : "capacity-review-row"}>
+                    <td className="wrap-cell capacity-product-cell" data-label="商品">
                       <strong>{row.productCode}</strong>
                       <div>{row.productName}</div>
                       {row.standardProductionLotSize > 0 && (
@@ -345,12 +437,13 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
                         <div className="subtext">標準: {row.defaultWorkAreaName}</div>
                       )}
                     </td>
-                    <td>
-                      {row.workAreaName}
-                      {row.missingCapacity && <div className="badge warn">未登録</div>}
+                    <td data-label="作業場所">
+                      <span className="capacity-work-area-name">{row.workAreaName}</span>
+                      {row.missingCapacity && <span className="badge warn">未登録</span>}
                     </td>
-                    <td>
+                    <td data-label="候補順位">
                       <input
+                        className="capacity-priority-input"
                         type="number"
                         min={1}
                         step={1}
@@ -359,8 +452,9 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
                       />
                       <div className="subtext">1=第1候補</div>
                     </td>
-                    <td>
+                    <td data-label="生産能力 / 人時">
                       <input
+                        className="capacity-rate-input"
                         type="number"
                         min={0.1}
                         step={0.1}
@@ -377,7 +471,7 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
                         <div className="badge warn">高め</div>
                       )}
                     </td>
-                    <td>
+                    <td data-label="現場確認から計算">
                       <div className="inline-inputs capacity-sample-inputs">
                         <input
                           type="number"
@@ -410,8 +504,9 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
                         計算反映
                       </button>
                     </td>
-                    <td>
+                    <td data-label="基準人数">
                       <input
+                        className="capacity-people-input"
                         type="number"
                         min={0.5}
                         step={0.5}
@@ -419,7 +514,7 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
                         onChange={(event) => patchDraft(row, { standardPeople: event.target.value })}
                       />
                     </td>
-                    <td>
+                    <td data-label="確認">
                       <select
                         value={draft.reviewStatus}
                         onChange={(event) =>
@@ -432,8 +527,11 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
                         <option value="confirmed">確認済み</option>
                         <option value="needs_review">要再確認</option>
                       </select>
+                      <div className={`badge ${statusBadgeClass(draft.reviewStatus)}`}>
+                        {statusLabels[draft.reviewStatus]}
+                      </div>
                     </td>
-                    <td>
+                    <td data-label="メモ">
                       <textarea
                         value={draft.reviewMemo}
                         onChange={(event) => patchDraft(row, { reviewMemo: event.target.value })}
@@ -441,26 +539,28 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
                         placeholder="確認メモ"
                       />
                     </td>
-                    <td className="capacity-actions">
-                      <button type="button" disabled={savingKey === key} onClick={() => save(row)}>
-                        保存
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary"
-                        disabled={savingKey === key}
-                        onClick={() => save(row, "confirmed")}
-                      >
-                        確認済み
-                      </button>
-                      <button
-                        type="button"
-                        className="danger"
-                        disabled={savingKey === key || !row.capacityId}
-                        onClick={() => deleteCapacity(row)}
-                      >
-                        削除
-                      </button>
+                    <td className="action-cell capacity-actions" data-label="操作">
+                      <div className="capacity-row-actions">
+                        <button type="button" disabled={savingKey === key} onClick={() => save(row)}>
+                          保存
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={savingKey === key}
+                          onClick={() => save(row, "confirmed")}
+                        >
+                          確認済み
+                        </button>
+                        <button
+                          type="button"
+                          className="danger"
+                          disabled={savingKey === key || !row.capacityId}
+                          onClick={() => deleteCapacity(row)}
+                        >
+                          削除
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -471,6 +571,17 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
       </div>
     </>
   );
+}
+
+function statusBadgeClass(value: CapacityReviewRow["reviewStatus"]) {
+  switch (value) {
+    case "confirmed":
+      return "success";
+    case "needs_review":
+      return "warn";
+    default:
+      return "muted";
+  }
 }
 
 function isSuspiciousCapacity(row: CapacityReviewRow) {
@@ -487,11 +598,24 @@ function needsAction(row: CapacityReviewRow) {
   return isSuspiciousCapacity(row);
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
+function Metric({
+  label,
+  value,
+  note,
+  tone = "normal",
+}: {
+  label: string;
+  value: number;
+  note?: string;
+  tone?: "normal" | "warn";
+}) {
   return (
     <div className="metric">
       <div className="metric-label">{label}</div>
-      <div className="metric-value">{value.toLocaleString()}</div>
+      <div className={`metric-value ${tone === "warn" ? "warn-value" : ""}`}>
+        {value.toLocaleString()}
+      </div>
+      {note && <div className="metric-note">{note}</div>}
     </div>
   );
 }

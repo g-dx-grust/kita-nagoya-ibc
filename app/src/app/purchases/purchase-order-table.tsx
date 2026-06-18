@@ -303,8 +303,24 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
       {filteredRows.length === 0 ? (
         <div className="empty-state">条件に一致する発注はありません。</div>
       ) : (
-        <div className="table-frame">
-          <table>
+        <div className="table-frame standard-list-frame purchase-order-frame">
+          <table className="standard-list-table purchase-order-list-table">
+            <colgroup>
+              <col className="purchase-status-col" />
+              <col className="purchase-urgency-col" />
+              <col className="purchase-type-col" />
+              <col className="purchase-item-col" />
+              <col className="purchase-supplier-col" />
+              <col className="purchase-quantity-col" />
+              <col className="purchase-quantity-col" />
+              <col className="purchase-quantity-col" />
+              <col className="purchase-date-col" />
+              <col className="purchase-date-col" />
+              <col className="purchase-date-col" />
+              <col className="purchase-date-col" />
+              <col className="purchase-note-col" />
+              <col className="purchase-action-col" />
+            </colgroup>
             <thead>
               <tr>
                 <th>状態</th>
@@ -327,10 +343,10 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
           {filteredRows.map((row) => {
             const editing = editingId === row.id && draft;
             return (
-              <tr key={row.id}>
+              <tr key={row.id} className={`purchase-order-row${editing ? " is-editing" : ""}`}>
                 {editing ? (
                   <>
-                    <td>
+                    <td data-label="状態">
                       <select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
                         <option value="candidate">候補</option>
                         <option value="draft">下書き</option>
@@ -340,17 +356,17 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
                         <option value="cancelled">取消</option>
                       </select>
                     </td>
-                    <td>
+                    <td data-label="緊急度">
                       <span className={`badge ${purchaseOrderUrgencyClass(row.urgency)}`}>
                         {purchaseOrderUrgencyLabel(row.urgency)}
                       </span>
                     </td>
-                    <td>{row.itemType === "raw_material" ? "原料" : "資材"}</td>
-                    <td>
+                    <td data-label="区分">{row.itemType === "raw_material" ? "原料" : "資材"}</td>
+                    <td className="wrap-cell product-name-cell" data-label="品目">
                       {row.itemCode} · {row.itemName}
                     </td>
-                    <td>{row.supplierName}</td>
-                    <td>
+                    <td data-label="仕入先">{row.supplierName}</td>
+                    <td data-label="数量">
                       <input
                         type="number"
                         min={0.0001}
@@ -359,7 +375,7 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
                         onChange={(e) => setDraft({ ...draft, orderedQuantity: Number(e.target.value) })}
                       />
                     </td>
-                    <td>
+                    <td data-label="確定数量">
                       <input
                         type="number"
                         min={0.0001}
@@ -368,33 +384,33 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
                         onChange={(e) => setDraft({ ...draft, confirmedQuantity: e.target.value })}
                       />
                     </td>
-                    <td>{qtyLabel(row, row.receivedQuantity)}</td>
-                    <td>
+                    <td data-label="受領数量">{qtyLabel(row, row.receivedQuantity)}</td>
+                    <td data-label="推奨発注日">
                       <input
                         type="date"
                         value={draft.recommendedOrderDate}
                         onChange={(e) => setDraft({ ...draft, recommendedOrderDate: e.target.value })}
                       />
                     </td>
-                    <td>
+                    <td data-label="不足日">
                       <input
                         type="date"
                         value={draft.shortageDate}
                         onChange={(e) => setDraft({ ...draft, shortageDate: e.target.value })}
                       />
                     </td>
-                    <td>
+                    <td data-label="入荷予定">
                       <input
                         type="date"
                         value={draft.expectedArrivalDate}
                         onChange={(e) => setDraft({ ...draft, expectedArrivalDate: e.target.value })}
                       />
                     </td>
-                    <td>{row.receivedDate || "—"}</td>
-                    <td>
+                    <td data-label="入荷日">{row.receivedDate || "—"}</td>
+                    <td className="wrap-cell" data-label="メモ">
                       <input value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} />
                     </td>
-                    <td>
+                    <td className="action-cell" data-label="操作">
                       <div className="table-actions">
                         <button type="button" onClick={() => save(row.id)} disabled={busy}>
                           保存
@@ -415,26 +431,26 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
                   </>
                 ) : (
                   <>
-                    <td>{purchaseOrderStatusLabel(row.status)}</td>
-                    <td>
+                    <td data-label="状態">{purchaseOrderStatusLabel(row.status)}</td>
+                    <td data-label="緊急度">
                       <span className={`badge ${purchaseOrderUrgencyClass(row.urgency)}`}>
                         {purchaseOrderUrgencyLabel(row.urgency)}
                       </span>
                     </td>
-                    <td>{row.itemType === "raw_material" ? "原料" : "資材"}</td>
-                    <td>
+                    <td data-label="区分">{row.itemType === "raw_material" ? "原料" : "資材"}</td>
+                    <td className="wrap-cell product-name-cell" data-label="品目">
                       {row.itemCode} · {row.itemName}
                     </td>
-                    <td>{row.supplierName}</td>
-                    <td className="right">{qtyLabel(row, row.orderedQuantity)}</td>
-                    <td className="right">{qtyLabel(row, row.confirmedQuantity)}</td>
-                    <td className="right">{qtyLabel(row, row.receivedQuantity)}</td>
-                    <td>{row.recommendedOrderDate || "—"}</td>
-                    <td>{row.shortageDate || "—"}</td>
-                    <td>{row.expectedArrivalDate || "—"}</td>
-                    <td>{row.receivedDate || "—"}</td>
-                    <td>{row.note || "—"}</td>
-                    <td>
+                    <td data-label="仕入先">{row.supplierName}</td>
+                    <td className="right" data-label="数量">{qtyLabel(row, row.orderedQuantity)}</td>
+                    <td className="right" data-label="確定数量">{qtyLabel(row, row.confirmedQuantity)}</td>
+                    <td className="right" data-label="受領数量">{qtyLabel(row, row.receivedQuantity)}</td>
+                    <td data-label="推奨発注日">{row.recommendedOrderDate || "—"}</td>
+                    <td data-label="不足日">{row.shortageDate || "—"}</td>
+                    <td data-label="入荷予定">{row.expectedArrivalDate || "—"}</td>
+                    <td data-label="入荷日">{row.receivedDate || "—"}</td>
+                    <td className="wrap-cell" data-label="メモ">{row.note || "—"}</td>
+                    <td className="action-cell" data-label="操作">
                       <div className="table-actions">
                         {canDownload(row.status) && (
                           <>
@@ -590,8 +606,17 @@ export function ShortageForecastTable({ rows }: { rows: ShortageForecastRow[] })
       {filtered.length === 0 ? (
         <div className="empty-state">条件に一致する不足見込みはありません。</div>
       ) : (
-        <div className="table-frame">
-          <table>
+        <div className="table-frame standard-list-frame shortage-forecast-frame">
+          <table className="standard-list-table shortage-forecast-list-table">
+            <colgroup>
+              <col className="shortage-date-col" />
+              <col className="shortage-type-col" />
+              <col className="shortage-item-col" />
+              <col className="shortage-quantity-col" />
+              <col className="shortage-quantity-col" />
+              <col className="shortage-quantity-col" />
+              <col className="shortage-status-col" />
+            </colgroup>
             <thead>
               <tr>
                 <th>不足日</th>
@@ -605,14 +630,14 @@ export function ShortageForecastTable({ rows }: { rows: ShortageForecastRow[] })
             </thead>
             <tbody>
               {filtered.map((row) => (
-                <tr key={row.requirementId}>
-                  <td>{row.date}</td>
-                  <td>{row.itemType === "raw_material" ? "原料" : "資材"}</td>
-                  <td>{row.itemName}</td>
-                  <td className="right">{row.plannedQuantityLabel}</td>
-                  <td className="right">{row.onHandBeforeLabel}</td>
-                  <td className="right">{row.shortageQuantityLabel}</td>
-                  <td>
+                <tr key={row.requirementId} className="shortage-forecast-row">
+                  <td data-label="不足日">{row.date}</td>
+                  <td data-label="区分">{row.itemType === "raw_material" ? "原料" : "資材"}</td>
+                  <td className="wrap-cell product-name-cell" data-label="品目">{row.itemName}</td>
+                  <td className="right" data-label="予定使用量">{row.plannedQuantityLabel}</td>
+                  <td className="right" data-label="使用前見込み">{row.onHandBeforeLabel}</td>
+                  <td className="right" data-label="不足">{row.shortageQuantityLabel}</td>
+                  <td data-label="状態">
                     {row.shortageType === "hard_shortage" ? (
                       <span className="badge danger">不足</span>
                     ) : row.shortageType === "below_safety" ? (

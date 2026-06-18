@@ -48,10 +48,10 @@ export default function ShiftEntryLinkButton({
     setMessage("コピーしました");
   }
 
-  if (!enabled) return <span className="muted">無効</span>;
+  if (!enabled) return <span className="badge muted employee-url-status">無効</span>;
 
   return (
-    <div className="table-actions">
+    <div className="table-actions employee-shift-actions">
       {token ? (
         <>
           <button type="button" className="secondary" onClick={copy} title={`${employeeName}さん用URLをコピー`}>
@@ -68,7 +68,7 @@ export default function ShiftEntryLinkButton({
         <RefreshCw className="h-4 w-4" />
         {token ? "再発行" : "発行"}
       </button>
-      {message && <span className="subtext">{message}</span>}
+      {message && <span className="subtext employee-shift-message">{message}</span>}
     </div>
   );
 }

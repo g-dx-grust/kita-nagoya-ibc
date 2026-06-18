@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { packagingKindLabel } from "@/lib/labels";
 import { kitagoyaApiPath } from "@/lib/paths";
 import MasterForm, { type MasterField } from "../master-form";
 import PackagingMasterTable, { type PackagingRow } from "./packaging-master-table";
@@ -63,6 +64,17 @@ export default async function PackagingPage() {
   const supplierOptions = suppliers.map((s) => ({ value: s.id, label: s.name }));
   const supplierNameById = new Map(suppliers.map((s) => [s.id, s.name]));
   const packagingFields = buildPackagingFields(supplierOptions);
+  const supplierConfiguredCount = packaging.filter((material) => material.supplierId).length;
+  const supplierMissingCount = packaging.length - supplierConfiguredCount;
+  const priceMissingCount = packaging.filter((material) => material.standardUnitPrice <= 0).length;
+  const casePackConfiguredCount = packaging.filter((material) => material.casePackQty != null).length;
+  const orderRuleConfiguredCount = packaging.filter(
+    (material) => material.orderLotQty != null || material.minOrderQty != null,
+  ).length;
+  const kindSummary = ["bag", "carton", "desiccant", "other", ""].map((kind) => ({
+    label: packagingKindLabel(kind),
+    count: packaging.filter((material) => (material.kind ?? "") === kind).length,
+  }));
 
   const rows: PackagingRow[] = packaging.map((r) => ({
     id: r.id,
@@ -85,7 +97,47 @@ export default async function PackagingPage() {
 
   return (
     <>
-      <h1>資材マスター</h1>
+      <div className="page-title-row">
+        <h1>資材マスター</h1>
+      </div>
+      <div className="packaging-summary-grid">
+        <div className="metric">
+          <div className="metric-label">登録資材</div>
+          <div className="metric-value">{packaging.length}件</div>
+          <div className="metric-note">有効な資材マスター</div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">種類</div>
+          <div className="metric-value packaging-summary-breakdown">
+            {kindSummary.map((item) => (
+              <span key={item.label}>
+                {item.label} {item.count}件
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">仕入先設定</div>
+          <div className="metric-value">{supplierConfiguredCount}件</div>
+          <div className={`metric-note ${supplierMissingCount > 0 ? "warn-note" : ""}`}>
+            未設定 {supplierMissingCount}件
+          </div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">単価未設定</div>
+          <div className={`metric-value ${priceMissingCount > 0 ? "warn-value" : ""}`}>
+            {priceMissingCount}件
+          </div>
+          <div className="metric-note">原価計算に影響</div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">発注基準</div>
+          <div className="metric-value packaging-summary-breakdown">
+            <span>ケース入数 {casePackConfiguredCount}件</span>
+            <span>ロット {orderRuleConfiguredCount}件</span>
+          </div>
+        </div>
+      </div>
       <MasterForm
         endpoint={kitagoyaApiPath("/packaging-materials")}
         kind="資材"

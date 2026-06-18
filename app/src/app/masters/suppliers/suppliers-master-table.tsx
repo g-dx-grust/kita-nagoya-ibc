@@ -16,6 +16,8 @@ export type SupplierRow = {
   closingInfo: string | null;
   validFrom: string;
   validTo: string;
+  materialCount: number;
+  packagingCount: number;
 };
 
 export default function SuppliersMasterTable({
@@ -63,11 +65,21 @@ export default function SuppliersMasterTable({
           </span>
         </div>
       </CollapsiblePanel>
-      <div className="table-frame">
-        <table>
+      <div className="table-frame standard-list-frame suppliers-master-frame">
+        <table className="standard-list-table suppliers-master-table">
+          <colgroup>
+            <col className="supplier-name-col" />
+            <col className="supplier-linked-col" />
+            <col className="supplier-contact-col" />
+            <col className="supplier-ordering-col" />
+            <col className="supplier-closing-col" />
+            <col className="supplier-validity-col" />
+            <col className="supplier-action-col" />
+          </colgroup>
           <thead>
             <tr>
               <th>名称</th>
+              <th>紐付け</th>
               <th>連絡先</th>
               <th>発注単位</th>
               <th>締め情報</th>
@@ -76,18 +88,36 @@ export default function SuppliersMasterTable({
             </tr>
           </thead>
           <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td className="supplier-empty-cell" colSpan={7}>
+                  条件に一致する仕入先はありません。
+                </td>
+              </tr>
+            ) : null}
             {filtered.map((r) => (
-              <tr key={r.id}>
-                <td>{r.name}</td>
-                <td>{r.contact ?? "-"}</td>
-                <td>{r.orderingUnit ?? "-"}</td>
-                <td>{r.closingInfo ?? "-"}</td>
-                <td>
+              <tr key={r.id} className="supplier-master-row">
+                <td className="wrap-cell supplier-name-cell" data-label="名称">
+                  {r.name}
+                </td>
+                <td data-label="紐付け">
+                  <SupplierLinkBadges materialCount={r.materialCount} packagingCount={r.packagingCount} />
+                </td>
+                <td className="wrap-cell" data-label="連絡先">
+                  {r.contact ?? "-"}
+                </td>
+                <td className="wrap-cell" data-label="発注単位">
+                  {r.orderingUnit ?? "-"}
+                </td>
+                <td className="wrap-cell" data-label="締め情報">
+                  {r.closingInfo ?? "-"}
+                </td>
+                <td data-label="有効期間">
                   {r.validFrom || "-"}
                   {" 〜 "}
                   {r.validTo || "-"}
                 </td>
-                <td>
+                <td className="action-cell" data-label="操作">
                   <div className="table-actions">
                     <MasterEditButton
                       endpoint={kitagoyaApiPath(`/suppliers/${r.id}`)}
@@ -114,5 +144,23 @@ export default function SuppliersMasterTable({
         </table>
       </div>
     </>
+  );
+}
+
+function SupplierLinkBadges({
+  materialCount,
+  packagingCount,
+}: {
+  materialCount: number;
+  packagingCount: number;
+}) {
+  if (materialCount === 0 && packagingCount === 0) {
+    return <span className="badge muted">未使用</span>;
+  }
+  return (
+    <span className="badge-list">
+      {materialCount > 0 && <span className="badge info">原料 {materialCount}</span>}
+      {packagingCount > 0 && <span className="badge success">資材 {packagingCount}</span>}
+    </span>
   );
 }

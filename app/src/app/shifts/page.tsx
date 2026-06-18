@@ -83,6 +83,16 @@ export default async function ShiftsPage({
     }),
     prisma.shift.findMany({ where: { date: { gte: start, lt: end }, employee: { active: true } } }),
   ]);
+  const presentShiftCount = shifts.filter((shift) => shift.status !== "off").length;
+  const totalShiftCells = employees.length * lastDay;
+  const registeredDayCount = new Set(
+    shifts.filter((shift) => shift.status !== "off").map((shift) => shift.date.getUTCDate()),
+  ).size;
+  const totalWorkMinutes = shifts.reduce((sum, shift) => {
+    if (shift.status === "off") return sum;
+    return sum + Math.max(0, diffMinutes(shift.startTime, shift.endTime) - shift.breakMinutes);
+  }, 0);
+  const firstDay = `${year}-${String(month).padStart(2, "0")}-01`;
 
   const cellMap: Record<
     string,
@@ -100,7 +110,38 @@ export default async function ShiftsPage({
 
   return (
     <>
-      <h1>シフト ・ 月単位 ({yearMonth})</h1>
+      <div className="page-title-row">
+        <h1>シフト ・ 月単位 ({yearMonth})</h1>
+        <div className="page-title-actions">
+          <Link className="button-link secondary-link" href={kitagoyaPath(`/shifts?date=${firstDay}`)}>
+            日単位画面
+          </Link>
+        </div>
+      </div>
+      <div className="shift-summary-grid">
+        <div className="metric">
+          <div className="metric-label">対象月</div>
+          <div className="metric-value">{yearMonth}</div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">スタッフ</div>
+          <div className="metric-value">{employees.length} 人</div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">出勤セル</div>
+          <div className="metric-value">
+            {presentShiftCount} / {totalShiftCells}
+          </div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">出勤日数</div>
+          <div className="metric-value">{registeredDayCount} 日</div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">勤務時間合計</div>
+          <div className="metric-value">{formatHours(totalWorkMinutes)}</div>
+        </div>
+      </div>
       <ShiftMonthEditor
         key={yearMonth}
         yearMonth={yearMonth}
@@ -140,4 +181,16 @@ function monthInfo(yearMonth: string) {
   const [y, m] = yearMonth.split("-").map(Number);
   const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
   return { year: y, month: m, lastDay };
+}
+
+function diffMinutes(start: string, end: string) {
+  const [startHour, startMinute] = start.split(":").map(Number);
+  const [endHour, endMinute] = end.split(":").map(Number);
+  return endHour * 60 + endMinute - (startHour * 60 + startMinute);
+}
+
+function formatHours(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours} h` : `${hours} h ${rest} m`;
 }

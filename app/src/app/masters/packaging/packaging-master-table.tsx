@@ -111,8 +111,23 @@ export default function PackagingMasterTable({
           </span>
         </div>
       </CollapsiblePanel>
-      <div className="table-frame">
-        <table>
+      <div className="table-frame standard-list-frame packaging-master-frame">
+        <table className="standard-list-table packaging-master-table">
+          <colgroup>
+            <col className="packaging-code-col" />
+            <col className="packaging-name-col" />
+            <col className="packaging-kind-col" />
+            <col className="packaging-unit-col" />
+            <col className="packaging-case-col" />
+            <col className="packaging-price-col" />
+            <col className="packaging-supplier-col" />
+            <col className="packaging-lead-time-col" />
+            <col className="packaging-stock-col" />
+            <col className="packaging-lot-col" />
+            <col className="packaging-min-col" />
+            <col className="packaging-validity-col" />
+            <col className="packaging-action-col" />
+          </colgroup>
           <thead>
             <tr>
               <th>番号</th>
@@ -131,25 +146,52 @@ export default function PackagingMasterTable({
             </tr>
           </thead>
           <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td className="packaging-empty-cell" colSpan={13}>
+                  条件に一致する資材はありません。
+                </td>
+              </tr>
+            ) : null}
             {filtered.map((r) => (
-              <tr key={r.id}>
-                <td>{highlight(r.materialCode, query)}</td>
-                <td>{highlight(r.name, query)}</td>
-                <td>{packagingKindLabel(r.kind)}</td>
-                <td>{r.unit}</td>
-                <td className="right">{r.casePackQty ?? "-"}</td>
-                <td className="right">¥{r.standardUnitPrice}</td>
-                <td>{r.supplierName || "-"}</td>
-                <td className="right">{r.leadTimeDays}日</td>
-                <td className="right">{r.safetyStockQuantity}</td>
-                <td className="right">{r.orderLotQty ?? "-"}</td>
-                <td className="right">{r.minOrderQty ?? "-"}</td>
-                <td>
+              <tr key={r.id} className="packaging-master-row">
+                <td data-label="番号">{highlight(r.materialCode, query)}</td>
+                <td className="wrap-cell packaging-name-cell" data-label="名称">
+                  {highlight(r.name, query)}
+                </td>
+                <td data-label="種類">
+                  <span className={`badge ${r.kind ? "info" : "muted"}`}>
+                    {packagingKindLabel(r.kind)}
+                  </span>
+                </td>
+                <td data-label="単位">{r.unit}</td>
+                <td className="right" data-label="ケース入数">
+                  {formatOptionalNumber(r.casePackQty)}
+                </td>
+                <td className={`right ${r.standardUnitPrice <= 0 ? "warn-value" : ""}`} data-label="標準単価">
+                  {formatCurrency(r.standardUnitPrice)}
+                </td>
+                <td className="wrap-cell" data-label="仕入先">
+                  {r.supplierName || "-"}
+                </td>
+                <td className="right" data-label="リードタイム">
+                  {r.leadTimeDays}日
+                </td>
+                <td className="right" data-label="安全在庫">
+                  {formatNumber(r.safetyStockQuantity)}
+                </td>
+                <td className="right" data-label="発注ロット">
+                  {formatOptionalNumber(r.orderLotQty)}
+                </td>
+                <td className="right" data-label="最小発注">
+                  {formatOptionalNumber(r.minOrderQty)}
+                </td>
+                <td data-label="有効期間">
                   {r.validFrom || "-"}
                   {" 〜 "}
                   {r.validTo || "-"}
                 </td>
-                <td>
+                <td className="action-cell" data-label="操作">
                   <div className="table-actions">
                     <MasterEditButton
                       endpoint={kitagoyaApiPath(`/packaging-materials/${r.id}`)}
@@ -185,6 +227,18 @@ export default function PackagingMasterTable({
       </div>
     </>
   );
+}
+
+function formatCurrency(value: number): string {
+  return `¥${formatNumber(value)}`;
+}
+
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 4 }).format(value);
+}
+
+function formatOptionalNumber(value: number | null): string {
+  return value == null ? "-" : formatNumber(value);
 }
 
 function distinct(values: string[]): string[] {

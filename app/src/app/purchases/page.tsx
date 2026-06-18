@@ -96,6 +96,13 @@ export default async function PurchasesPage({
       note: po.note ?? "",
     };
   });
+  const hardShortageCount = forecastShortages.filter((line) => line.shortageType === "hard_shortage").length;
+  const safetyShortageCount = forecastShortages.filter((line) => line.shortageType === "below_safety").length;
+  const pendingOrderCount = purchaseOrderRows.filter((row) => row.status === "candidate" || row.status === "draft").length;
+  const waitingArrivalCount = purchaseOrderRows.filter(
+    (row) => row.status === "ordered_unconfirmed" || row.status === "confirmed",
+  ).length;
+  const criticalOrderCount = purchaseOrderRows.filter((row) => row.urgency === "CRITICAL").length;
 
   return (
     <>
@@ -103,6 +110,36 @@ export default async function PurchasesPage({
         <h1>発注候補</h1>
         <div className="page-title-actions">
           <GeneratePurchaseCandidatesButton dateFrom={dateFrom} dateTo={dateTo} />
+        </div>
+      </div>
+      <div className="purchase-summary-grid">
+        <div className="metric">
+          <div className="metric-label">確認期間</div>
+          <div className="metric-value purchase-summary-period">
+            {dateFrom} 〜 {dateTo}
+          </div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">不足見込み</div>
+          <div className={`metric-value${hardShortageCount > 0 ? " danger-value" : ""}`}>
+            {forecastShortages.length} 件
+          </div>
+          <div className="metric-note">実不足 {hardShortageCount} / 安全在庫割れ {safetyShortageCount}</div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">未発注</div>
+          <div className={`metric-value${pendingOrderCount > 0 ? " warn-value" : ""}`}>{pendingOrderCount} 件</div>
+          <div className="metric-note">候補・下書き</div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">入荷待ち</div>
+          <div className="metric-value">{waitingArrivalCount} 件</div>
+          <div className="metric-note">未確定・確定発注</div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">緊急</div>
+          <div className={`metric-value${criticalOrderCount > 0 ? " danger-value" : ""}`}>{criticalOrderCount} 件</div>
+          <div className="metric-note">推奨発注日ベース</div>
         </div>
       </div>
       <CollapsiblePanel title="表示・再計算条件" summary={`${dateFrom} 〜 ${dateTo}`}>

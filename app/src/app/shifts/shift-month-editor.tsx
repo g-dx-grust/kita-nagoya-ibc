@@ -257,70 +257,81 @@ export default function ShiftMonthEditor({
 
   return (
     <>
-      <div className="panel toolbar">
-        <button type="button" className="secondary" onClick={() => changeMonth(-1)}>
-          ← 前月
-        </button>
-        <strong>{year}年{month}月</strong>
-        <button type="button" className="secondary" onClick={() => changeMonth(1)}>
-          翌月 →
-        </button>
-        <div className="spacer" />
-        <label>
-          <span>一括 基本開始</span>
-          <input type="time" value={bulkStart} onChange={(e) => setBulkStart(e.target.value)} />
-        </label>
-        <label>
-          <span>一括 基本終了</span>
-          <input type="time" value={bulkEnd} onChange={(e) => setBulkEnd(e.target.value)} />
-        </label>
-        <label>
-          <span>一括 休憩(分)</span>
-          <input
-            type="number"
-            min={0}
-            step={5}
-            value={bulkBreak}
-            onChange={(e) => setBulkBreak(Number(e.target.value))}
-          />
-        </label>
-        <button type="button" className="secondary" onClick={applyBulkDefaults}>
-          全員の基本に反映
-        </button>
-        <button type="button" onClick={save} disabled={busy}>
-          {busy ? "保存中..." : "月一括保存"}
-        </button>
+      <div className="panel shift-month-control-panel">
+        <div className="shift-month-nav">
+          <button type="button" className="secondary" onClick={() => changeMonth(-1)}>
+            ← 前月
+          </button>
+          <strong>{year}年{month}月</strong>
+          <button type="button" className="secondary" onClick={() => changeMonth(1)}>
+            翌月 →
+          </button>
+        </div>
+        <div className="shift-month-defaults">
+          <label>
+            <span>一括 基本開始</span>
+            <input type="time" value={bulkStart} onChange={(e) => setBulkStart(e.target.value)} />
+          </label>
+          <label>
+            <span>一括 基本終了</span>
+            <input type="time" value={bulkEnd} onChange={(e) => setBulkEnd(e.target.value)} />
+          </label>
+          <label>
+            <span>一括 休憩(分)</span>
+            <input
+              type="number"
+              min={0}
+              step={5}
+              value={bulkBreak}
+              onChange={(e) => setBulkBreak(Number(e.target.value))}
+            />
+          </label>
+          <button type="button" className="secondary" onClick={applyBulkDefaults}>
+            全員の基本に反映
+          </button>
+        </div>
+        <div className="shift-month-save">
+          <button type="button" onClick={save} disabled={busy}>
+            {busy ? "保存中..." : "月一括保存"}
+          </button>
+        </div>
       </div>
 
-      <div className="panel toolbar">
-        <span className="muted">
-          出勤セル {presentCount} / {totalCells}
-        </span>
-        <HelpTooltip text="セルクリックで出勤と休みを切り替えます。日付ヘッダークリックで全員分を一括切替できます。月一括保存では、その月の他シフト記録をセル選択された出勤者だけに置き換えます。個別の時刻変更は保存後に日単位画面で調整します。" />
-        <input
-          className="filter-search"
-          type="search"
-          placeholder="スタッフ名・所属で検索"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          aria-label="シフトスタッフを検索"
-        />
-        <span className="filter-count">
-          表示 {visibleEmployees.length} / {employees.length} 人
-        </span>
-        <div className="spacer" />
-        <button type="button" className="secondary" onClick={fillAllWeekdays}>
-          全員の平日を出勤
-        </button>
-        <button type="button" className="secondary" onClick={clearAll}>
-          全てクリア
-        </button>
+      <div className="panel shift-month-filter-panel">
+        <div className="shift-month-filter-head">
+          <span className="muted">
+            出勤セル {presentCount} / {totalCells}
+          </span>
+          <HelpTooltip text="セルクリックで出勤と休みを切り替えます。日付ヘッダークリックで全員分を一括切替できます。月一括保存では、その月の他シフト記録をセル選択された出勤者だけに置き換えます。個別の時刻変更は保存後に日単位画面で調整します。" />
+        </div>
+        <div className="shift-month-filter-body">
+          <input
+            className="filter-search"
+            type="search"
+            placeholder="スタッフ名・所属で検索"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            aria-label="シフトスタッフを検索"
+          />
+          <span className="filter-count">
+            表示 {visibleEmployees.length} / {employees.length} 人
+          </span>
+          <div className="shift-month-filter-actions">
+            <button type="button" className="secondary" onClick={fillAllWeekdays}>
+              全員の平日を出勤
+            </button>
+            <button type="button" className="secondary" onClick={clearAll}>
+              全てクリア
+            </button>
+          </div>
+        </div>
       </div>
 
       {error && <div className="alert danger">{error}</div>}
       {message && <div className="alert success">{message}</div>}
 
       <div className="month-grid-wrap">
+        <div className="shift-scroll-hint">横スクロールで日付と操作列を確認できます。</div>
         <table className="month-grid">
           <thead>
             <tr>

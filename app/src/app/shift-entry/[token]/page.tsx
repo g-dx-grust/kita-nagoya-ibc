@@ -1,6 +1,4 @@
-import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { kitagoyaPath } from "@/lib/paths";
 import StaffShiftEntryForm from "./staff-shift-entry-form";
 
 export const dynamic = "force-dynamic";
@@ -41,15 +39,10 @@ export default async function StaffShiftEntryPage({
     orderBy: { date: "asc" },
   });
   const activeShifts = shifts.filter((shift) => shift.status !== "off");
-  const firstShift = activeShifts[0];
 
   return (
     <div className="self-shift-page">
-      <div className="toolbar">
-        <h1>シフト入力</h1>
-        <div className="spacer" />
-        <Link href={kitagoyaPath("/")}>管理画面へ</Link>
-      </div>
+      <h1>シフト入力</h1>
       <StaffShiftEntryForm
         token={token}
         employeeName={employee.name}
@@ -57,10 +50,15 @@ export default async function StaffShiftEntryPage({
         year={year}
         month={month}
         lastDay={lastDay}
-        initialWorkingDays={activeShifts.map((shift) => shift.date.getUTCDate())}
-        initialStartTime={firstShift?.startTime ?? employee.defaultStartTime}
-        initialEndTime={firstShift?.endTime ?? employee.defaultEndTime}
-        initialBreakMinutes={firstShift?.breakMinutes ?? employee.defaultBreakMinutes}
+        initialDaySettings={activeShifts.map((shift) => ({
+          day: shift.date.getUTCDate(),
+          startTime: shift.startTime,
+          endTime: shift.endTime,
+          breakMinutes: shift.breakMinutes,
+        }))}
+        baseStartTime={employee.defaultStartTime}
+        baseEndTime={employee.defaultEndTime}
+        baseBreakMinutes={employee.defaultBreakMinutes}
       />
     </div>
   );

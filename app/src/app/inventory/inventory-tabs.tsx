@@ -83,6 +83,11 @@ export function InventoryTabs({
       return true;
     });
   }, [sheet.rows, query, hasSupplier, supplier, inStockOnly, negativeOnly]);
+  const activeTabLabel = tabs.find((tab) => tab.key === active)?.label ?? title.replace("在庫表", "");
+  const visibleInStockCount = filteredRows.filter((row) => row.monthEndQuantity !== 0).length;
+  const visibleNegativeCount = filteredRows.filter((row) => row.monthEndQuantity < 0).length;
+  const scopeLabel = hasKitagoyaFilter ? (kitagoyaOnly ? "北名古屋のみ" : "全商品") : "全品目";
+  const modeLabel = adminMode && editableGrid ? "手入力" : "閲覧";
 
   const hasActiveFilters = !!(
     query ||
@@ -115,6 +120,34 @@ export function InventoryTabs({
               <span className="inv-tab-count">{tab.count}</span>
             </Link>
           ))}
+        </div>
+      </div>
+      <div className="inventory-summary-grid">
+        <div className="metric">
+          <div className="metric-label">対象</div>
+          <div className="metric-value">{activeTabLabel}</div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">表示品目</div>
+          <div className="metric-value">
+            {filteredRows.length} / {sheet.rows.length} 件
+          </div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">月末在庫あり</div>
+          <div className="metric-value">{visibleInStockCount} 件</div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">マイナス在庫</div>
+          <div className={`metric-value${visibleNegativeCount > 0 ? " negative-stock" : ""}`}>
+            {visibleNegativeCount} 件
+          </div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">範囲 / モード</div>
+          <div className="metric-value inventory-summary-mode">
+            {scopeLabel} / {modeLabel}
+          </div>
         </div>
       </div>
       <CollapsiblePanel

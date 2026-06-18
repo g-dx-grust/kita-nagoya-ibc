@@ -33,6 +33,7 @@ export default async function ProductionDailyReportsPage({
   const month = normalizeMonth(sp.month ?? new Date().toISOString().slice(0, 7));
   const productId = sp.productId ?? "";
   const q = (sp.q ?? "").trim();
+  const initialReviewOnly = sp.review === "1";
   const monthStart = new Date(`${month}-01T00:00:00.000Z`);
   const monthEnd = new Date(monthStart);
   monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1);
@@ -280,6 +281,7 @@ export default async function ProductionDailyReportsPage({
         materialOptions={materialOptions}
         laborRates={laborRateOptions}
         monthlyLaborFees={monthlyLaborFeeRows}
+        initialReviewOnly={initialReviewOnly}
       />
     </>
   );

@@ -1,16 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { stripKitagoyaBasePath } from "@/lib/paths";
 import { cn } from "@/lib/utils";
 
 const SIDEBAR_COLLAPSED_KEY = "kitagoya:sidebar:collapsed";
 
 export function MainLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const activePathname = stripKitagoyaBasePath(pathname);
+  const isPublicShiftEntry = activePathname.startsWith("/shift-entry/");
 
   useEffect(() => {
     setIsSidebarCollapsed(window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
@@ -22,6 +27,10 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
       window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
       return next;
     });
+  }
+
+  if (isPublicShiftEntry) {
+    return <main className="public-entry-shell">{children}</main>;
   }
 
   return (

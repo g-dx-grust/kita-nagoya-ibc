@@ -124,15 +124,16 @@ export default async function MonthlyProductionPlansPage({
 
   return (
     <>
-      <div className="toolbar">
+      <div className="page-title-row">
         <h1>月間生産スケジュール生成</h1>
-        <div className="spacer" />
-        <Link className="button-link secondary-link" href={kitagoyaPath("/product-planning")}>
-          製品計画へ
-        </Link>
-        <Link className="button-link secondary-link" href={kitagoyaPath("/production-plans")}>
-          生産予定一覧へ
-        </Link>
+        <div className="page-title-actions">
+          <Link className="button-link secondary-link" href={kitagoyaPath("/product-planning")}>
+            製品計画へ
+          </Link>
+          <Link className="button-link secondary-link" href={kitagoyaPath("/production-plans")}>
+            生産予定一覧へ
+          </Link>
+        </div>
       </div>
 
       <CollapsiblePanel

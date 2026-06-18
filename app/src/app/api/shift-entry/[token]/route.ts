@@ -17,20 +17,14 @@ export async function PUT(req: Request, ctx: { params: Promise<{ token: string }
     if (!employee) return notFound();
 
     const body = await parseJson(req, StaffShiftEntrySaveSchema);
-    const shiftTime = {
-      startTime: body.startTime ?? "09:00",
-      endTime: body.endTime ?? "17:00",
-      breakMinutes: body.breakMinutes ?? 60,
-    };
-    if (!isValidTimeRange(shiftTime)) {
-      return badRequest("invalid_time_range");
-    }
+    const invalidTime = body.days.find((day) => !isValidTimeRange(day));
+    if (invalidTime) return badRequest("invalid_time_range", invalidTime);
 
     const { year, month } = parseYearMonth(body.yearMonth);
     const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-    const workingDays = [...new Set(body.workingDays)].sort((a, b) => a - b);
-    const outOfMonth = workingDays.find((day) => day < 1 || day > lastDay);
-    if (outOfMonth) return badRequest("day_out_of_month", { day: outOfMonth });
+    const dayRows = dedupeDays(body.days).sort((a, b) => a.day - b.day);
+    const outOfMonth = dayRows.find((row) => row.day < 1 || row.day > lastDay);
+    if (outOfMonth) return badRequest("day_out_of_month", { day: outOfMonth.day });
 
     const start = new Date(Date.UTC(year, month - 1, 1));
     const end = new Date(Date.UTC(year, month, 1));
@@ -42,14 +36,14 @@ export async function PUT(req: Request, ctx: { params: Promise<{ token: string }
       await tx.shift.deleteMany({
         where: { employeeId: employee.id, date: { gte: start, lt: end } },
       });
-      if (workingDays.length > 0) {
+      if (dayRows.length > 0) {
         await tx.shift.createMany({
-          data: workingDays.map((day) => ({
+          data: dayRows.map((row) => ({
             employeeId: employee.id,
-            date: new Date(Date.UTC(year, month - 1, day)),
-            startTime: shiftTime.startTime,
-            endTime: shiftTime.endTime,
-            breakMinutes: shiftTime.breakMinutes,
+            date: new Date(Date.UTC(year, month - 1, row.day)),
+            startTime: row.startTime,
+            endTime: row.endTime,
+            breakMinutes: row.breakMinutes ?? 60,
             status: "draft",
           })),
         });
@@ -77,4 +71,10 @@ export async function PUT(req: Request, ctx: { params: Promise<{ token: string }
 function parseYearMonth(ym: string): { year: number; month: number } {
   const [year, month] = ym.split("-").map(Number);
   return { year, month };
+}
+
+function dedupeDays<T extends { day: number }>(rows: T[]): T[] {
+  const map = new Map<number, T>();
+  for (const row of rows) map.set(row.day, row);
+  return [...map.values()];
 }

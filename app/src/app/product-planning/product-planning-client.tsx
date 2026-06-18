@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
+import { kitagoyaApiPath } from "@/lib/paths";
 import { ceilDisplayQuantity, formatCases } from "@/lib/units";
 import ProductCombobox from "@/components/ui/product-combobox";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
@@ -297,15 +296,6 @@ export default function ProductPlanningClient({
   return (
     <>
       {message && <div className="alert info">{message}</div>}
-
-      <div className="toolbar">
-        <Link className="button-link secondary-link" href={kitagoyaPath(`/production-plans/monthly?dateFrom=${initialDateFrom}&dateTo=${initialDateTo}`)}>
-          月間生産予定を生成
-        </Link>
-        <Link className="button-link" href={kitagoyaPath(`/production-plans/auto?date=${initialDateFrom}&loadSuggestions=1`)}>
-          候補を読込んでシフト自動作成へ
-        </Link>
-      </div>
 
       <div className="grid grid-2">
         <form className="panel" onSubmit={submitStock}>

@@ -10,12 +10,16 @@ export default function InvoiceExportForm() {
   const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
   const [billingOnly, setBillingOnly] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ type: "success" | "danger"; text: string } | null>(null);
 
   async function run(e: React.FormEvent) {
     e.preventDefault();
+    if (from > to) {
+      setFeedback({ type: "danger", text: "終了日は開始日以降の日付にしてください。" });
+      return;
+    }
     setBusy(true);
-    setMsg(null);
+    setFeedback(null);
     const res = await fetch(kitagoyaApiPath("/invoice-exports"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -25,13 +29,16 @@ export default function InvoiceExportForm() {
         billingTargetOnly: billingOnly,
       }),
     });
-    const json = await res.json();
+    const json = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setMsg(`エラー: ${json.error}`);
+      setFeedback({ type: "danger", text: `エラー: ${json.error ?? "出力に失敗しました。"}` });
       return;
     }
-    setMsg(`${json.rowCount}件出力 / 合計 ¥${json.totalAmount.toLocaleString()}`);
+    setFeedback({
+      type: "success",
+      text: `${json.rowCount ?? 0}件出力 / 合計 ¥${Number(json.totalAmount ?? 0).toLocaleString()}`,
+    });
     if (json.rowCount > 0) {
       const blob = new Blob(["﻿" + json.csv.replace(/^﻿/, "")], {
         type: "text/csv;charset=utf-8",
@@ -47,29 +54,35 @@ export default function InvoiceExportForm() {
   }
 
   return (
-    <form className="panel toolbar" onSubmit={run}>
-      <label>
-        <span>開始日</span>
-        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} required />
-      </label>
-      <label>
-        <span>終了日</span>
-        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} required />
-      </label>
-      <label>
-        <span>請求対象のみ</span>
-        <select
-          value={billingOnly ? "1" : "0"}
-          onChange={(e) => setBillingOnly(e.target.value === "1")}
-        >
-          <option value="1">はい</option>
-          <option value="0">いいえ (外注/AX含む)</option>
-        </select>
-      </label>
-      <button type="submit" disabled={busy}>
-        {busy ? "出力中..." : "CSVを出力"}
-      </button>
-      {msg && <span className="badge success">{msg}</span>}
+    <form className="panel invoice-export-panel" onSubmit={run}>
+      <div className="invoice-export-head">
+        <h2>CSV出力条件</h2>
+        <span className="badge">承認済み日報</span>
+      </div>
+      <div className="invoice-export-grid">
+        <label>
+          <span>開始日</span>
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} required />
+        </label>
+        <label>
+          <span>終了日</span>
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} required />
+        </label>
+        <label>
+          <span>対象</span>
+          <select
+            value={billingOnly ? "1" : "0"}
+            onChange={(e) => setBillingOnly(e.target.value === "1")}
+          >
+            <option value="1">請求対象のみ</option>
+            <option value="0">外注/AX含む</option>
+          </select>
+        </label>
+        <button type="submit" className="invoice-export-submit" disabled={busy}>
+          {busy ? "出力中..." : "CSVを出力"}
+        </button>
+      </div>
+      {feedback && <div className={`alert ${feedback.type}`}>{feedback.text}</div>}
     </form>
   );
 }

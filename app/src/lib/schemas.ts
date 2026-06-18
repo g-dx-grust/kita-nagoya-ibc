@@ -399,10 +399,14 @@ export const ShiftMonthReplaceSchema = z.object({
 
 export const StaffShiftEntrySaveSchema = z.object({
   yearMonth,
-  startTime: hhmm.default("09:00"),
-  endTime: hhmm.default("17:00"),
-  breakMinutes: z.number().int().min(0).default(60),
-  workingDays: z.array(z.number().int().min(1).max(31)),
+  days: z.array(
+    z.object({
+      day: z.number().int().min(1).max(31),
+      startTime: hhmm,
+      endTime: hhmm,
+      breakMinutes: z.number().int().min(0).default(60),
+    }),
+  ),
 });
 
 const SupplierBaseSchema = z.object({

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import { planStatusClass, planStatusLabel } from "@/lib/labels";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 import { formatCases } from "@/lib/units";
@@ -157,58 +156,54 @@ export default function PlanListTable({
 
   return (
     <>
-      <CollapsiblePanel
-        title="表内検索"
-        summary={`${visiblePlans.length} / ${plans.length} 件${query ? ` / ${query}` : ""}`}
-        open={!!query}
-      >
-        <div className="filter-bar compact-controls">
-          <input
-            className="filter-search"
-            type="search"
-            placeholder="管理コード・商品名・場所・状態で検索"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="生産予定を検索"
-          />
-          <button type="button" className="secondary" onClick={resetSearch} disabled={!query}>
-            条件クリア
-          </button>
-          <span className="filter-count">
-            {visiblePlans.length} / {plans.length} 件
+      <div className="panel list-control-panel">
+        <div className="list-control-head">
+          <span className="muted">
+            表示中 {visiblePlans.length} / {plans.length} 件 ・ 選択 {selected.size} 件
           </span>
+          {query && <span className="badge info">表内検索あり</span>}
         </div>
-      </CollapsiblePanel>
-
-      <div className="panel toolbar">
-        <span className="muted">
-          表示中 {visiblePlans.length} 件 ・ 選択 {selected.size} 件
-        </span>
-        <div className="spacer" />
-        <button
-          type="button"
-          onClick={confirmSelected}
-          disabled={busy || selected.size === 0}
-        >
-          {busy ? "処理中..." : `選択確定 (${selected.size})`}
-        </button>
-        <button
-          type="button"
-          className="danger"
-          onClick={deleteSelected}
-          disabled={busy || selected.size === 0}
-        >
-          {busy ? "処理中..." : `選択削除 (${selected.size})`}
-        </button>
-        <button
-          type="button"
-          className="danger"
-          onClick={deleteFiltered}
-          disabled={busy || !filterActive}
-          title={filterActive ? "" : "期間 (開始日〜終了日) を指定すると有効化されます"}
-        >
-          絞り込み結果を全削除
-        </button>
+        <div className="list-control-body">
+          <div className="list-control-search">
+            <input
+              className="filter-search"
+              type="search"
+              placeholder="管理コード・商品名・場所・状態で検索"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="生産予定を検索"
+            />
+            <button type="button" className="secondary" onClick={resetSearch} disabled={!query}>
+              条件クリア
+            </button>
+          </div>
+          <div className="list-control-actions" aria-label="生産予定の一括操作">
+            <button
+              type="button"
+              onClick={confirmSelected}
+              disabled={busy || selected.size === 0}
+            >
+              {busy ? "処理中..." : `選択確定 (${selected.size})`}
+            </button>
+            <button
+              type="button"
+              className="danger"
+              onClick={deleteSelected}
+              disabled={busy || selected.size === 0}
+            >
+              {busy ? "処理中..." : `選択削除 (${selected.size})`}
+            </button>
+            <button
+              type="button"
+              className="danger"
+              onClick={deleteFiltered}
+              disabled={busy || !filterActive}
+              title={filterActive ? "" : "期間 (開始日〜終了日) を指定すると有効化されます"}
+            >
+              絞り込み結果を全削除
+            </button>
+          </div>
+        </div>
       </div>
 
       {error && <div className="alert danger">{error}</div>}
@@ -219,11 +214,24 @@ export default function PlanListTable({
           {plans.length === 0 ? "該当する予定はありません。" : "検索条件に一致する予定はありません。"}
         </div>
       ) : (
-        <div className="table-frame">
-          <table>
+        <div className="table-frame standard-list-frame">
+          <table className="standard-list-table production-plan-list-table">
+            <colgroup>
+              <col className="plan-select-col" />
+              <col className="plan-date-col" />
+              <col className="plan-product-col" />
+              <col className="plan-work-area-col" />
+              <col className="plan-quantity-col" />
+              <col className="plan-people-col" />
+              <col className="plan-time-col" />
+              <col className="plan-time-col" />
+              <col className="plan-status-col" />
+              <col className="plan-alert-col" />
+              <col className="plan-action-col" />
+            </colgroup>
             <thead>
               <tr>
-                <th style={{ width: 36 }}>
+                <th className="select-cell">
                   <input
                     type="checkbox"
                     checked={allChecked}
@@ -246,7 +254,7 @@ export default function PlanListTable({
             <tbody>
               {visiblePlans.map((p) => (
                 <tr key={p.id} className={selected.has(p.id) ? "row-selected" : ""}>
-                  <td>
+                  <td className="select-cell">
                     <input
                       type="checkbox"
                       checked={selected.has(p.id)}
@@ -255,7 +263,7 @@ export default function PlanListTable({
                     />
                   </td>
                   <td>{p.date}</td>
-                  <td>{p.productName}</td>
+                  <td className="wrap-cell product-name-cell">{p.productName}</td>
                   <td>{p.workAreaName}</td>
                   <td className="right">
                     {formatCases(p.plannedQuantity, { casePackQty: p.casePackQty, baseUnit: p.unit })}
@@ -269,13 +277,15 @@ export default function PlanListTable({
                     </span>
                   </td>
                   <td>
-                    {p.overtimeMinutes > 0 && (
-                      <span className="badge warn">17時超 {p.overtimeMinutes}分</span>
-                    )}
-                    {p.hardShortage && <span className="badge danger"> 不足 </span>}
-                    {p.unconfirmedDep && <span className="badge warn"> 未確定依存</span>}
+                    <span className="badge-list">
+                      {p.overtimeMinutes > 0 && (
+                        <span className="badge warn">17時超 {p.overtimeMinutes}分</span>
+                      )}
+                      {p.hardShortage && <span className="badge danger">不足</span>}
+                      {p.unconfirmedDep && <span className="badge warn">未確定依存</span>}
+                    </span>
                   </td>
-                  <td>
+                  <td className="action-cell">
                     <Link href={kitagoyaPath(`/production-plans/${p.id}`)}>開く</Link>
                   </td>
                 </tr>

@@ -32,6 +32,13 @@ export default async function EmployeesPage() {
     orderBy: { name: "asc" },
   });
 
+  const ownCount = rows.filter((row) => row.employmentType === "own").length;
+  const tempCount = rows.filter((row) => row.employmentType === "temp").length;
+  const otherCount = rows.length - ownCount - tempCount;
+  const shiftEntryEnabledCount = rows.filter((row) => row.shiftEntryEnabled).length;
+  const shiftEntryIssuedCount = rows.filter((row) => row.shiftEntryEnabled && row.shiftEntryToken).length;
+  const shiftEntryUnissuedCount = shiftEntryEnabledCount - shiftEntryIssuedCount;
+
   const tableRows = rows.map((r) => ({
     id: r.id,
     name: r.name,
@@ -47,7 +54,36 @@ export default async function EmployeesPage() {
 
   return (
     <>
-      <h1>従業員マスター</h1>
+      <div className="page-title-row">
+        <h1>従業員マスター</h1>
+      </div>
+      <div className="employee-summary-grid">
+        <div className="metric">
+          <div className="metric-label">登録スタッフ</div>
+          <div className="metric-value">{rows.length}名</div>
+          <div className="metric-note">有効な従業員</div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">雇用区分</div>
+          <div className="metric-value employee-summary-breakdown">
+            <span>自社 {ownCount}名</span>
+            <span>派遣 {tempCount}名</span>
+            {otherCount > 0 && <span>その他 {otherCount}名</span>}
+          </div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">本人入力許可</div>
+          <div className="metric-value">{shiftEntryEnabledCount}名</div>
+          <div className="metric-note">URL発行済み {shiftEntryIssuedCount}名</div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">URL未発行</div>
+          <div className={`metric-value ${shiftEntryUnissuedCount > 0 ? "warn-value" : ""}`}>
+            {shiftEntryUnissuedCount}名
+          </div>
+          <div className="metric-note">本人入力URLの共有待ち</div>
+        </div>
+      </div>
       <MasterForm
         endpoint={kitagoyaApiPath("/employees")}
         kind="従業員"

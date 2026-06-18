@@ -54,6 +54,10 @@ export default async function ProductionPlanDetail({
       standardBreakMinutes: c.standardBreakMinutes,
     })),
   }));
+  const workAreaOptions = workAreas.map((workArea) => ({
+    id: workArea.id,
+    name: workArea.name,
+  }));
 
   const shortageHard = plan.requirements.filter((r) => r.shortageType === "hard_shortage");
   const shortageDep = plan.requirements.filter(
@@ -85,7 +89,7 @@ export default async function ProductionPlanDetail({
               <>
                 <PlanForm
                   products={productOptions}
-                  workAreas={workAreas}
+                  workAreas={workAreaOptions}
                   planId={plan.id}
                   initial={{
                     date: plan.date.toISOString().slice(0, 10),

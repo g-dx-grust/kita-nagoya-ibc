@@ -87,8 +87,16 @@ export default function EmployeesMasterTable({
           </span>
         </div>
       </CollapsiblePanel>
-      <div className="table-frame">
-        <table>
+      <div className="table-frame standard-list-frame employee-master-frame">
+        <table className="standard-list-table employees-master-table">
+          <colgroup>
+            <col className="employee-name-col" />
+            <col className="employee-type-col" />
+            <col className="employee-affiliation-col" />
+            <col className="employee-work-time-col" />
+            <col className="employee-shift-link-col" />
+            <col className="employee-action-col" />
+          </colgroup>
           <thead>
             <tr>
               <th>氏名</th>
@@ -100,15 +108,26 @@ export default function EmployeesMasterTable({
             </tr>
           </thead>
           <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td className="employee-empty-cell" colSpan={6}>
+                  条件に一致する従業員はありません。
+                </td>
+              </tr>
+            ) : null}
             {filtered.map((r) => (
-              <tr key={r.id}>
-                <td>{r.name}</td>
-                <td>{employmentTypeLabel(r.employmentType)}</td>
-                <td>{r.affiliation ?? "—"}</td>
-                <td>
+              <tr key={r.id} className="employee-master-row">
+                <td className="wrap-cell employee-name-cell" data-label="氏名">
+                  {r.name}
+                </td>
+                <td data-label="雇用区分">{employmentTypeLabel(r.employmentType)}</td>
+                <td className="wrap-cell" data-label="所属">
+                  {r.affiliation ?? "—"}
+                </td>
+                <td data-label="基本勤務">
                   {r.defaultStartTime}-{r.defaultEndTime} / 休憩 {r.defaultBreakMinutes}分
                 </td>
-                <td>
+                <td className="employee-shift-link-cell" data-label="本人入力URL">
                   <ShiftEntryLinkButton
                     employeeId={r.id}
                     employeeName={r.name}
@@ -116,7 +135,7 @@ export default function EmployeesMasterTable({
                     enabled={r.shiftEntryEnabled}
                   />
                 </td>
-                <td>
+                <td className="action-cell" data-label="操作">
                   <div className="table-actions">
                     <MasterEditButton
                       endpoint={kitagoyaApiPath(`/employees/${r.id}`)}

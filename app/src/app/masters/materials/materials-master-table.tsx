@@ -94,8 +94,22 @@ export default function MaterialsMasterTable({
           </span>
         </div>
       </CollapsiblePanel>
-      <div className="table-frame">
-        <table>
+      <div className="table-frame standard-list-frame materials-master-frame">
+        <table className="standard-list-table materials-master-table">
+          <colgroup>
+            <col className="material-code-col" />
+            <col className="material-name-col" />
+            <col className="material-unit-col" />
+            <col className="material-price-col" />
+            <col className="material-supplier-col" />
+            <col className="material-lead-time-col" />
+            <col className="material-stock-col" />
+            <col className="material-lot-col" />
+            <col className="material-min-col" />
+            <col className="material-shelf-life-col" />
+            <col className="material-validity-col" />
+            <col className="material-action-col" />
+          </colgroup>
           <thead>
             <tr>
               <th>番号</th>
@@ -113,24 +127,49 @@ export default function MaterialsMasterTable({
             </tr>
           </thead>
           <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td className="material-empty-cell" colSpan={12}>
+                  条件に一致する原料はありません。
+                </td>
+              </tr>
+            ) : null}
             {filtered.map((r) => (
-              <tr key={r.id}>
-                <td>{highlight(r.materialCode, query)}</td>
-                <td>{highlight(r.name, query)}</td>
-                <td>{r.unit}</td>
-                <td className="right">¥{r.standardUnitPrice}</td>
-                <td>{r.supplierName || "-"}</td>
-                <td className="right">{r.leadTimeDays}日</td>
-                <td className="right">{r.safetyStockQuantity}</td>
-                <td className="right">{r.orderLotQty ?? "-"}</td>
-                <td className="right">{r.minOrderQty ?? "-"}</td>
-                <td>{r.shelfLifeManaged ? "有" : "無"}</td>
-                <td>
+              <tr key={r.id} className="material-master-row">
+                <td data-label="番号">{highlight(r.materialCode, query)}</td>
+                <td className="wrap-cell material-name-cell" data-label="名称">
+                  {highlight(r.name, query)}
+                </td>
+                <td data-label="単位">{r.unit}</td>
+                <td className={`right ${r.standardUnitPrice <= 0 ? "warn-value" : ""}`} data-label="標準単価">
+                  {formatCurrency(r.standardUnitPrice)}
+                </td>
+                <td className="wrap-cell" data-label="仕入先">
+                  {r.supplierName || "-"}
+                </td>
+                <td className="right" data-label="リードタイム">
+                  {r.leadTimeDays}日
+                </td>
+                <td className="right" data-label="安全在庫">
+                  {formatNumber(r.safetyStockQuantity)}
+                </td>
+                <td className="right" data-label="発注ロット">
+                  {formatOptionalNumber(r.orderLotQty)}
+                </td>
+                <td className="right" data-label="最小発注">
+                  {formatOptionalNumber(r.minOrderQty)}
+                </td>
+                <td data-label="賞味期限管理">
+                  <span className={`badge ${r.shelfLifeManaged ? "success" : "muted"}`}>
+                    {r.shelfLifeManaged ? "有" : "無"}
+                  </span>
+                </td>
+                <td data-label="有効期間">
                   {r.validFrom || "-"}
                   {" 〜 "}
                   {r.validTo || "-"}
                 </td>
-                <td>
+                <td className="action-cell" data-label="操作">
                   <div className="table-actions">
                     <MasterEditButton
                       endpoint={kitagoyaApiPath(`/materials/${r.id}`)}
@@ -165,6 +204,18 @@ export default function MaterialsMasterTable({
       </div>
     </>
   );
+}
+
+function formatCurrency(value: number): string {
+  return `¥${formatNumber(value)}`;
+}
+
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 4 }).format(value);
+}
+
+function formatOptionalNumber(value: number | null): string {
+  return value == null ? "-" : formatNumber(value);
 }
 
 // 生の文字列に対してベストエフォートでマッチ箇所を <mark> 表示する。

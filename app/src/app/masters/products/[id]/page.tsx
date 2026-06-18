@@ -29,12 +29,16 @@ export default async function ProductDetail({ params }: { params: Promise<{ id: 
 
   return (
     <>
-      <div className="toolbar">
-        <Link href={kitagoyaPath("/masters/products")}>← 一覧へ</Link>
+      <div className="page-title-row product-detail-title-row">
+        <h1>
+          {product.productCode} ・ {product.officialName}
+        </h1>
+        <div className="page-title-actions">
+          <Link className="button-link secondary-link" href={kitagoyaPath("/masters/products")}>
+            一覧へ戻る
+          </Link>
+        </div>
       </div>
-      <h1>
-        {product.productCode} ・ {product.officialName}
-      </h1>
       <ProductEditor
         product={{
           id: product.id,

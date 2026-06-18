@@ -51,6 +51,13 @@ export default async function MaterialsPage() {
   const supplierOptions = suppliers.map((s) => ({ value: s.id, label: s.name }));
   const supplierNameById = new Map(suppliers.map((s) => [s.id, s.name]));
   const materialFields = buildMaterialFields(supplierOptions);
+  const supplierConfiguredCount = materials.filter((material) => material.supplierId).length;
+  const supplierMissingCount = materials.length - supplierConfiguredCount;
+  const priceMissingCount = materials.filter((material) => material.standardUnitPrice <= 0).length;
+  const safetyStockConfiguredCount = materials.filter((material) => material.safetyStockQuantity > 0).length;
+  const orderRuleConfiguredCount = materials.filter(
+    (material) => material.orderLotQty != null || material.minOrderQty != null,
+  ).length;
 
   const rows: MaterialRow[] = materials.map((r) => ({
     id: r.id,
@@ -72,7 +79,37 @@ export default async function MaterialsPage() {
 
   return (
     <>
-      <h1>原料マスター</h1>
+      <div className="page-title-row">
+        <h1>原料マスター</h1>
+      </div>
+      <div className="materials-summary-grid">
+        <div className="metric">
+          <div className="metric-label">登録原料</div>
+          <div className="metric-value">{materials.length}件</div>
+          <div className="metric-note">有効な原料マスター</div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">仕入先設定</div>
+          <div className="metric-value">{supplierConfiguredCount}件</div>
+          <div className={`metric-note ${supplierMissingCount > 0 ? "warn-note" : ""}`}>
+            未設定 {supplierMissingCount}件
+          </div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">単価未設定</div>
+          <div className={`metric-value ${priceMissingCount > 0 ? "warn-value" : ""}`}>
+            {priceMissingCount}件
+          </div>
+          <div className="metric-note">原価計算に影響</div>
+        </div>
+        <div className="metric">
+          <div className="metric-label">発注基準</div>
+          <div className="metric-value materials-summary-breakdown">
+            <span>安全在庫 {safetyStockConfiguredCount}件</span>
+            <span>ロット {orderRuleConfiguredCount}件</span>
+          </div>
+        </div>
+      </div>
       <MasterForm
         endpoint={kitagoyaApiPath("/materials")}
         kind="原料"

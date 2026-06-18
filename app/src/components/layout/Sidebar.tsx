@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -32,27 +33,59 @@ type MenuItem = {
   iconColor: string;
 };
 
-const menuItems: MenuItem[] = [
-  { href: kitagoyaPath("/"), label: "ホーム", icon: Home, iconColor: "text-blue-600" },
-  { href: kitagoyaPath("/production-plans"), label: "生産予定", icon: ClipboardList, iconColor: "text-emerald-600" },
-  { href: kitagoyaPath("/production-plans/monthly"), label: "月間予定", icon: CalendarDays, iconColor: "text-purple-600" },
-  { href: kitagoyaPath("/production-plans/allocate"), label: "当日割り当て", icon: Users, iconColor: "text-fuchsia-600" },
-  // 運用の日報は日報蓄積(B)へ一本化。旧・生産予定連動日報(/daily-reports)は非表示(コードは残置)。
-  { href: kitagoyaPath("/production-daily-reports"), label: "日報", icon: ClipboardCheck, iconColor: "text-green-700" },
-  { href: kitagoyaPath("/staff-daily-reports"), label: "スタッフ日報", icon: ClipboardList, iconColor: "text-emerald-700" },
-  { href: kitagoyaPath("/product-planning"), label: "製品計画", icon: Gauge, iconColor: "text-indigo-600" },
-  { href: kitagoyaPath("/inventory"), label: "在庫", icon: Warehouse, iconColor: "text-cyan-700" },
-  { href: kitagoyaPath("/purchases"), label: "発注", icon: ShoppingCart, iconColor: "text-orange-700" },
-  { href: kitagoyaPath("/masters/products"), label: "商品", icon: Package, iconColor: "text-teal-700" },
-  { href: kitagoyaPath("/capacity-review"), label: "能力確認", icon: FileSpreadsheet, iconColor: "text-amber-700" },
-  { href: kitagoyaPath("/masters/materials"), label: "原料", icon: Boxes, iconColor: "text-lime-600" },
-  { href: kitagoyaPath("/masters/packaging"), label: "資材", icon: Database, iconColor: "text-slate-600" },
-  { href: kitagoyaPath("/masters/suppliers"), label: "仕入先", icon: Truck, iconColor: "text-amber-600" },
-  { href: kitagoyaPath("/masters/work-areas"), label: "作業場所", icon: Warehouse, iconColor: "text-violet-600" },
-  { href: kitagoyaPath("/masters/employees"), label: "従業員", icon: Users, iconColor: "text-rose-600" },
-  { href: kitagoyaPath("/shifts"), label: "シフト", icon: CalendarDays, iconColor: "text-sky-700" },
-  { href: kitagoyaPath("/prints"), label: "現場印刷", icon: Printer, iconColor: "text-gray-600" },
-  { href: kitagoyaPath("/invoices"), label: "請求出力", icon: ReceiptText, iconColor: "text-red-600" },
+type MenuSection = {
+  label?: string;
+  items: MenuItem[];
+};
+
+const menuSections: MenuSection[] = [
+  {
+    items: [{ href: kitagoyaPath("/"), label: "ホーム", icon: Home, iconColor: "text-blue-600" }],
+  },
+  {
+    label: "日常業務",
+    items: [
+      { href: kitagoyaPath("/production-plans"), label: "生産予定", icon: ClipboardList, iconColor: "text-emerald-600" },
+      { href: kitagoyaPath("/production-plans/allocate"), label: "当日割り当て", icon: Users, iconColor: "text-fuchsia-600" },
+      // 運用の日報は日報蓄積(B)へ一本化。旧・生産予定連動日報(/daily-reports)は非表示(コードは残置)。
+      { href: kitagoyaPath("/production-daily-reports"), label: "日報", icon: ClipboardCheck, iconColor: "text-green-700" },
+      { href: kitagoyaPath("/staff-daily-reports"), label: "スタッフ日報", icon: ClipboardList, iconColor: "text-emerald-700" },
+      { href: kitagoyaPath("/shifts"), label: "シフト", icon: CalendarDays, iconColor: "text-sky-700" },
+    ],
+  },
+  {
+    label: "計画・確認",
+    items: [
+      { href: kitagoyaPath("/production-plans/monthly"), label: "月間予定", icon: CalendarDays, iconColor: "text-purple-600" },
+      { href: kitagoyaPath("/product-planning"), label: "製品計画", icon: Gauge, iconColor: "text-indigo-600" },
+      { href: kitagoyaPath("/capacity-review"), label: "能力確認", icon: FileSpreadsheet, iconColor: "text-amber-700" },
+    ],
+  },
+  {
+    label: "在庫・発注",
+    items: [
+      { href: kitagoyaPath("/inventory"), label: "在庫", icon: Warehouse, iconColor: "text-cyan-700" },
+      { href: kitagoyaPath("/purchases"), label: "発注", icon: ShoppingCart, iconColor: "text-orange-700" },
+    ],
+  },
+  {
+    label: "マスター",
+    items: [
+      { href: kitagoyaPath("/masters/products"), label: "商品", icon: Package, iconColor: "text-teal-700" },
+      { href: kitagoyaPath("/masters/materials"), label: "原料", icon: Boxes, iconColor: "text-lime-600" },
+      { href: kitagoyaPath("/masters/packaging"), label: "資材", icon: Database, iconColor: "text-slate-600" },
+      { href: kitagoyaPath("/masters/suppliers"), label: "仕入先", icon: Truck, iconColor: "text-amber-600" },
+      { href: kitagoyaPath("/masters/work-areas"), label: "作業場所", icon: Warehouse, iconColor: "text-violet-600" },
+      { href: kitagoyaPath("/masters/employees"), label: "従業員", icon: Users, iconColor: "text-rose-600" },
+    ],
+  },
+  {
+    label: "出力",
+    items: [
+      { href: kitagoyaPath("/prints"), label: "現場印刷", icon: Printer, iconColor: "text-gray-600" },
+      { href: kitagoyaPath("/invoices"), label: "請求出力", icon: ReceiptText, iconColor: "text-red-600" },
+    ],
+  },
 ];
 
 interface SidebarProps {
@@ -62,10 +95,25 @@ interface SidebarProps {
   onToggle?: () => void;
 }
 
-function isActivePath(pathname: string, href: string) {
-  const current = stripKitagoyaBasePath(pathname);
-  const target = stripKitagoyaBasePath(href);
+function isActiveCandidate(current: string, target: string) {
   return target === "/" ? current === "/" : current === target || current.startsWith(`${target}/`);
+}
+
+function activeMenuHref(pathname: string) {
+  const current = stripKitagoyaBasePath(pathname);
+  let active: { href: string; length: number } | null = null;
+
+  for (const section of menuSections) {
+    for (const item of section.items) {
+      const target = stripKitagoyaBasePath(item.href);
+      if (!isActiveCandidate(current, target)) continue;
+      if (!active || target.length > active.length) {
+        active = { href: item.href, length: target.length };
+      }
+    }
+  }
+
+  return active?.href ?? null;
 }
 
 function SidebarContent({
@@ -76,38 +124,53 @@ function SidebarContent({
   onItemClick?: () => void;
 }) {
   const pathname = usePathname();
+  const activeHref = useMemo(() => activeMenuHref(pathname), [pathname]);
 
   return (
     <nav
       className={cn("flex-1 overflow-y-auto px-2 py-3", isCollapsed && "px-2")}
       aria-label="北名古屋ナビゲーション"
     >
-      <ul className="space-y-0.5">
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          const active = isActivePath(pathname, item.href);
-          return (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                onClick={onItemClick}
-                aria-current={active ? "page" : undefined}
-                title={isCollapsed ? item.label : undefined}
-                className={cn(
-                  "flex h-10 items-center rounded-lg text-sm transition-colors hover:no-underline",
-                  isCollapsed ? "justify-center px-0" : "gap-3 px-3",
-                  active
-                    ? "bg-[var(--primary-soft)] font-semibold text-[var(--text)]"
-                    : "font-medium text-[var(--muted)] hover:bg-gray-100 hover:text-[var(--text)]",
-                )}
-              >
-                <Icon className={cn("h-5 w-5 shrink-0", item.iconColor)} />
-                <span className={cn("truncate", isCollapsed && "sr-only")}>{item.label}</span>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+      <div className="space-y-2">
+        {menuSections.map((section, sectionIndex) => (
+          <section key={section.label ?? "home"} className={cn(sectionIndex > 0 && "pt-1")}>
+            {section.label &&
+              (isCollapsed ? (
+                <div className="mx-auto mb-1 h-px w-8 bg-[var(--border)]" aria-hidden="true" />
+              ) : (
+                <div className="mb-1 px-3 text-[11px] font-bold leading-5 text-[var(--muted)]">
+                  {section.label}
+                </div>
+              ))}
+            <ul className="space-y-0.5">
+              {section.items.map((item) => {
+                const Icon = item.icon;
+                const active = item.href === activeHref;
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      onClick={onItemClick}
+                      aria-current={active ? "page" : undefined}
+                      title={isCollapsed ? item.label : undefined}
+                      className={cn(
+                        "flex h-9 items-center rounded-lg border text-sm transition-colors hover:no-underline",
+                        isCollapsed ? "justify-center px-0" : "gap-3 px-3",
+                        active
+                          ? "border-[var(--info-border)] bg-[var(--primary-soft)] font-semibold text-[var(--text)] shadow-sm"
+                          : "border-transparent font-medium text-[var(--muted)] hover:bg-gray-100 hover:text-[var(--text)]",
+                      )}
+                    >
+                      <Icon className={cn("h-5 w-5 shrink-0", item.iconColor)} />
+                      <span className={cn("truncate", isCollapsed && "sr-only")}>{item.label}</span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))}
+      </div>
     </nav>
   );
 }

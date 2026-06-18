@@ -134,8 +134,8 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
       {message && <div className="alert success">{message}</div>}
       {error && <div className="alert danger">{error}</div>}
 
-      <div className="table-frame">
-        <table>
+      <div className="table-frame daily-report-day-frame">
+        <table className="daily-report-day-table">
           <thead>
             <tr>
               <th>商品</th>
@@ -157,14 +157,16 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
               const isOpen = !!expanded[r.planId];
               return (
                 <Fragment key={r.planId}>
-                  <tr className={confirmed ? "row-muted" : undefined}>
-                    <td>
+                  <tr className={`dr-plan-row${confirmed ? " row-muted" : ""}`}>
+                    <td className="dr-product-cell" data-label="商品">
                       <div>{r.productName}</div>
                       <div className="subtext">{r.productCode}</div>
                     </td>
-                    <td>{r.workAreaName}</td>
-                    <td className="right">{formatCases(r.plannedQuantity, { casePackQty: r.casePackQty, baseUnit: r.unit })}</td>
-                    <td className="right">
+                    <td data-label="場所">{r.workAreaName}</td>
+                    <td className="right" data-label="予定数量">
+                      {formatCases(r.plannedQuantity, { casePackQty: r.casePackQty, baseUnit: r.unit })}
+                    </td>
+                    <td className="right dr-actual-cell" data-label="実数量">
                       {confirmed ? (
                         formatCases(r.actualQuantity, { casePackQty: r.casePackQty, baseUnit: r.unit })
                       ) : (
@@ -179,13 +181,13 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
                         />
                       )}
                     </td>
-                    <td className="right">
+                    <td className="right" data-label="過不足">
                       <span className={`badge ${diff === 0 ? "muted" : diff > 0 ? "success" : "danger"}`}>
                         {diff > 0 ? "+" : ""}
                         {formatCases(diff, { casePackQty: r.casePackQty, baseUnit: r.unit })}
                       </span>
                     </td>
-                    <td>
+                    <td data-label="使用量">
                       {r.requirements.length === 0 ? (
                         <span className="muted">—</span>
                       ) : (
@@ -194,11 +196,11 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
                         </button>
                       )}
                     </td>
-                    <td>
+                    <td data-label="状態">
                       <span className={`badge ${badge.cls}`}>{badge.label}</span>
                       {confirmed && r.confirmedAt && <div className="subtext">{r.confirmedAt}</div>}
                     </td>
-                    <td className="right">
+                    <td className="right dr-action-cell" data-label="詳細">
                       <Link className="button-link secondary-link" href={kitagoyaPath(`/production-plans/${r.planId}`)}>
                         詳細
                       </Link>
@@ -257,7 +259,7 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
       </div>
 
       <div className="row form-actions dr-actions">
-        <span className="muted">未確定 {pending.length} 件</span>
+        <span className="muted dr-pending-count">未確定 {pending.length} 件</span>
         <div className="spacer" />
         <button type="button" className="secondary" onClick={() => submit(false)} disabled={busy || pending.length === 0}>
           {busy ? "処理中..." : "下書き保存"}

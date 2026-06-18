@@ -6,6 +6,17 @@ import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
+type InitialDaySetting = {
+  day: number;
+  startTime: string;
+  endTime: string;
+  breakMinutes: number;
+};
+
+type DaySetting = InitialDaySetting & {
+  usesCustomTime: boolean;
+};
+
 export default function StaffShiftEntryForm({
   token,
   employeeName,
@@ -13,10 +24,10 @@ export default function StaffShiftEntryForm({
   year,
   month,
   lastDay,
-  initialWorkingDays,
-  initialStartTime,
-  initialEndTime,
-  initialBreakMinutes,
+  initialDaySettings,
+  baseStartTime,
+  baseEndTime,
+  baseBreakMinutes,
 }: {
   token: string;
   employeeName: string;
@@ -24,16 +35,25 @@ export default function StaffShiftEntryForm({
   year: number;
   month: number;
   lastDay: number;
-  initialWorkingDays: number[];
-  initialStartTime: string;
-  initialEndTime: string;
-  initialBreakMinutes: number;
+  initialDaySettings: InitialDaySetting[];
+  baseStartTime: string;
+  baseEndTime: string;
+  baseBreakMinutes: number;
 }) {
   const router = useRouter();
-  const [workingDays, setWorkingDays] = useState(initialWorkingDays);
-  const [startTime, setStartTime] = useState(initialStartTime);
-  const [endTime, setEndTime] = useState(initialEndTime);
-  const [breakMinutes, setBreakMinutes] = useState(initialBreakMinutes);
+  const [defaultStartTime, setDefaultStartTime] = useState(baseStartTime);
+  const [defaultEndTime, setDefaultEndTime] = useState(baseEndTime);
+  const [defaultBreakMinutes, setDefaultBreakMinutes] = useState(baseBreakMinutes);
+  const [daySettings, setDaySettings] = useState<DaySetting[]>(() =>
+    initialDaySettings.map((setting) => ({
+      ...setting,
+      usesCustomTime: !isSameTime(setting, {
+        startTime: baseStartTime,
+        endTime: baseEndTime,
+        breakMinutes: baseBreakMinutes,
+      }),
+    })),
+  );
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -49,12 +69,38 @@ export default function StaffShiftEntryForm({
       };
     });
   }, [year, month, lastDay]);
+  const settingByDay = useMemo(
+    () => new Map(daySettings.map((setting) => [setting.day, setting])),
+    [daySettings],
+  );
 
   function toggle(day: number) {
-    setWorkingDays((prev) =>
-      prev.includes(day)
-        ? prev.filter((value) => value !== day)
-        : [...prev, day].sort((a, b) => a - b),
+    setDaySettings((prev) => {
+      const found = prev.find((setting) => setting.day === day);
+      if (found) return prev.filter((setting) => setting.day !== day);
+      return [
+        ...prev,
+        {
+          day,
+          startTime: defaultStartTime,
+          endTime: defaultEndTime,
+          breakMinutes: defaultBreakMinutes,
+          usesCustomTime: false,
+        },
+      ].sort((a, b) => a.day - b.day);
+    });
+  }
+
+  function updateDay(day: number, patch: Partial<DaySetting>) {
+    setDaySettings((prev) =>
+      prev.map((setting) =>
+        setting.day === day
+          ? {
+              ...setting,
+              ...patch,
+            }
+          : setting,
+      ),
     );
   }
 
@@ -73,10 +119,12 @@ export default function StaffShiftEntryForm({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         yearMonth,
-        startTime,
-        endTime,
-        breakMinutes,
-        workingDays,
+        days: daySettings.map((setting) => ({
+          day: setting.day,
+          startTime: setting.usesCustomTime ? setting.startTime : defaultStartTime,
+          endTime: setting.usesCustomTime ? setting.endTime : defaultEndTime,
+          breakMinutes: setting.usesCustomTime ? setting.breakMinutes : defaultBreakMinutes,
+        })),
       }),
     });
     const json = await res.json().catch(() => ({}));
@@ -116,21 +164,29 @@ export default function StaffShiftEntryForm({
       <div className="panel">
         <div className="row">
           <label>
-            <span>開始</span>
-            <input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} />
+            <span>基本開始</span>
+            <input
+              type="time"
+              value={defaultStartTime}
+              onChange={(event) => setDefaultStartTime(event.target.value)}
+            />
           </label>
           <label>
-            <span>終了</span>
-            <input type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} />
+            <span>基本終了</span>
+            <input
+              type="time"
+              value={defaultEndTime}
+              onChange={(event) => setDefaultEndTime(event.target.value)}
+            />
           </label>
           <label>
-            <span>休憩(分)</span>
+            <span>基本休憩(分)</span>
             <input
               type="number"
               min={0}
               step={5}
-              value={breakMinutes}
-              onChange={(event) => setBreakMinutes(Number(event.target.value))}
+              value={defaultBreakMinutes}
+              onChange={(event) => setDefaultBreakMinutes(Number(event.target.value))}
             />
           </label>
         </div>
@@ -142,7 +198,7 @@ export default function StaffShiftEntryForm({
       <div className="panel">
         <div className="self-shift-grid">
           {days.map((date) => {
-            const selected = workingDays.includes(date.day);
+            const selected = settingByDay.has(date.day);
             return (
               <button
                 key={date.day}
@@ -164,12 +220,94 @@ export default function StaffShiftEntryForm({
         </div>
       </div>
 
+      {daySettings.length > 0 && (
+        <div className="panel">
+          <h2>日別の時間</h2>
+          <div className="self-shift-exception-list">
+            {daySettings.map((setting) => {
+              const day = days.find((date) => date.day === setting.day);
+              return (
+                <div className="self-shift-exception" key={setting.day}>
+                  <div className="self-shift-exception-head">
+                    <strong>
+                      {month}/{setting.day}({day?.weekday})
+                    </strong>
+                    <label className="inline-check">
+                      <input
+                        type="checkbox"
+                        checked={setting.usesCustomTime}
+                        onChange={(event) =>
+                          updateDay(setting.day, {
+                            usesCustomTime: event.target.checked,
+                            startTime: event.target.checked ? setting.startTime : defaultStartTime,
+                            endTime: event.target.checked ? setting.endTime : defaultEndTime,
+                            breakMinutes: event.target.checked ? setting.breakMinutes : defaultBreakMinutes,
+                          })
+                        }
+                      />
+                      <span>この日だけ時間変更</span>
+                    </label>
+                  </div>
+                  {setting.usesCustomTime ? (
+                    <div className="row self-shift-exception-fields">
+                      <label>
+                        <span>開始</span>
+                        <input
+                          type="time"
+                          value={setting.startTime}
+                          onChange={(event) => updateDay(setting.day, { startTime: event.target.value })}
+                        />
+                      </label>
+                      <label>
+                        <span>終了</span>
+                        <input
+                          type="time"
+                          value={setting.endTime}
+                          onChange={(event) => updateDay(setting.day, { endTime: event.target.value })}
+                        />
+                      </label>
+                      <label>
+                        <span>休憩(分)</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step={5}
+                          value={setting.breakMinutes}
+                          onChange={(event) =>
+                            updateDay(setting.day, { breakMinutes: Number(event.target.value) })
+                          }
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="subtext">
+                      {defaultStartTime}-{defaultEndTime} / 休憩 {defaultBreakMinutes}分
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="self-shift-savebar">
-        <span>{workingDays.length}日 選択中</span>
+        <span>{daySettings.length}日 選択中</span>
         <button type="button" onClick={save} disabled={busy}>
           {busy ? "登録中..." : "登録する"}
         </button>
       </div>
     </>
+  );
+}
+
+function isSameTime(
+  setting: Pick<InitialDaySetting, "startTime" | "endTime" | "breakMinutes">,
+  base: Pick<InitialDaySetting, "startTime" | "endTime" | "breakMinutes">,
+) {
+  return (
+    setting.startTime === base.startTime &&
+    setting.endTime === base.endTime &&
+    setting.breakMinutes === base.breakMinutes
   );
 }

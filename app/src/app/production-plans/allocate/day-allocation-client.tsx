@@ -404,48 +404,68 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
   const utilPct = summary && summary.totalAvailableMinutes > 0
     ? Math.round((summary.totalWorkingMinutes / summary.totalAvailableMinutes) * 100)
     : 0;
+  const resultStatusLabel = persisted ? "保存済み" : result ? "プレビュー" : "未計算";
+  const resultStatusClass = persisted ? "success" : result ? "info" : "muted";
 
   return (
     <>
-      <div className="toolbar">
+      <div className="page-title-row allocation-title-row">
         <h1>
           当日 人員割り当て
           <HelpTooltip text="確定済みの生産予定と当日の出勤シフトをもとに、出勤者全員を作業場所へ割り当てます。部屋レーンと人タイムラインで、誰がどの部屋で何時から何を作るかを確認できます。" />
         </h1>
-        <div className="spacer" />
-        <Link href={kitagoyaPath(`/shifts?date=${date}`)}>シフトを確認</Link>
-        <Link href={kitagoyaPath(`/production-plans?date=${date}`)}>生産予定を確認</Link>
+        <div className="page-title-actions allocation-title-actions">
+          <Link className="button-link secondary-link" href={kitagoyaPath(`/shifts?date=${date}`)}>
+            シフトを確認
+          </Link>
+          <Link className="button-link secondary-link" href={kitagoyaPath(`/production-plans?date=${date}`)}>
+            生産予定を確認
+          </Link>
+        </div>
       </div>
 
-      <div className="card" style={{ display: "flex", gap: 16, alignItems: "flex-end", flexWrap: "wrap" }}>
-        <label>
-          対象日
-          <br />
-          <input type="date" value={date} onChange={(e) => handleDateChange(e.target.value)} />
-        </label>
-        <label>
-          開始
-          <br />
-          <input type="time" value={dayStart} onChange={(e) => changeDayStart(e.target.value)} />
-        </label>
-        <label>
-          基準終了
-          <br />
-          <input type="time" value={dayEnd} onChange={(e) => changeDayEnd(e.target.value)} />
-        </label>
-        <button type="button" onClick={() => call(false)} disabled={loading}>
-          {loading ? "計算中…" : "割り当てプレビュー"}
-        </button>
-        <button type="button" onClick={() => call(true)} disabled={loading || !result}>
-          この割り当てを保存
-        </button>
+      <div className="panel allocation-control-panel">
+        <div className="allocation-control-main">
+          <div className="allocation-control-fields">
+            <label className="allocation-field">
+              <span>対象日</span>
+              <input type="date" value={date} onChange={(e) => handleDateChange(e.target.value)} />
+            </label>
+            <label className="allocation-field">
+              <span>開始</span>
+              <input type="time" value={dayStart} onChange={(e) => changeDayStart(e.target.value)} />
+            </label>
+            <label className="allocation-field">
+              <span>基準終了</span>
+              <input type="time" value={dayEnd} onChange={(e) => changeDayEnd(e.target.value)} />
+            </label>
+          </div>
+          <div className="allocation-control-actions">
+            <button type="button" onClick={() => call(false)} disabled={loading}>
+              {loading ? "計算中…" : "割り当てプレビュー"}
+            </button>
+            <button type="button" onClick={() => call(true)} disabled={loading || !result}>
+              この割り当てを保存
+            </button>
+          </div>
+        </div>
+        <div className="allocation-control-status">
+          <span className={`badge ${resultStatusClass}`}>{resultStatusLabel}</span>
+          {summary ? (
+            <span className="subtext">
+              出勤者 {summary.totalStaff}名 / 稼働率 {utilPct}% / 手すき {summary.idleStaffCount}名
+            </span>
+          ) : (
+            <span className="subtext">対象日と時間を指定してプレビュー</span>
+          )}
+        </div>
       </div>
 
-      {error && <p style={{ color: "var(--danger)" }}>エラー: {error}</p>}
+      {error && <div className="alert danger">エラー: {error}</div>}
       {savedMessage && (
-        <div className="alert success">
-          {savedMessage}
-          <div className="row" style={{ marginTop: 8, gap: 12 }}>
+        <div className="alert success allocation-save-alert">
+          <span>{savedMessage}</span>
+          <div className="allocation-print-actions">
             <Link className="button-link secondary-link" href={kitagoyaPath(`/prints/staff-assignments?date=${date}`)}>
               スタッフ配置を印刷
             </Link>
@@ -458,9 +478,15 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
 
       {result && allocation && summary && (
         <>
-          <div className="card">
-            <h2 style={{ marginTop: 0 }}>サマリ</h2>
-            <div className="stat-grid">
+          <div className="panel allocation-summary-panel">
+            <div className="allocation-summary-head">
+              <h2>判断サマリ</h2>
+              <div className="allocation-summary-status">
+                <span className={`badge ${persisted ? "success" : "info"}`}>{persisted ? "保存済み" : "プレビュー"}</span>
+                {!persisted && <HelpTooltip text="この割り当てを保存すると確定し、印刷へ進めます。" />}
+              </div>
+            </div>
+            <div className="stat-grid allocation-stat-grid">
               <Metric label="出勤者" value={`${summary.totalStaff} 名`} />
               <Metric label="手すき人数" value={`${summary.idleStaffCount} 名${summary.fullyUtilized ? "（全員フル稼働）" : ""}`} />
               <Metric label="稼働 / 待機" value={`${summary.totalWorkingMinutes} 分 / ${summary.totalIdleMinutes} 分`} />
@@ -471,27 +497,25 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
                 </div>
               </div>
             </div>
-            {allocation.warnings.map((w, i) => (
-              <p key={i} style={{ color: summary.capacityBottleneck ? "var(--warn)" : "var(--accent)", margin: "4px 0 0" }}>
-                ⚠ {w}
-              </p>
-            ))}
+            {allocation.warnings.length > 0 && (
+              <div className="allocation-warning-list">
+                {allocation.warnings.map((w, i) => (
+                  <div key={i} className={`alert ${summary.capacityBottleneck ? "warn" : "info"} allocation-inline-alert`}>
+                    注意: {w}
+                  </div>
+                ))}
+              </div>
+            )}
             {result.skippedPlans.length > 0 && (
-              <div className="alert warn" style={{ marginTop: 8 }}>
+              <div className="alert warn allocation-inline-alert">
                 能力未登録でスキップした予定:
-                <ul style={{ margin: "4px 0 0" }}>
+                <ul className="allocation-alert-list">
                   {result.skippedPlans.map((p) => (
                     <li key={p.planId}>
                       {p.productName}: {p.reason}
                     </li>
                   ))}
                 </ul>
-              </div>
-            )}
-            {!persisted && (
-              <div className="inline-action after-table">
-                <span className="badge info">プレビュー</span>
-                <HelpTooltip text="この割り当てを保存すると確定し、印刷へ進めます。" />
               </div>
             )}
             <AreaLegend areas={areaOrder} colorOf={colorOf} />

@@ -1,10 +1,11 @@
 import type { Prisma } from "@prisma/client";
 import Link from "next/link";
-import { CalendarDays, Search, Table2 } from "lucide-react";
+import { AlertTriangle, CalendarDays, CheckCircle2, ClipboardCheck, Search, Table2 } from "lucide-react";
 
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { kitagoyaPath } from "@/lib/paths";
 import {
+  DEFAULT_DAILY_REPORT_DASHBOARD_THRESHOLDS,
   buildProductDailyReportDashboard,
   type ProductDailyReportDashboardEntry,
   type ProductDailyReportDashboardComparison,
@@ -95,6 +96,11 @@ export default async function ProductionDailyReportDashboardPage({
     { label: "手間賃推計", value: dashboard.totals.estimatedLaborCost, className: "labor" },
   ];
   const maxCost = Math.max(0, ...costRows.map((row) => row.value));
+  const hasAlerts = dashboard.totals.alertRowCount > 0;
+  const alertReasonRows = countAlertReasons(dashboard.alertRows.flatMap((row) => row.reasonLabels));
+  const alertStatusText = hasAlerts
+    ? "商品照合、単価、ロス率、利率を確認してください。"
+    : "確認対象はありません。";
 
   return (
     <>
@@ -106,6 +112,12 @@ export default async function ProductionDailyReportDashboardPage({
           </h1>
         </div>
         <div className="dashboard-actions">
+          {hasAlerts && (
+            <a className="button-link secondary-link gap-2" href="#dashboard-alerts">
+              <AlertTriangle className="h-4 w-4" />
+              確認対象
+            </a>
+          )}
           <Link className="button-link secondary-link gap-2" href={dailyReportHref(month, productId, q)}>
             <Table2 className="h-4 w-4" />
             日報一覧
@@ -136,16 +148,41 @@ export default async function ProductionDailyReportDashboardPage({
         </button>
       </form>
 
-      <div className="dashboard-period-nav">
-        <Link className="button-link secondary-link gap-2" href={dashboardHref(shiftMonth(month, -1), productId, q)}>
-          <CalendarDays className="h-4 w-4" />
-          前月
-        </Link>
-        <span>{month}</span>
-        <Link className="button-link secondary-link gap-2" href={dashboardHref(shiftMonth(month, 1), productId, q)}>
-          <CalendarDays className="h-4 w-4" />
-          翌月
-        </Link>
+      <div className={`panel dashboard-control-band ${hasAlerts ? "warn" : "success"}`}>
+        <div className="dashboard-period-nav">
+          <Link className="button-link secondary-link gap-2" href={dashboardHref(shiftMonth(month, -1), productId, q)}>
+            <CalendarDays className="h-4 w-4" />
+            前月
+          </Link>
+          <span>{month}</span>
+          <Link className="button-link secondary-link gap-2" href={dashboardHref(shiftMonth(month, 1), productId, q)}>
+            <CalendarDays className="h-4 w-4" />
+            翌月
+          </Link>
+        </div>
+        <div className="dashboard-control-status">
+          {hasAlerts ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
+          <div>
+            <span className="dashboard-control-label">確認対象</span>
+            <strong>
+              {dashboard.totals.alertRowCount} 件 / {dashboard.totals.alertIssueCount} 項目
+            </strong>
+            <p>{alertStatusText}</p>
+            {alertReasonRows.length > 0 && (
+              <div className="dashboard-alert-breakdown" aria-label="確認理由の内訳">
+                {alertReasonRows.slice(0, 5).map((row) => (
+                  <span key={row.label} className="badge warn">
+                    {row.label} {row.count}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <a className="button-link secondary-link gap-2" href={hasAlerts ? "#dashboard-alerts" : dailyReportHref(month, productId, q)}>
+          <ClipboardCheck className="h-4 w-4" />
+          {hasAlerts ? "確認対象を見る" : "日報一覧へ"}
+        </a>
       </div>
 
       <div className="stat-grid dashboard-kpis">
@@ -184,15 +221,9 @@ export default async function ProductionDailyReportDashboardPage({
           label="要確認"
           value={`${dashboard.totals.alertRowCount} 件`}
           subtext={`${dashboard.totals.alertIssueCount} 項目`}
-          tone={dashboard.totals.alertRowCount > 0 ? "warn" : "positive"}
+          tone={hasAlerts ? "warn" : "positive"}
         />
       </div>
-
-      {dashboard.totals.alertRowCount > 0 && (
-        <div className="alert warn">
-          確認対象の日報が {dashboard.totals.alertRowCount} 件あります。商品照合、単価、ロス率、利率を確認してください。
-        </div>
-      )}
 
       <div className="dashboard-grid dashboard-grid-2">
         <section className="panel dashboard-panel">
@@ -201,7 +232,17 @@ export default async function ProductionDailyReportDashboardPage({
             <span className="badge info">生産数順</span>
           </div>
           <div className="table-frame">
-            <table>
+            <table className="dashboard-product-table">
+              <colgroup>
+                <col className="dashboard-product-name-col" />
+                <col className="dashboard-product-qty-col" />
+                <col className="dashboard-product-money-col" />
+                <col className="dashboard-product-rate-col" />
+                <col className="dashboard-product-rate-col" />
+                <col className="dashboard-product-number-col" />
+                <col className="dashboard-product-rate-col" />
+                <col className="dashboard-product-alert-col" />
+              </colgroup>
               <thead>
                 <tr>
                   <th>商品</th>
@@ -228,8 +269,16 @@ export default async function ProductionDailyReportDashboardPage({
                       </div>
                     </td>
                     <td className="right">{formatYen(row.sales)}</td>
-                    <td className="right">{formatPercent(row.profitRate)}</td>
-                    <td className="right">{formatPercent(row.averageLossRate)}</td>
+                    <td className="right">
+                      <span className={`dashboard-rate-pill ${profitRateTone(row.profitRate)}`}>
+                        {formatPercent(row.profitRate)}
+                      </span>
+                    </td>
+                    <td className="right">
+                      <span className={`dashboard-rate-pill ${lossRateTone(row.averageLossRate)}`}>
+                        {formatPercent(row.averageLossRate)}
+                      </span>
+                    </td>
                     <td className="right">{formatNumber(row.averagePerHourQty, 1)}</td>
                     <td className="right">{formatPercent(row.productionShare)}</td>
                     <td className="right">{row.alertRowCount > 0 ? <span className="badge warn">{row.alertRowCount}</span> : "0"}</td>
@@ -247,42 +296,68 @@ export default async function ProductionDailyReportDashboardPage({
           </div>
         </section>
 
-        <section className="panel dashboard-panel">
+        <section id="dashboard-alerts" className={`panel dashboard-panel dashboard-alert-panel anchor-offset ${hasAlerts ? "" : "is-clear"}`}>
           <div className="dashboard-section-heading">
-            <h2>原価・手間賃</h2>
-            <span className="badge muted">日報計算値</span>
+            <h2>確認対象</h2>
+            <span className={hasAlerts ? "badge warn" : "badge success"}>
+              {dashboard.totals.alertRowCount} 件
+            </span>
           </div>
-          <div className="dashboard-cost-list">
-            {costRows.map((row) => (
-              <div key={row.label} className="dashboard-cost-row">
-                <div>
-                  <strong>{row.label}</strong>
-                  <span>{formatYen(row.value)}</span>
-                </div>
-                <div className="dashboard-bar-track" aria-hidden="true">
-                  <div className={`dashboard-bar-fill ${row.className}`} style={{ width: barWidth(row.value, maxCost) }} />
-                </div>
+          {hasAlerts ? (
+            <>
+              <div className="dashboard-alert-list">
+                {dashboard.alertRows.slice(0, 8).map((row) => (
+                  <div key={row.id} className="dashboard-alert-item">
+                    <div className="dashboard-alert-item-main">
+                      <strong>{row.productName}</strong>
+                      <span>
+                        {row.date}
+                        {row.productCode ? ` / ${row.productCode}` : ""}
+                      </span>
+                    </div>
+                    <div className="dashboard-badge-cell">
+                      {row.reasonLabels.map((label) => (
+                        <span key={label} className="badge warn">
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                    <dl>
+                      <div>
+                        <dt>生産数</dt>
+                        <dd>{formatNumber(row.productionQty)}</dd>
+                      </div>
+                      <div>
+                        <dt>ロス率</dt>
+                        <dd>{formatPercent(row.lossRate)}</dd>
+                      </div>
+                      <div>
+                        <dt>利率</dt>
+                        <dd>{formatPercent(row.profitRate)}</dd>
+                      </div>
+                    </dl>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="dashboard-mini-grid">
-            <div>
-              <span>合計原価</span>
-              <strong>{formatYen(dashboard.totals.totalCost)}</strong>
+              <div className="dashboard-panel-actions">
+                <Link className="button-link secondary-link gap-2" href={dailyReportReviewHref(month, productId, q)}>
+                  <Table2 className="h-4 w-4" />
+                  日報一覧で確認
+                </Link>
+                {dashboard.alertRows.length > 8 && (
+                  <HelpTooltip text="上位8件を表示しています。全件確認は日報一覧で行ってください。" />
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="dashboard-clear-state">
+              <CheckCircle2 className="h-6 w-6" />
+              <div>
+                <strong>確認対象はありません</strong>
+                <span>確定済み日報の照合状態、単価、ロス率、利率に注意表示はありません。</span>
+              </div>
             </div>
-            <div>
-              <span>原料原価</span>
-              <strong>{formatYen(dashboard.totals.materialCost)}</strong>
-            </div>
-            <div>
-              <span>資材原価</span>
-              <strong>{formatYen(dashboard.totals.packageCost)}</strong>
-            </div>
-            <div>
-              <span>1個生産時間</span>
-              <strong>{formatNumber(dashboard.totals.averagePerUnitTimeMinutes, 2)} M</strong>
-            </div>
-          </div>
+          )}
         </section>
       </div>
 
@@ -293,7 +368,16 @@ export default async function ProductionDailyReportDashboardPage({
             <span className="badge info">{month}</span>
           </div>
           <div className="table-frame">
-            <table>
+            <table className="dashboard-daily-table">
+              <colgroup>
+                <col className="dashboard-daily-date-col" />
+                <col className="dashboard-daily-count-col" />
+                <col className="dashboard-daily-qty-col" />
+                <col className="dashboard-daily-material-col" />
+                <col className="dashboard-daily-money-col" />
+                <col className="dashboard-daily-rate-col" />
+                <col className="dashboard-daily-alert-col" />
+              </colgroup>
               <thead>
                 <tr>
                   <th>日付</th>
@@ -318,7 +402,11 @@ export default async function ProductionDailyReportDashboardPage({
                     </td>
                     <td className="right">{formatNumber(row.materialUsedKg, 1)} kg</td>
                     <td className="right">{formatYen(row.sales)}</td>
-                    <td className="right">{formatPercent(row.profitRate)}</td>
+                    <td className="right">
+                      <span className={`dashboard-rate-pill ${profitRateTone(row.profitRate)}`}>
+                        {formatPercent(row.profitRate)}
+                      </span>
+                    </td>
                     <td className="right">{row.alertRowCount > 0 ? <span className="badge warn">{row.alertRowCount}</span> : "0"}</td>
                   </tr>
                 ))}
@@ -334,83 +422,71 @@ export default async function ProductionDailyReportDashboardPage({
           </div>
         </section>
 
-        <section className="panel dashboard-panel">
-          <div className="dashboard-section-heading">
-            <h2>確認対象</h2>
-            <span className="badge warn">{dashboard.totals.alertRowCount} 件</span>
-          </div>
-          <div className="table-frame">
-            <table>
-              <thead>
-                <tr>
-                  <th>日付</th>
-                  <th>商品</th>
-                  <th>確認項目</th>
-                  <th className="right">生産数</th>
-                  <th className="right">ロス率</th>
-                  <th className="right">利率</th>
-                  <th>履歴</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dashboard.alertRows.slice(0, 12).map((row) => (
-                  <tr key={row.id}>
-                    <td>{row.date}</td>
-                    <td className="dashboard-name-cell">
-                      <div>{row.productName}</div>
-                      {row.productCode && <div className="subtext">{row.productCode}</div>}
-                    </td>
-                    <td className="dashboard-badge-cell">
-                      {row.reasonLabels.map((label) => (
-                        <span key={label} className="badge warn">
-                          {label}
-                        </span>
-                      ))}
-                    </td>
-                    <td className="right">{formatNumber(row.productionQty)}</td>
-                    <td className="right">{formatPercent(row.lossRate)}</td>
-                    <td className="right">{formatPercent(row.profitRate)}</td>
-                    <td>{row.inventoryReflected ? <span className="badge success">反映済み</span> : <span className="badge muted">履歴</span>}</td>
-                  </tr>
-                ))}
-                {dashboard.alertRows.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="muted">
-                      確認対象はありません。
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          {dashboard.alertRows.length > 12 && <HelpTooltip text="上位12件を表示しています。全件確認は日報一覧で行ってください。" />}
-        </section>
-      </div>
+        <div className="dashboard-side-stack">
+          <section className="panel dashboard-panel">
+            <div className="dashboard-section-heading">
+              <h2>原価・手間賃</h2>
+              <span className="badge muted">日報計算値</span>
+            </div>
+            <div className="dashboard-cost-list">
+              {costRows.map((row) => (
+                <div key={row.label} className="dashboard-cost-row">
+                  <div>
+                    <strong>{row.label}</strong>
+                    <span>{formatYen(row.value)}</span>
+                  </div>
+                  <div className="dashboard-bar-track" aria-hidden="true">
+                    <div className={`dashboard-bar-fill ${row.className}`} style={{ width: barWidth(row.value, maxCost) }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="dashboard-mini-grid">
+              <div>
+                <span>合計原価</span>
+                <strong>{formatYen(dashboard.totals.totalCost)}</strong>
+              </div>
+              <div>
+                <span>原料原価</span>
+                <strong>{formatYen(dashboard.totals.materialCost)}</strong>
+              </div>
+              <div>
+                <span>資材原価</span>
+                <strong>{formatYen(dashboard.totals.packageCost)}</strong>
+              </div>
+              <div>
+                <span>1個生産時間</span>
+                <strong>{formatNumber(dashboard.totals.averagePerUnitTimeMinutes, 2)} M</strong>
+              </div>
+            </div>
+          </section>
 
-      <section className="panel dashboard-panel">
-        <div className="dashboard-section-heading">
-          <h2>データ区分</h2>
-          <span className="badge muted">在庫二重差引防止</span>
+          <section className="panel dashboard-panel">
+            <div className="dashboard-section-heading">
+              <h2>データ区分</h2>
+              <span className="badge muted">在庫二重差引防止</span>
+            </div>
+            <div className="dashboard-mini-grid compact">
+              <div>
+                <span>在庫反映済み</span>
+                <strong>{dashboard.totals.inventoryReflectedCount} 件</strong>
+              </div>
+              <div>
+                <span>履歴取込（在庫未反映）</span>
+                <strong>{dashboard.totals.historyOnlyCount} 件</strong>
+              </div>
+              <div>
+                <span>前月の日報行数</span>
+                <strong>{dashboard.previousTotals.entryCount} 件</strong>
+              </div>
+              <div>
+                <span>商品未照合</span>
+                <strong>{dashboard.totals.unmatchedProductCount} 件</strong>
+              </div>
+            </div>
+          </section>
         </div>
-        <div className="dashboard-mini-grid">
-          <div>
-            <span>在庫反映済み</span>
-            <strong>{dashboard.totals.inventoryReflectedCount} 件</strong>
-          </div>
-          <div>
-            <span>履歴取込（在庫未反映）</span>
-            <strong>{dashboard.totals.historyOnlyCount} 件</strong>
-          </div>
-          <div>
-            <span>前月の日報行数</span>
-            <strong>{dashboard.previousTotals.entryCount} 件</strong>
-          </div>
-          <div>
-            <span>商品未照合</span>
-            <strong>{dashboard.totals.unmatchedProductCount} 件</strong>
-          </div>
-        </div>
-      </section>
+      </div>
     </>
   );
 }
@@ -447,6 +523,16 @@ function toDashboardEntry(entry: DailyReportEntryForDashboard): ProductDailyRepo
 function filterDashboardEntries(entries: ProductDailyReportDashboardEntry[], q: string) {
   if (!q) return entries;
   return entries.filter((entry) => matchesQuery(q, [entry.productName, entry.productCode ?? "", entry.note ?? ""]));
+}
+
+function countAlertReasons(labels: string[]) {
+  const counts = new Map<string, number>();
+  for (const label of labels) {
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return Array.from(counts, ([label, count]) => ({ label, count })).sort(
+    (a, b) => b.count - a.count || a.label.localeCompare(b.label, "ja"),
+  );
 }
 
 function Metric({
@@ -500,6 +586,11 @@ function dailyReportHref(month: string, productId: string, q: string) {
   return `${kitagoyaPath("/production-daily-reports")}?${buildParams(month, productId, q)}`;
 }
 
+function dailyReportReviewHref(month: string, productId: string, q: string) {
+  const params = buildParams(month, productId, q);
+  return `${kitagoyaPath("/production-daily-reports")}?${params}&review=1#daily-report-review`;
+}
+
 function buildParams(month: string, productId: string, q: string) {
   const params = new URLSearchParams({ month });
   if (productId) params.set("productId", productId);
@@ -519,6 +610,18 @@ function parseWarnings(value: string): string[] {
 function toneFromRate(value: number | null): "positive" | "negative" | "neutral" {
   if (value === null || value === 0) return "neutral";
   return value > 0 ? "positive" : "negative";
+}
+
+function profitRateTone(value: number) {
+  if (value < 0) return "danger";
+  if (value <= DEFAULT_DAILY_REPORT_DASHBOARD_THRESHOLDS.lowProfitRate) return "warn";
+  return "success";
+}
+
+function lossRateTone(value: number) {
+  if (value >= DEFAULT_DAILY_REPORT_DASHBOARD_THRESHOLDS.highLossRate) return "warn";
+  if (value < 0) return "info";
+  return "neutral";
 }
 
 function barWidth(value: number, max: number) {

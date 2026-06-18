@@ -1,3 +1,4 @@
+import Link from "next/link";
 import ProductPlanningClient from "./product-planning-client";
 import { loadProductPlanningSuggestions } from "@/lib/product-planning-service";
 import {
@@ -5,6 +6,7 @@ import {
   yearMonthFromDateInput,
 } from "@/lib/monthly-production-forecast";
 import { INVENTORY_LEDGER_STATUS } from "@/lib/inventory-types";
+import { kitagoyaPath } from "@/lib/paths";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +52,17 @@ export default async function ProductPlanningPage({
 
   return (
     <>
-      <h1>製品在庫・自動生産提案</h1>
+      <div className="page-title-row">
+        <h1>製品在庫・自動生産提案</h1>
+        <div className="page-title-actions">
+          <Link className="button-link secondary-link" href={kitagoyaPath(`/production-plans/monthly?dateFrom=${dateFrom}&dateTo=${dateTo}`)}>
+            月間生産予定を生成
+          </Link>
+          <Link className="button-link" href={kitagoyaPath(`/production-plans/auto?date=${dateFrom}&loadSuggestions=1`)}>
+            候補を読込んでシフト自動作成へ
+          </Link>
+        </div>
+      </div>
       <form className="panel toolbar" method="GET">
         <label>
           <span>基準日</span>
