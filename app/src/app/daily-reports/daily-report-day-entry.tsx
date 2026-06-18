@@ -66,6 +66,7 @@ function toNum(v: string): number {
 
 type QtyMap = Record<string, string>;
 type ConsMap = Record<string, Record<string, string>>;
+type ViewFilter = "" | "pending" | "unentered" | "draft" | "issues" | "variance";
 
 export default function DailyReportDayEntry({ date, rows }: { date: string; rows: DayPlanRow[] }) {
   const router = useRouter();
@@ -85,11 +86,12 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [viewFilter, setViewFilter] = useState<"" | "pending" | "issues" | "variance">("");
+  const [viewFilter, setViewFilter] = useState<ViewFilter>("");
 
   const pending = useMemo(() => rows.filter((r) => r.reportStatus !== "confirmed"), [rows]);
   const confirmedCount = useMemo(() => rows.filter((r) => r.reportStatus === "confirmed").length, [rows]);
   const draftCount = useMemo(() => rows.filter((r) => r.reportStatus === "draft").length, [rows]);
+  const unenteredCount = useMemo(() => rows.filter((r) => r.reportStatus === "none").length, [rows]);
   const rowsWithVariance = useMemo(
     () => rows.filter((row) => rowHasVariance(row, qty, cons)).length,
     [cons, qty, rows],
@@ -113,6 +115,8 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
           return false;
         }
         if (viewFilter === "pending" && row.reportStatus === "confirmed") return false;
+        if (viewFilter === "unentered" && row.reportStatus !== "none") return false;
+        if (viewFilter === "draft" && row.reportStatus !== "draft") return false;
         if (viewFilter === "issues" && !rowNeedsReview(row, qty, cons)) return false;
         if (viewFilter === "variance" && !rowHasVariance(row, qty, cons)) return false;
         return true;
@@ -139,6 +143,18 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
       : issueRows.length > 0
         ? "実数量または実使用量が0以下の未確定行があります。"
         : "確定すると実使用量で在庫・原価へ反映します。";
+  const nextAction =
+    pending.length === 0
+      ? "完了"
+      : issueRows.length > 0
+        ? "要確認から処理"
+        : unenteredCount > 0
+          ? "未入力を埋める"
+          : draftCount > 0
+            ? "下書きを確認"
+            : rowsWithVariance > 0
+              ? "差異を確認"
+              : "確定へ進む";
 
   function toggle(planId: string) {
     setExpanded((prev) => ({ ...prev, [planId]: !prev[planId] }));
@@ -218,6 +234,27 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
     setViewFilter("");
   }
 
+  function focusFilter(filter: Exclude<ViewFilter, "">) {
+    setSearch("");
+    setViewFilter((current) => (current === filter ? "" : filter));
+    if (filter === "issues") {
+      setExpanded((prev) => ({
+        ...prev,
+        ...Object.fromEntries(issueRows.map((row) => [row.planId, true])),
+      }));
+    }
+  }
+
+  function resetRowToPlan(row: DayPlanRow) {
+    setQty((prev) => ({ ...prev, [row.planId]: String(row.plannedQuantity) }));
+    setCons((prev) => ({
+      ...prev,
+      [row.planId]: Object.fromEntries(row.requirements.map((req) => [`${req.itemType}:${req.itemId}`, String(req.plannedQuantity)])),
+    }));
+    setMessage(null);
+    setError(null);
+  }
+
   function resetPendingToPlan() {
     setQty((prev) => ({
       ...prev,
@@ -258,6 +295,7 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
             {saveStatus}
           </span>
           <strong>{date} の日報入力</strong>
+          <span className="daily-report-day-next">次: {nextAction}</span>
         </div>
         <div className="daily-report-day-checks" aria-label="当日日報の状態">
           <span className="badge info">
@@ -284,6 +322,57 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
         </div>
       </div>
 
+      <div className="daily-report-day-review-queue" aria-label="日報レビュー順">
+        <button
+          type="button"
+          className={`daily-report-day-review-item ${issueRows.length > 0 ? "danger" : "success"}${viewFilter === "issues" ? " is-active" : ""}`}
+          onClick={() => focusFilter("issues")}
+        >
+          <span>
+            {issueRows.length > 0 ? <AlertTriangle size={15} aria-hidden="true" /> : <CheckCircle2 size={15} aria-hidden="true" />}
+            要確認
+          </span>
+          <strong>{issueRows.length}件</strong>
+          <small>0以下の未確定行</small>
+        </button>
+        <button
+          type="button"
+          className={`daily-report-day-review-item${viewFilter === "unentered" ? " is-active" : ""}`}
+          onClick={() => focusFilter("unentered")}
+        >
+          <span>
+            <ClipboardCheck size={15} aria-hidden="true" />
+            未入力
+          </span>
+          <strong>{unenteredCount}件</strong>
+          <small>まだ日報がない予定</small>
+        </button>
+        <button
+          type="button"
+          className={`daily-report-day-review-item${viewFilter === "draft" ? " is-active" : ""}`}
+          onClick={() => focusFilter("draft")}
+        >
+          <span>
+            <Save size={15} aria-hidden="true" />
+            下書き
+          </span>
+          <strong>{draftCount}件</strong>
+          <small>確認して確定へ</small>
+        </button>
+        <button
+          type="button"
+          className={`daily-report-day-review-item ${rowsWithVariance > 0 ? "warn" : ""}${viewFilter === "variance" ? " is-active" : ""}`}
+          onClick={() => focusFilter("variance")}
+        >
+          <span>
+            <PackageCheck size={15} aria-hidden="true" />
+            差異
+          </span>
+          <strong>{rowsWithVariance}件</strong>
+          <small>予定値から変更あり</small>
+        </button>
+      </div>
+
       <div className="daily-report-day-filter">
         <input
           className="filter-search"
@@ -297,21 +386,35 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
           <button
             type="button"
             className={viewFilter === "pending" ? "is-active" : ""}
-            onClick={() => setViewFilter((current) => (current === "pending" ? "" : "pending"))}
+            onClick={() => focusFilter("pending")}
           >
             未確定
           </button>
           <button
             type="button"
+            className={viewFilter === "unentered" ? "is-active" : ""}
+            onClick={() => focusFilter("unentered")}
+          >
+            未入力
+          </button>
+          <button
+            type="button"
+            className={viewFilter === "draft" ? "is-active" : ""}
+            onClick={() => focusFilter("draft")}
+          >
+            下書き
+          </button>
+          <button
+            type="button"
             className={viewFilter === "issues" ? "is-active danger" : "danger"}
-            onClick={() => setViewFilter((current) => (current === "issues" ? "" : "issues"))}
+            onClick={() => focusFilter("issues")}
           >
             要確認
           </button>
           <button
             type="button"
             className={viewFilter === "variance" ? "is-active" : ""}
-            onClick={() => setViewFilter((current) => (current === "variance" ? "" : "variance"))}
+            onClick={() => focusFilter("variance")}
           >
             差異あり
           </button>
@@ -347,6 +450,7 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
               const isOpen = !!expanded[r.planId];
               const rowIssueCount = rowIssueMessages(r, qty, cons).length;
               const rowVariance = rowHasVariance(r, qty, cons);
+              const rowIssues = rowIssueMessages(r, qty, cons);
               return (
                 <Fragment key={r.planId}>
                   <tr className={`dr-plan-row${confirmed ? " row-muted" : ""}${rowIssueCount > 0 ? " row-needs-action" : ""}`}>
@@ -405,12 +509,22 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
                         {rowIssueCount === 0 && rowVariance && !confirmed && <span className="badge warn">差異あり</span>}
                         {rowIssueCount === 0 && !rowVariance && !confirmed && <span className="badge success">OK</span>}
                       </div>
+                      {!confirmed && rowIssues.length > 0 && <div className="dr-row-note danger">確認: {rowIssues.join("・")}</div>}
+                      {!confirmed && rowIssues.length === 0 && rowVariance && <div className="dr-row-note warn">予定値との差異があります</div>}
                       {confirmed && r.confirmedAt && <div className="subtext">{r.confirmedAt}</div>}
                     </td>
                     <td className="right dr-action-cell" data-label="詳細">
-                      <Link className="button-link secondary-link" href={kitagoyaPath(`/production-plans/${r.planId}`)}>
-                        詳細
-                      </Link>
+                      <div className="dr-row-actions">
+                        {!confirmed && (
+                          <button type="button" className="secondary dr-row-reset" onClick={() => resetRowToPlan(r)}>
+                            <RotateCcw size={14} aria-hidden="true" />
+                            予定値
+                          </button>
+                        )}
+                        <Link className="button-link secondary-link" href={kitagoyaPath(`/production-plans/${r.planId}`)}>
+                          詳細
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                   {isOpen && r.requirements.length > 0 && (

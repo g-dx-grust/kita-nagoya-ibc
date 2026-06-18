@@ -416,6 +416,15 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
   const manualAdjustmentCount = pins.length + workAreaOverrides.length;
   const readinessLabel = !result ? "未計算" : totalAlertCount > 0 ? "確認が必要" : persisted ? "保存済み" : "保存できます";
   const readinessClass = !result ? "muted" : totalAlertCount > 0 ? "warn" : persisted ? "success" : "info";
+  const today = toDateInputValue(new Date());
+  const previousDate = shiftDate(date, -1);
+  const nextDate = shiftDate(date, 1);
+  const reviewQueues = [
+    { key: "room" as View, label: "部屋ボード", count: areaOrder.length },
+    { key: "people" as View, label: "人タイムライン", count: summary?.idleStaffCount ?? 0 },
+    { key: "jobs" as View, label: "商品別確認", count: totalAlertCount },
+    { key: "board" as View, label: "部屋ボックス", count: manualAdjustmentCount },
+  ];
 
   return (
     <>
@@ -468,6 +477,17 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
           ) : (
             <span className="subtext">対象日と時間を指定してプレビュー</span>
           )}
+          <div className="allocation-date-jump" aria-label="対象日の移動">
+            <button type="button" className="ghost-button" onClick={() => handleDateChange(previousDate)} disabled={loading}>
+              前日
+            </button>
+            <button type="button" className="ghost-button" onClick={() => handleDateChange(today)} disabled={loading}>
+              今日
+            </button>
+            <button type="button" className="ghost-button" onClick={() => handleDateChange(nextDate)} disabled={loading}>
+              翌日
+            </button>
+          </div>
         </div>
         {result && summary && (
           <div className="allocation-check-strip">
@@ -515,6 +535,44 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
       </div>
 
       {error && <div className="alert danger">エラー: {error}</div>}
+      {!result && (
+        <div className="panel allocation-start-guide">
+          <div className="allocation-start-main">
+            <span className="badge muted">未計算</span>
+            <strong>{date} の割り当て準備</strong>
+            <span>確定済みの生産予定と出勤シフトを確認してから、割り当てプレビューを作成します。</span>
+          </div>
+          <div className="allocation-start-steps">
+            <span>
+              <strong>1</strong>
+              生産予定
+            </span>
+            <span>
+              <strong>2</strong>
+              シフト
+            </span>
+            <span>
+              <strong>3</strong>
+              プレビュー
+            </span>
+            <span>
+              <strong>4</strong>
+              保存・印刷
+            </span>
+          </div>
+          <div className="allocation-start-actions">
+            <Link className="button-link secondary-link" href={kitagoyaPath(`/production-plans?date=${date}`)}>
+              生産予定を確認
+            </Link>
+            <Link className="button-link secondary-link" href={kitagoyaPath(`/shifts?date=${date}`)}>
+              シフトを確認
+            </Link>
+            <button type="button" onClick={() => call(false)} disabled={loading}>
+              {loading ? "計算中…" : "プレビュー開始"}
+            </button>
+          </div>
+        </div>
+      )}
       {savedMessage && (
         <div className="alert success allocation-save-alert">
           <span>{savedMessage}</span>
@@ -572,6 +630,20 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
               </div>
             )}
             <AreaLegend areas={areaOrder} colorOf={colorOf} />
+          </div>
+
+          <div className="allocation-review-queue" aria-label="割り当てレビューキュー">
+            {reviewQueues.map((queue) => (
+              <button
+                key={queue.key}
+                type="button"
+                className={`${view === queue.key ? "is-active" : ""} ${queue.key === "jobs" && queue.count > 0 ? "warn" : ""}`}
+                onClick={() => setView(queue.key)}
+              >
+                <span>{queue.label}</span>
+                <strong>{queue.count}</strong>
+              </button>
+            ))}
           </div>
 
           <div className="toolbar alloc-view-tabs">
@@ -952,6 +1024,19 @@ function isPinned(pins: Pin[], employeeId: string, start: string, end: string, w
   return pins.some(
     (p) => p.employeeId === employeeId && p.startTime === start && p.endTime === end && p.workAreaId === workAreaId,
   );
+}
+
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function shiftDate(date: string, days: number) {
+  const target = new Date(`${date}T00:00:00`);
+  target.setDate(target.getDate() + days);
+  return toDateInputValue(target);
 }
 
 function AllocBox({

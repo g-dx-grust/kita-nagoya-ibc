@@ -80,10 +80,32 @@ export default function PlanForm({
 
   const product = useMemo(() => products.find((p) => p.id === productId), [products, productId]);
   const workArea = useMemo(() => workAreas.find((area) => area.id === workAreaId) ?? null, [workAreas, workAreaId]);
+  const workAreaNameById = useMemo(() => new Map(workAreas.map((area) => [area.id, area.name])), [workAreas]);
+  const workAreaOrderById = useMemo(() => new Map(workAreas.map((area, index) => [area.id, index])), [workAreas]);
   const workAreaOptions = useMemo(
     () => workAreas.map((workArea) => ({ value: workArea.id, label: workArea.name })),
     [workAreas],
   );
+  const productDefaultWorkAreaId = useMemo(
+    () => (product ? defaultWorkAreaIdForProduct(product, workAreas) : ""),
+    [product, workAreas],
+  );
+  const capacityCandidates = useMemo(() => {
+    if (!product) return [];
+    const seen = new Set<string>();
+    return product.capacities
+      .filter((capacity) => {
+        if (seen.has(capacity.workAreaId) || !workAreaNameById.has(capacity.workAreaId)) return false;
+        seen.add(capacity.workAreaId);
+        return true;
+      })
+      .map((capacity) => ({
+        ...capacity,
+        workAreaName: workAreaNameById.get(capacity.workAreaId) ?? "",
+        order: workAreaOrderById.get(capacity.workAreaId) ?? Number.MAX_SAFE_INTEGER,
+      }))
+      .sort((a, b) => a.order - b.order || b.unitsPerPersonHour - a.unitsPerPersonHour);
+  }, [product, workAreaNameById, workAreaOrderById]);
   const plannedQuantity = ceilDisplayQuantity(Number(quantity)) ?? 0;
   const quantityPreview = formatCases(quantity, { casePackQty: product?.casePackQty ?? null, baseUnit: unit });
 
@@ -91,10 +113,9 @@ export default function PlanForm({
   useEffect(() => {
     if (initial) return;
     if (!product) return;
-    setWorkAreaId(product.defaultWorkAreaId ?? "");
+    setWorkAreaId(productDefaultWorkAreaId);
     setUnit(product.unit);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productId]);
+  }, [initial, product, productDefaultWorkAreaId]);
 
   const capacity = useMemo(() => {
     if (!product || !workAreaId) return null;
@@ -141,11 +162,19 @@ export default function PlanForm({
     { label: "作業場所", ok: !!workAreaId },
     { label: "数量", ok: plannedQuantity > 0 },
     { label: "人数", ok: people > 0 },
+    { label: "時間", ok: !!startTime && !!baselineEndTime },
     { label: "単位", ok: unit.trim().length > 0 },
   ];
   const missingInputChecks = inputChecks.filter((check) => !check.ok);
   const readyCount = inputChecks.filter((check) => check.ok).length;
-  const canSubmit = !!productId && !!workAreaId && plannedQuantity > 0 && people > 0 && unit.trim().length > 0;
+  const canSubmit =
+    !!productId &&
+    !!workAreaId &&
+    plannedQuantity > 0 &&
+    people > 0 &&
+    !!startTime &&
+    !!baselineEndTime &&
+    unit.trim().length > 0;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -206,6 +235,20 @@ export default function PlanForm({
     ...(capacityMissing ? ["capacity_missing"] : []),
     ...modeWarnings,
   ];
+  const stepChecks = [
+    { label: "基本", ok: !!productId && !!workAreaId },
+    { label: "数量・時間", ok: plannedQuantity > 0 && people > 0 && !!startTime && !!baselineEndTime },
+    { label: "計算", ok: canSubmit && !capacityMissing && modeWarnings.length === 0 },
+    { label: planId ? "更新" : "登録", ok: canSubmit && !submitting },
+  ];
+  const saveSummaryLabel = !canSubmit
+    ? `未入力 ${missingInputChecks.length}件`
+    : hasPreviewWarning
+      ? "確認して登録"
+      : "登録準備OK";
+  const saveSummaryText = product
+    ? `${product.productCode} / ${workArea?.name ?? "作業場所未選択"} / ${quantityPreview}`
+    : "商品未選択";
 
   function adjustQuantity(delta: number) {
     setQuantity((current) => Math.max(0, Math.round((Number(current) || 0) + delta)));
@@ -282,6 +325,14 @@ export default function PlanForm({
             </span>
           )}
         </div>
+        <div className="production-plan-stepper" aria-label="生産予定登録の進行状況">
+          {stepChecks.map((step, index) => (
+            <span key={step.label} className={step.ok ? "is-complete" : "is-current"}>
+              <strong>{index + 1}</strong>
+              {step.label}
+            </span>
+          ))}
+        </div>
         <div className="production-plan-command-next">
           {!canSubmit ? (
             <>
@@ -335,7 +386,7 @@ export default function PlanForm({
                   <option value="other">その他</option>
                 </select>
               </label>
-              <label className="production-plan-work-area-field">
+              <div className="production-plan-field production-plan-work-area-field">
                 <span>作業場所</span>
                 <SearchableCombobox
                   required
@@ -345,7 +396,22 @@ export default function PlanForm({
                   placeholder="作業場所名で検索"
                   onChange={setWorkAreaId}
                 />
-              </label>
+                {capacityCandidates.length > 0 && (
+                  <div className="production-plan-work-area-candidates" aria-label="商品別作業場所候補">
+                    {capacityCandidates.slice(0, 5).map((candidate) => (
+                      <button
+                        key={candidate.workAreaId}
+                        type="button"
+                        className={candidate.workAreaId === workAreaId ? "is-active" : ""}
+                        onClick={() => setWorkAreaId(candidate.workAreaId)}
+                      >
+                        <span>{candidate.workAreaName}</span>
+                        <small>{formatRate(candidate.unitsPerPersonHour)}{unit}/人時</small>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </section>
 
@@ -582,17 +648,23 @@ export default function PlanForm({
           {serverError && <div className="alert danger">{serverError}</div>}
 
           <div className="production-plan-form-actions">
-            <button type="submit" disabled={submitting || !canSubmit}>
-              {submitting ? "保存中..." : planId ? "更新する" : "登録する"}
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => router.back()}
-              disabled={submitting}
-            >
-              戻る
-            </button>
+            <div className="production-plan-save-summary">
+              <strong>{saveSummaryLabel}</strong>
+              <span>{saveSummaryText}</span>
+            </div>
+            <div className="production-plan-save-buttons">
+              <button type="submit" disabled={submitting || !canSubmit}>
+                {submitting ? "保存中..." : planId ? "更新する" : "登録する"}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => router.back()}
+                disabled={submitting}
+              >
+                戻る
+              </button>
+            </div>
           </div>
         </aside>
       </div>
@@ -668,6 +740,18 @@ function calculationModeInfo(mode: Mode) {
         description: "数量・人数・開始時刻から終了予定を見ます。",
       };
   }
+}
+
+function defaultWorkAreaIdForProduct(product: ProductOption, workAreas: WorkAreaOption[]) {
+  const activeWorkAreaIds = new Set(workAreas.map((area) => area.id));
+  if (product.defaultWorkAreaId && activeWorkAreaIds.has(product.defaultWorkAreaId)) {
+    return product.defaultWorkAreaId;
+  }
+  return product.capacities.find((capacity) => activeWorkAreaIds.has(capacity.workAreaId))?.workAreaId ?? "";
+}
+
+function formatRate(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
 }
 
 function toDateInputValue(date: Date) {

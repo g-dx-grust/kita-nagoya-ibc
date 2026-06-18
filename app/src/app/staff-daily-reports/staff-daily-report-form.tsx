@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Check, ChevronDown, Plus, Search, Send, X } from "lucide-react";
+import { Camera, Check, ChevronDown, ListChecks, Plus, RotateCcw, Search, Send, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import type { ProductComboOption } from "@/components/ui/product-combobox";
@@ -145,6 +145,8 @@ export default function StaffDailyReportForm({
   const completedRequiredCount = requiredProgress.filter((item) => item.done).length;
   const missingRequiredItems = requiredProgress.filter((item) => !item.done);
   const canSubmit = missingRequiredItems.length === 0;
+  const nextActionLabel =
+    missingRequiredItems[0]?.label ?? (preview.warnings.length > 0 ? "計算確認" : canSubmit ? "提出" : "確認");
   const planAreaOptions = useMemo(
     () => Array.from(new Set(plans.map((plan) => plan.workAreaName).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ja")),
     [plans],
@@ -183,6 +185,17 @@ export default function StaffDailyReportForm({
     () => plans.find((plan) => plan.id === selectedPlanId) ?? null,
     [plans, selectedPlanId],
   );
+  const selectedProduct = useMemo(
+    () => products.find((product) => product.id === form.productId) ?? null,
+    [form.productId, products],
+  );
+  const timeAndQuantityDone =
+    Boolean(form.startTime && form.endTime && preview.operatingMinutes > 0) &&
+    toNumber(form.workerCount) > 0 &&
+    toNumber(form.productionQty) > 0;
+  const materialDone = form.materials.some((row) => Boolean(row.materialId) && amountToKg(row) > 0);
+  const bomFillAvailable =
+    Boolean(selectedProduct && selectedProduct.bomMaterials.length > 0) && toNumber(form.productionQty) > 0;
   const hasPlanFilters = Boolean(planSearch.trim() || planWorkArea);
   const staffComboboxOptions = useMemo(
     () =>
@@ -228,6 +241,34 @@ export default function StaffDailyReportForm({
       workerCount: String(plan.plannedPeopleCount),
       note: prev.note ? prev.note : plan.workAreaName,
     }));
+  }
+
+  function scrollToSection(id: string) {
+    document.getElementById(id)?.scrollIntoView({ block: "start", inline: "nearest", behavior: "smooth" });
+  }
+
+  function fillMaterialsFromBom() {
+    const product = products.find((p) => p.id === form.productId);
+    const productionQty = toNumber(form.productionQty);
+    if (!product || product.bomMaterials.length === 0) {
+      setError("BOM原料が登録されている商品を選択してください。");
+      return;
+    }
+    if (productionQty <= 0) {
+      setError("BOM目安を入れる前に生産数を入力してください。");
+      return;
+    }
+    setForm((prev) => ({
+      ...prev,
+      materials: product.bomMaterials.map((bom) => ({
+        materialId: bom.materialId,
+        materialName: bom.materialName,
+        amount: formatMaterialAmount(bom.quantityPerUnit * productionQty),
+        unitMode: "kg",
+      })),
+    }));
+    setMessage(null);
+    setError(null);
   }
 
   function updateMaterial(index: number, patch: Partial<MaterialRow>) {
@@ -363,7 +404,71 @@ export default function StaffDailyReportForm({
         )}
       </div>
 
-      <section className="panel staff-panel">
+      <div className="staff-entry-jumpbar" aria-label="入力セクション移動">
+        <button
+          type="button"
+          className={selectedPlan ? "success" : "warn"}
+          onClick={() => scrollToSection("staff-section-plans")}
+        >
+          <span>1 今日の予定</span>
+          <strong>{selectedPlan ? "選択済" : `${filteredPlans.length}件`}</strong>
+        </button>
+        <button
+          type="button"
+          className={form.productId && timeAndQuantityDone ? "success" : "warn"}
+          onClick={() => scrollToSection("staff-section-basic")}
+        >
+          <span>2 商品・時間</span>
+          <strong>{form.productId && timeAndQuantityDone ? "OK" : "入力"}</strong>
+        </button>
+        <button
+          type="button"
+          className={materialDone ? "success" : "warn"}
+          onClick={() => scrollToSection("staff-section-materials")}
+        >
+          <span>3 原料</span>
+          <strong>{materialDone ? "OK" : "入力"}</strong>
+        </button>
+        <button
+          type="button"
+          className={photos.length > 0 ? "success" : "warn"}
+          onClick={() => scrollToSection("staff-section-photos")}
+        >
+          <span>4 写真</span>
+          <strong>{photos.length}/4</strong>
+        </button>
+        <button
+          type="button"
+          className={canSubmit ? "success" : "warn"}
+          onClick={() => scrollToSection("staff-section-confirm")}
+        >
+          <span>5 確認</span>
+          <strong>{canSubmit ? "提出" : `残り${missingRequiredItems.length}`}</strong>
+        </button>
+      </div>
+
+      <div className={`staff-submit-savebar ${canSubmit ? "success" : "warn"}`}>
+        <div className="staff-submit-savebar-status">
+          <strong>{canSubmit ? "提出準備OK" : `次: ${nextActionLabel}`}</strong>
+          <span>
+            {selectedPlan
+              ? `${selectedPlan.workAreaName} / ${selectedPlan.plannedStartTime}〜${selectedPlan.plannedEndTime ?? "--:--"}`
+              : "予定を選ぶと商品・時間・人数が入ります"}
+          </span>
+        </div>
+        <button type="submit" disabled={busy || !canSubmit}>
+          {busy ? (
+            "提出中..."
+          ) : (
+            <>
+              <Send className="h-5 w-5" />
+              提出
+            </>
+          )}
+        </button>
+      </div>
+
+      <section id="staff-section-plans" className="panel staff-panel anchor-offset">
         <div className="staff-section-title">
           <span>1</span>
           <h2>今日の予定</h2>
@@ -426,6 +531,10 @@ export default function StaffDailyReportForm({
                 {formatNumber(plan.plannedQuantity)}
                 {plan.unit}
               </span>
+              <span className="staff-plan-submeta">
+                <span>{plan.plannedPeopleCount}人</span>
+                {selectedPlanId === plan.id ? <span>この予定で入力中</span> : <span>タップして反映</span>}
+              </span>
             </button>
           ))}
           {plans.length === 0 && <div className="empty-state">この日の予定はありません。商品を選んで入力してください。</div>}
@@ -435,7 +544,7 @@ export default function StaffDailyReportForm({
         </div>
       </section>
 
-      <section className="panel staff-panel">
+      <section id="staff-section-basic" className="panel staff-panel anchor-offset">
         <div className="staff-section-title">
           <span>2</span>
           <h2>作った商品</h2>
@@ -545,10 +654,24 @@ export default function StaffDailyReportForm({
         </div>
       </section>
 
-      <section className="panel staff-panel">
+      <section id="staff-section-materials" className="panel staff-panel anchor-offset">
         <div className="staff-section-title">
           <span>3</span>
           <h2>使った原料</h2>
+          <div className="staff-section-actions">
+            <button type="button" className="secondary" onClick={fillMaterialsFromBom} disabled={!bomFillAvailable}>
+              <ListChecks className="h-4 w-4" />
+              BOM目安を入力
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setForm((prev) => ({ ...prev, materials: [emptyMaterialRow()] }))}
+            >
+              <RotateCcw className="h-4 w-4" />
+              原料を空にする
+            </button>
+          </div>
         </div>
         <div className="staff-material-list">
           {form.materials.map((row, index) => (
@@ -614,7 +737,7 @@ export default function StaffDailyReportForm({
         </button>
       </section>
 
-      <section className="panel staff-panel">
+      <section id="staff-section-photos" className="panel staff-panel anchor-offset">
         <div className="staff-section-title">
           <span>4</span>
           <h2>ラベル写真</h2>
@@ -649,7 +772,7 @@ export default function StaffDailyReportForm({
         )}
       </section>
 
-      <section className="panel staff-panel">
+      <section id="staff-section-confirm" className="panel staff-panel anchor-offset">
         <div className="staff-section-title">
           <span>5</span>
           <h2>確認</h2>
@@ -765,6 +888,12 @@ function emptyMaterialRow(): MaterialRow {
 function amountToKg(row: MaterialRow) {
   const amount = toNumber(row.amount);
   return row.unitMode === "g" ? amount / 1000 : amount;
+}
+
+function formatMaterialAmount(value: number) {
+  if (!Number.isFinite(value)) return "";
+  const rounded = Math.round(value * 1000) / 1000;
+  return String(rounded).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
 }
 
 function SearchableDropdown<T extends { id: string }>({

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AlertTriangle, CalendarDays, ListChecks, PackageCheck, Table2 } from "lucide-react";
 import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import SectionTabs from "@/components/ui/section-tabs";
@@ -16,6 +17,8 @@ import type { MonthlyVarianceRow } from "@/lib/monthly-reconciliation";
 
 export const dynamic = "force-dynamic";
 
+type MonthlyViewId = "forecast" | "schedule" | "suggestions" | "calendar" | "product-inventory";
+
 export default async function MonthlyProductionPlansPage({
   searchParams,
 }: {
@@ -27,6 +30,7 @@ export default async function MonthlyProductionPlansPage({
   const dateTo = sp.dateTo ?? endOfMonth(dateFrom);
   const productionLeadDays = parseProductionLeadDays(sp.productionLeadDays);
   const planningBasis = parsePlanningBasis(sp.planningBasis);
+  const activeView = parseMonthlyView(sp.view);
 
   const [preview, existingPlans, demands, productCaseRows] = await Promise.all([
     loadMonthlyProductionSchedulePreview({
@@ -121,6 +125,35 @@ export default async function MonthlyProductionPlansPage({
   );
   const suggestedTotal = groupedSuggestions.reduce((sum, row) => sum + row.suggestedQuantity, 0);
   const affectedProducts = new Set(groupedSuggestions.map((row) => row.productId)).size;
+  const insufficientForecastCount = preview.historicalForecasts.filter((forecast) => forecast.status === "insufficient_data").length;
+  const underTargetCount = preview.reconciliation.filter((row) => row.status === "under").length;
+  const overTargetCount = preview.reconciliation.filter((row) => row.status === "over").length;
+  const negativeProjectedCount = preview.productSummaries.filter((summary) => summary.minProjectedOnHandQuantity < 0).length;
+  const existingDraftCount = existingPlans.filter((plan) => plan.status === "draft").length;
+  const monthlyStatusClass =
+    groupedSuggestions.length > 0 || underTargetCount > 0 || negativeProjectedCount > 0
+      ? "warn"
+      : insufficientForecastCount > 0
+        ? "info"
+        : "success";
+  const monthlyStatusLabel =
+    groupedSuggestions.length > 0
+      ? `生成候補 ${groupedSuggestions.length}件`
+      : underTargetCount > 0
+        ? `不足 ${underTargetCount}件`
+        : insufficientForecastCount > 0
+          ? `実績不足 ${insufficientForecastCount}件`
+          : "追加生成なし";
+  const nextMonthlyAction =
+    groupedSuggestions.length > 0
+      ? "生成候補を確認"
+      : underTargetCount > 0
+        ? "予実不足を確認"
+        : insufficientForecastCount > 0
+          ? "月次実績を確認"
+          : "生成設定を確認";
+  const monthlyHref = (view: MonthlyViewId) =>
+    monthlyViewHref({ dateFrom, dateTo, productionLeadDays, planningBasis, view });
 
   return (
     <>
@@ -134,6 +167,85 @@ export default async function MonthlyProductionPlansPage({
             生産予定一覧へ
           </Link>
         </div>
+      </div>
+
+      <div className={`monthly-overview-command panel ${monthlyStatusClass}`}>
+        <div className="monthly-overview-command-title">
+          <span className={`badge ${monthlyStatusClass}`}>{monthlyStatusLabel}</span>
+          <strong>月間生成の確認</strong>
+          <span className="subtext">
+            {dateFrom} - {dateTo} / {planningBasisLabel(planningBasis)}
+          </span>
+          <span className="monthly-overview-next">次: {nextMonthlyAction}</span>
+        </div>
+        <div className="monthly-overview-checks">
+          <span className={`badge ${groupedSuggestions.length > 0 ? "warn" : "success"}`}>
+            生成候補 {groupedSuggestions.length}
+          </span>
+          <span className={`badge ${underTargetCount > 0 ? "danger" : "success"}`}>
+            予実不足 {underTargetCount}
+          </span>
+          <span className={`badge ${negativeProjectedCount > 0 ? "danger" : "success"}`}>
+            在庫割れ {negativeProjectedCount}
+          </span>
+          <span className={`badge ${insufficientForecastCount > 0 ? "warn" : "success"}`}>
+            実績不足 {insufficientForecastCount}
+          </span>
+          <span className="badge muted">既存下書き {existingDraftCount}</span>
+        </div>
+        <div className="monthly-overview-actions">
+          <Link className="button-link" href={monthlyHref("suggestions")}>
+            <PackageCheck size={15} aria-hidden="true" />
+            生成候補
+          </Link>
+          <Link className="button-link secondary-link" href={monthlyHref("schedule")}>
+            <Table2 size={15} aria-hidden="true" />
+            予定表
+          </Link>
+        </div>
+      </div>
+
+      <div className="monthly-review-queue" aria-label="月間予定レビュー順">
+        <Link className={`monthly-review-item ${groupedSuggestions.length > 0 ? "warn" : "success"}${activeView === "suggestions" ? " is-active" : ""}`} href={monthlyHref("suggestions")}>
+          <span>
+            <PackageCheck size={15} aria-hidden="true" />
+            生成候補
+          </span>
+          <strong>{groupedSuggestions.length}</strong>
+          <small>{affectedProducts} 商品</small>
+        </Link>
+        <Link className={`monthly-review-item ${underTargetCount > 0 ? "danger" : "success"}${activeView === "forecast" ? " is-active" : ""}`} href={monthlyHref("forecast")}>
+          <span>
+            <AlertTriangle size={15} aria-hidden="true" />
+            予実不足
+          </span>
+          <strong>{underTargetCount}</strong>
+          <small>超過 {overTargetCount}</small>
+        </Link>
+        <Link className={`monthly-review-item ${negativeProjectedCount > 0 ? "danger" : "success"}${activeView === "product-inventory" ? " is-active" : ""}`} href={monthlyHref("product-inventory")}>
+          <span>
+            <ListChecks size={15} aria-hidden="true" />
+            在庫見通し
+          </span>
+          <strong>{negativeProjectedCount}</strong>
+          <small>期間中マイナス</small>
+        </Link>
+        <Link className={`monthly-review-item${activeView === "schedule" ? " is-active" : ""}`} href={monthlyHref("schedule")}>
+          <span>
+            <Table2 size={15} aria-hidden="true" />
+            予定表
+          </span>
+          <strong>{productionSheetRows.length}</strong>
+          <small>商品行</small>
+        </Link>
+        <Link className={`monthly-review-item${activeView === "calendar" ? " is-active" : ""}`} href={monthlyHref("calendar")}>
+          <span>
+            <CalendarDays size={15} aria-hidden="true" />
+            カレンダー
+          </span>
+          <strong>{days.length}</strong>
+          <small>日別確認</small>
+        </Link>
       </div>
 
       <CollapsiblePanel
@@ -187,6 +299,7 @@ export default async function MonthlyProductionPlansPage({
       <SectionTabs
         ariaLabel="月間予定の表示切り替え"
         inlineHeader
+        initialTabId={activeView}
         items={[
           {
             id: "forecast",
@@ -795,6 +908,41 @@ function parseProductionLeadDays(value: string | undefined) {
 
 function parsePlanningBasis(value: string | undefined): MonthlyProductionPlanningBasis {
   return value === "inventory_shortage" ? "inventory_shortage" : "historical_actual";
+}
+
+function parseMonthlyView(value: string | undefined): MonthlyViewId {
+  if (
+    value === "schedule" ||
+    value === "suggestions" ||
+    value === "calendar" ||
+    value === "product-inventory"
+  ) {
+    return value;
+  }
+  return "forecast";
+}
+
+function monthlyViewHref({
+  dateFrom,
+  dateTo,
+  productionLeadDays,
+  planningBasis,
+  view,
+}: {
+  dateFrom: string;
+  dateTo: string;
+  productionLeadDays: number;
+  planningBasis: MonthlyProductionPlanningBasis;
+  view: MonthlyViewId;
+}) {
+  const params = new URLSearchParams({
+    dateFrom,
+    dateTo,
+    productionLeadDays: String(productionLeadDays),
+    planningBasis,
+    view,
+  });
+  return kitagoyaPath(`/production-plans/monthly?${params.toString()}`);
 }
 
 function planningBasisLabel(value: MonthlyProductionPlanningBasis) {

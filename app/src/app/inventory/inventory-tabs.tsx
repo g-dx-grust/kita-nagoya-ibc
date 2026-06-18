@@ -22,6 +22,7 @@ type InventoryRowReview = {
   negativeDays: number;
   missingDeadlineDays: number;
 };
+type InventoryQueueFilter = "all" | "attention" | "negative" | "deadline" | "movement" | "stock";
 
 export type InventoryTabMeta = {
   key: InventoryTabKey;
@@ -66,6 +67,8 @@ export function InventoryTabs({
   const [inStockOnly, setInStockOnly] = useState(false);
   const [negativeOnly, setNegativeOnly] = useState(false);
   const [attentionOnly, setAttentionOnly] = useState(false);
+  const [movementOnly, setMovementOnly] = useState(false);
+  const [deadlineOnly, setDeadlineOnly] = useState(false);
   const [showDeadlineRows, setShowDeadlineRows] = useState(true);
   // 商品タブは既定で北名古屋使用のみ表示(暫定スコープ)。
   const kitagoyaOnly = productScope !== "all";
@@ -113,9 +116,11 @@ export function InventoryTabs({
       if (inStockOnly && row.monthEndQuantity === 0) return false;
       if (negativeOnly && !(row.monthEndQuantity < 0)) return false;
       if (attentionOnly && !rowReviews.get(row.itemId)?.needsReview) return false;
+      if (movementOnly && !rowReviews.get(row.itemId)?.hasMovement) return false;
+      if (deadlineOnly && !(rowReviews.get(row.itemId)?.missingDeadlineDays ?? 0)) return false;
       return true;
     });
-  }, [sheet.rows, query, hasSupplier, supplier, inStockOnly, negativeOnly, attentionOnly, rowReviews]);
+  }, [sheet.rows, query, hasSupplier, supplier, inStockOnly, negativeOnly, attentionOnly, movementOnly, deadlineOnly, rowReviews]);
   const activeTabLabel = tabs.find((tab) => tab.key === active)?.label ?? title.replace("在庫表", "");
   const totalInStockCount = sheet.rows.filter((row) => row.monthEndQuantity !== 0).length;
   const totalNegativeCount = sheet.rows.filter((row) => row.monthEndQuantity < 0).length;
@@ -130,8 +135,27 @@ export function InventoryTabs({
     supplier ||
     inStockOnly ||
     negativeOnly ||
-    attentionOnly
+    attentionOnly ||
+    movementOnly ||
+    deadlineOnly
   );
+  const activeQueueFilter = queueFilterFromState({
+    inStockOnly,
+    negativeOnly,
+    attentionOnly,
+    movementOnly,
+    deadlineOnly,
+  });
+  const nextInventoryAction =
+    reviewSummary.negativeItemCount > 0
+      ? "マイナス在庫を確認"
+      : reviewSummary.missingDeadlineItemCount > 0
+        ? "期限未入力を確認"
+        : reviewSummary.needsReviewCount > 0
+          ? "要確認を確認"
+          : reviewSummary.movementRowCount > 0
+            ? "入出庫を確認"
+            : "整備済み";
 
   function resetFilters() {
     setQuery("");
@@ -139,6 +163,21 @@ export function InventoryTabs({
     setInStockOnly(false);
     setNegativeOnly(false);
     setAttentionOnly(false);
+    setMovementOnly(false);
+    setDeadlineOnly(false);
+  }
+
+  function applyQueueFilter(filter: InventoryQueueFilter) {
+    setInStockOnly(false);
+    setNegativeOnly(false);
+    setAttentionOnly(false);
+    setMovementOnly(false);
+    setDeadlineOnly(false);
+    if (filter === "stock") setInStockOnly(true);
+    if (filter === "negative") setNegativeOnly(true);
+    if (filter === "attention") setAttentionOnly(true);
+    if (filter === "movement") setMovementOnly(true);
+    if (filter === "deadline") setDeadlineOnly(true);
   }
 
   return (
@@ -166,6 +205,7 @@ export function InventoryTabs({
           <span className={`badge ${reviewSummary.needsReviewCount > 0 ? "warn" : "success"}`}>
             {reviewSummary.needsReviewCount > 0 ? `要確認 ${reviewSummary.needsReviewCount}品目` : "整備済み"}
           </span>
+          <span className="inventory-review-next">次: {nextInventoryAction}</span>
         </div>
         <div className="inventory-review-checks">
           <span className="badge info">
@@ -181,6 +221,58 @@ export function InventoryTabs({
             </span>
           )}
         </div>
+      </div>
+      <div className="inventory-review-queue" aria-label="在庫レビュー順">
+        <button
+          type="button"
+          className={`inventory-review-queue-item ${reviewSummary.needsReviewCount > 0 ? "warn" : "success"}${activeQueueFilter === "attention" ? " is-active" : ""}`}
+          onClick={() => applyQueueFilter(activeQueueFilter === "attention" ? "all" : "attention")}
+        >
+          <span>要確認</span>
+          <strong>{reviewSummary.needsReviewCount}</strong>
+        </button>
+        <button
+          type="button"
+          className={`inventory-review-queue-item ${reviewSummary.negativeItemCount > 0 ? "danger" : "success"}${activeQueueFilter === "negative" ? " is-active" : ""}`}
+          onClick={() => applyQueueFilter(activeQueueFilter === "negative" ? "all" : "negative")}
+        >
+          <span>マイナス</span>
+          <strong>{reviewSummary.negativeItemCount}</strong>
+        </button>
+        {itemType !== "product" && (
+          <button
+            type="button"
+            className={`inventory-review-queue-item ${reviewSummary.missingDeadlineItemCount > 0 ? "warn" : "success"}${activeQueueFilter === "deadline" ? " is-active" : ""}`}
+            onClick={() => applyQueueFilter(activeQueueFilter === "deadline" ? "all" : "deadline")}
+          >
+            <span>期限未入力</span>
+            <strong>{reviewSummary.missingDeadlineItemCount}</strong>
+          </button>
+        )}
+        <button
+          type="button"
+          className={`inventory-review-queue-item${activeQueueFilter === "movement" ? " is-active" : ""}`}
+          onClick={() => applyQueueFilter(activeQueueFilter === "movement" ? "all" : "movement")}
+        >
+          <span>入出庫あり</span>
+          <strong>{reviewSummary.movementRowCount}</strong>
+        </button>
+        <button
+          type="button"
+          className={`inventory-review-queue-item${activeQueueFilter === "stock" ? " is-active" : ""}`}
+          onClick={() => applyQueueFilter(activeQueueFilter === "stock" ? "all" : "stock")}
+        >
+          <span>在庫あり</span>
+          <strong>{totalInStockCount}</strong>
+        </button>
+        <button
+          type="button"
+          className={`inventory-review-queue-item${activeQueueFilter === "all" ? " is-active" : ""}`}
+          onClick={() => applyQueueFilter("all")}
+        >
+          <span>全件</span>
+          <strong>{sheet.rows.length}</strong>
+        </button>
       </div>
       <div className="inventory-control-panel">
         <div className="inventory-control-main">
@@ -291,6 +383,16 @@ export function InventoryTabs({
             <input type="checkbox" checked={attentionOnly} onChange={(e) => setAttentionOnly(e.target.checked)} />
             要確認のみ
           </label>
+          <label className="filter-check">
+            <input type="checkbox" checked={movementOnly} onChange={(e) => setMovementOnly(e.target.checked)} />
+            入出庫ありのみ
+          </label>
+          {itemType !== "product" && (
+            <label className="filter-check">
+              <input type="checkbox" checked={deadlineOnly} onChange={(e) => setDeadlineOnly(e.target.checked)} />
+              期限未入力のみ
+            </label>
+          )}
           <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
             <RotateCcw size={15} aria-hidden="true" />
             条件クリア
@@ -515,6 +617,27 @@ function buildInventoryRowReviews(rows: MonthlyInventorySheetRow[], itemType: Ed
     });
   }
   return map;
+}
+
+function queueFilterFromState({
+  inStockOnly,
+  negativeOnly,
+  attentionOnly,
+  movementOnly,
+  deadlineOnly,
+}: {
+  inStockOnly: boolean;
+  negativeOnly: boolean;
+  attentionOnly: boolean;
+  movementOnly: boolean;
+  deadlineOnly: boolean;
+}): InventoryQueueFilter {
+  if (attentionOnly && !negativeOnly && !inStockOnly && !movementOnly && !deadlineOnly) return "attention";
+  if (negativeOnly && !attentionOnly && !inStockOnly && !movementOnly && !deadlineOnly) return "negative";
+  if (deadlineOnly && !attentionOnly && !negativeOnly && !inStockOnly && !movementOnly) return "deadline";
+  if (movementOnly && !attentionOnly && !negativeOnly && !inStockOnly && !deadlineOnly) return "movement";
+  if (inStockOnly && !attentionOnly && !negativeOnly && !movementOnly && !deadlineOnly) return "stock";
+  return "all";
 }
 
 function labelClass(label: InventoryRowLabel) {

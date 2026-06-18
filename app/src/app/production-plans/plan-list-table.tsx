@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle2, ClipboardCheck, RotateCcw, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardCheck, FileCheck2, RotateCcw, Search, Trash2 } from "lucide-react";
 import { planStatusClass, planStatusLabel } from "@/lib/labels";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 import { formatCases } from "@/lib/units";
@@ -22,6 +22,7 @@ type Plan = {
   plannedStartTime: string;
   plannedEndTime: string | null;
   status: string;
+  reportStatus: string;
   overtimeMinutes: number;
   hardShortage: boolean;
   unconfirmedDep: boolean;
@@ -33,6 +34,8 @@ type Filter = {
   status?: string;
   workAreaId?: string;
 };
+
+type PlanQuickFilter = "all" | "needs_action" | "draft" | "shortage" | "overtime" | "unconfirmed" | "report_waiting";
 
 export default function PlanListTable({
   plans,
@@ -47,14 +50,25 @@ export default function PlanListTable({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [quickFilter, setQuickFilter] = useState<PlanQuickFilter>("all");
 
   // 取得済みの予定をキーワード(管理コード・商品名・場所名)でさらに絞り込む。
-  const visiblePlans = useMemo(
+  const searchedPlans = useMemo(
     () =>
       plans.filter((p) =>
-        matchesQuery(query, [p.productCode, p.productName, p.workAreaName, planStatusLabel(p.status)]),
+        matchesQuery(query, [
+          p.productCode,
+          p.productName,
+          p.workAreaName,
+          planStatusLabel(p.status),
+          reportStatusLabel(p),
+        ]),
       ),
     [plans, query],
+  );
+  const visiblePlans = useMemo(
+    () => searchedPlans.filter((plan) => planMatchesQuickFilter(plan, quickFilter)),
+    [searchedPlans, quickFilter],
   );
 
   const allChecked = visiblePlans.length > 0 && visiblePlans.every((p) => selected.has(p.id));
@@ -65,14 +79,47 @@ export default function PlanListTable({
   const visibleDraftCount = visiblePlans.filter((plan) => plan.status === "draft").length;
   const visibleConfirmedCount = visiblePlans.filter((plan) => plan.status === "confirmed").length;
   const visibleCompletedCount = visiblePlans.filter((plan) => plan.status === "completed").length;
-  const visibleAlertCount = visiblePlans.filter(hasPlanAlert).length;
+  const visibleAlertCount = visiblePlans.filter(needsPlanAction).length;
+  const quickCounts = useMemo(
+    () => ({
+      all: searchedPlans.length,
+      needs_action: searchedPlans.filter(needsPlanAction).length,
+      draft: searchedPlans.filter((plan) => plan.status === "draft").length,
+      shortage: searchedPlans.filter((plan) => plan.hardShortage).length,
+      overtime: searchedPlans.filter((plan) => plan.overtimeMinutes > 0).length,
+      unconfirmed: searchedPlans.filter((plan) => plan.unconfirmedDep).length,
+      report_waiting: searchedPlans.filter(needsDailyReport).length,
+    }),
+    [searchedPlans],
+  );
   const selectedPlans = useMemo(
     () => plans.filter((plan) => selected.has(plan.id)),
     [plans, selected],
   );
   const selectedDraftIds = selectedPlans.filter((plan) => plan.status === "draft").map((plan) => plan.id);
-  const selectedAlertCount = selectedPlans.filter(hasPlanAlert).length;
+  const selectedAlertCount = selectedPlans.filter(needsPlanAction).length;
   const hasQuery = query.trim().length > 0;
+  const firstDraftPlan = searchedPlans.find((plan) => plan.status === "draft");
+  const firstShortagePlan = searchedPlans.find((plan) => plan.hardShortage);
+  const firstReportWaitingPlan = searchedPlans.find(needsDailyReport);
+  const firstActionPlan = firstDraftPlan ?? firstShortagePlan ?? searchedPlans.find(hasPlanAlert) ?? firstReportWaitingPlan;
+  const commandTone = quickCounts.needs_action > 0 ? "warn" : "success";
+  const nextActionLabel = firstDraftPlan
+    ? `下書き ${quickCounts.draft}件を確定`
+    : firstShortagePlan
+      ? "不足予定を確認"
+      : firstReportWaitingPlan
+        ? "日報入力へ進む"
+        : "予定確認OK";
+  const quickFilterOptions: { key: PlanQuickFilter; label: string; count: number; tone?: "danger" | "warn" | "info" }[] = [
+    { key: "needs_action", label: "要対応", count: quickCounts.needs_action, tone: quickCounts.needs_action > 0 ? "warn" : "info" },
+    { key: "draft", label: "下書き", count: quickCounts.draft, tone: quickCounts.draft > 0 ? "warn" : "info" },
+    { key: "shortage", label: "不足", count: quickCounts.shortage, tone: quickCounts.shortage > 0 ? "danger" : "info" },
+    { key: "overtime", label: "17時超", count: quickCounts.overtime, tone: quickCounts.overtime > 0 ? "warn" : "info" },
+    { key: "unconfirmed", label: "未確定依存", count: quickCounts.unconfirmed, tone: quickCounts.unconfirmed > 0 ? "warn" : "info" },
+    { key: "report_waiting", label: "日報待ち", count: quickCounts.report_waiting, tone: quickCounts.report_waiting > 0 ? "warn" : "info" },
+    { key: "all", label: "全件", count: quickCounts.all, tone: "info" },
+  ];
 
   function toggle(id: string) {
     const next = new Set(selected);
@@ -94,6 +141,7 @@ export default function PlanListTable({
 
   function resetSearch() {
     setQuery("");
+    setQuickFilter("all");
   }
 
   async function deleteSelected() {
@@ -171,6 +219,37 @@ export default function PlanListTable({
 
   return (
     <>
+      <div className={`plan-list-command panel ${commandTone}`}>
+        <div className="plan-list-command-main">
+          <span className={`badge ${commandTone}`}>
+            <ClipboardCheck size={14} aria-hidden="true" />
+            {quickCounts.needs_action > 0 ? `要対応 ${quickCounts.needs_action}件` : "要対応なし"}
+          </span>
+          <strong>{nextActionLabel}</strong>
+        </div>
+        <div className="plan-list-command-checks">
+          <span className={`badge ${quickCounts.draft > 0 ? "warn" : "success"}`}>下書き {quickCounts.draft}件</span>
+          <span className={`badge ${quickCounts.shortage > 0 ? "danger" : "success"}`}>不足 {quickCounts.shortage}件</span>
+          <span className={`badge ${quickCounts.overtime > 0 ? "warn" : "success"}`}>17時超 {quickCounts.overtime}件</span>
+          <span className={`badge ${quickCounts.report_waiting > 0 ? "warn" : "success"}`}>
+            日報待ち {quickCounts.report_waiting}件
+          </span>
+        </div>
+        <div className="plan-list-command-actions">
+          {firstActionPlan && (
+            <Link className="button-link secondary-link" href={kitagoyaPath(`/production-plans/${firstActionPlan.id}`)}>
+              対象を開く
+            </Link>
+          )}
+          {firstReportWaitingPlan && (
+            <Link className="button-link secondary-link" href={kitagoyaPath(`/daily-reports?date=${firstReportWaitingPlan.date}`)}>
+              <FileCheck2 size={15} aria-hidden="true" />
+              日報へ
+            </Link>
+          )}
+        </div>
+      </div>
+
       <div className="panel list-control-panel">
         <div className="list-control-head">
           <strong>一覧操作</strong>
@@ -204,6 +283,19 @@ export default function PlanListTable({
             </span>
           </div>
         </div>
+        <div className="plan-list-queue" aria-label="生産予定の作業キュー">
+          {quickFilterOptions.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              className={`${quickFilter === option.key ? "is-active" : ""} ${option.tone ?? ""}`}
+              onClick={() => setQuickFilter(option.key)}
+            >
+              <span>{option.label}</span>
+              <strong>{option.count}</strong>
+            </button>
+          ))}
+        </div>
         <div className="list-control-body">
           <div className="list-control-search">
             <input
@@ -214,7 +306,7 @@ export default function PlanListTable({
               onChange={(e) => setQuery(e.target.value)}
               aria-label="生産予定を検索"
             />
-            <button type="button" className="secondary" onClick={resetSearch} disabled={!query}>
+            <button type="button" className="secondary" onClick={resetSearch} disabled={!query && quickFilter === "all"}>
               <RotateCcw size={15} aria-hidden="true" />
               条件クリア
             </button>
@@ -280,6 +372,7 @@ export default function PlanListTable({
               <col className="plan-time-col" />
               <col className="plan-time-col" />
               <col className="plan-status-col" />
+              <col className="plan-report-col" />
               <col className="plan-alert-col" />
               <col className="plan-action-col" />
             </colgroup>
@@ -301,13 +394,19 @@ export default function PlanListTable({
                 <th>開始</th>
                 <th>終了</th>
                 <th>状態</th>
+                <th>日報</th>
                 <th>アラート</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {visiblePlans.map((p) => (
-                <tr key={p.id} className={selected.has(p.id) ? "row-selected" : ""}>
+                <tr
+                  key={p.id}
+                  className={[selected.has(p.id) ? "row-selected" : "", needsPlanAction(p) ? "row-needs-action" : ""]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
                   <td className="select-cell">
                     <input
                       type="checkbox"
@@ -329,6 +428,9 @@ export default function PlanListTable({
                     <span className={`badge ${planStatusClass(p.status)}`}>
                       {planStatusLabel(p.status)}
                     </span>
+                  </td>
+                  <td>
+                    <span className={`badge ${reportStatusClass(p)}`}>{reportStatusLabel(p)}</span>
                   </td>
                   <td>
                     <span className="badge-list">
@@ -354,4 +456,47 @@ export default function PlanListTable({
 
 function hasPlanAlert(plan: Plan) {
   return plan.overtimeMinutes > 0 || plan.hardShortage || plan.unconfirmedDep;
+}
+
+function needsDailyReport(plan: Plan) {
+  return plan.status === "confirmed" && plan.reportStatus !== "confirmed";
+}
+
+function needsPlanAction(plan: Plan) {
+  return plan.status === "draft" || hasPlanAlert(plan) || needsDailyReport(plan);
+}
+
+function planMatchesQuickFilter(plan: Plan, filter: PlanQuickFilter) {
+  switch (filter) {
+    case "needs_action":
+      return needsPlanAction(plan);
+    case "draft":
+      return plan.status === "draft";
+    case "shortage":
+      return plan.hardShortage;
+    case "overtime":
+      return plan.overtimeMinutes > 0;
+    case "unconfirmed":
+      return plan.unconfirmedDep;
+    case "report_waiting":
+      return needsDailyReport(plan);
+    case "all":
+    default:
+      return true;
+  }
+}
+
+function reportStatusLabel(plan: Plan) {
+  if (plan.status === "cancelled") return "対象外";
+  if (plan.status === "draft") return "予定未確定";
+  if (plan.reportStatus === "confirmed") return "日報確定";
+  if (plan.reportStatus === "draft") return "日報下書き";
+  return "日報待ち";
+}
+
+function reportStatusClass(plan: Plan) {
+  if (plan.status === "cancelled" || plan.status === "draft") return "muted";
+  if (plan.reportStatus === "confirmed") return "success";
+  if (plan.reportStatus === "draft") return "warn";
+  return "warn";
 }
