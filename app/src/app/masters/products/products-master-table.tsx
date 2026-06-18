@@ -103,6 +103,25 @@ export default function ProductsMasterTable({ products }: { products: ProductRow
     unsetupOnly ||
     !kitagoyaOnly
   );
+  const summary = useMemo(() => {
+    const scoped = products.filter((p) => !kitagoyaOnly || p.usedAtKitagoya);
+    const missingBom = scoped.filter((p) => !p.hasBom).length;
+    const missingCapacity = scoped.filter((p) => !p.hasCapacity).length;
+    const missingBilling = scoped.filter((p) => !p.hasBilling).length;
+    const missingWorkArea = scoped.filter((p) => p.usedAtKitagoya && !p.defaultWorkAreaName).length;
+    const readyCount = scoped.filter(
+      (p) => p.hasBom && p.hasCapacity && p.hasBilling && (!p.usedAtKitagoya || p.defaultWorkAreaName),
+    ).length;
+    return {
+      scopedCount: scoped.length,
+      readyCount,
+      missingBom,
+      missingCapacity,
+      missingBilling,
+      missingWorkArea,
+      needsActionCount: scoped.length - readyCount,
+    };
+  }, [kitagoyaOnly, products]);
 
   function resetFilters() {
     setQuery("");
@@ -115,6 +134,25 @@ export default function ProductsMasterTable({ products }: { products: ProductRow
 
   return (
     <>
+      <div className="product-master-command">
+        <div className="product-master-command-title">
+          <span className={`badge ${summary.needsActionCount > 0 ? "warn" : "success"}`}>
+            {summary.needsActionCount > 0 ? "整備が必要" : "整備済み"}
+          </span>
+          <strong>商品整備</strong>
+          <span className="subtext">
+            {summary.readyCount} / {summary.scopedCount} 商品
+          </span>
+        </div>
+        <div className="product-master-checks">
+          <span className={`badge ${summary.missingWorkArea > 0 ? "warn" : "success"}`}>
+            標準作業場所未設定 {summary.missingWorkArea}
+          </span>
+          <span className={`badge ${summary.missingBom > 0 ? "warn" : "success"}`}>レシピ未設定 {summary.missingBom}</span>
+          <span className={`badge ${summary.missingCapacity > 0 ? "warn" : "success"}`}>能力未設定 {summary.missingCapacity}</span>
+          <span className={`badge ${summary.missingBilling > 0 ? "warn" : "success"}`}>手間賃未設定 {summary.missingBilling}</span>
+        </div>
+      </div>
       <CollapsiblePanel
         title="表内検索・絞り込み"
         summary={`${filtered.length} / ${products.length} 件${hasActiveFilters ? " / 条件あり" : ""}`}
@@ -179,7 +217,7 @@ export default function ProductsMasterTable({ products }: { products: ProductRow
           </span>
         </div>
       </CollapsiblePanel>
-      <div className="table-frame standard-list-frame">
+      <div className="table-frame standard-list-frame products-master-frame">
         <table className="standard-list-table products-master-list-table">
           <colgroup>
             <col className="product-code-col" />
@@ -226,11 +264,22 @@ export default function ProductsMasterTable({ products }: { products: ProductRow
             </tr>
           </thead>
           <tbody>
-            {filtered.map((p) => (
-              <tr key={p.id}>
-                <td>{highlight(p.productCode, query)}</td>
-                <td className="wrap-cell product-name-cell">
+            {filtered.map((p) => {
+              const missingWorkArea = p.usedAtKitagoya && !p.defaultWorkAreaName;
+              const needsAction = missingWorkArea || !p.hasBom || !p.hasCapacity || !p.hasBilling;
+              return (
+              <tr key={p.id} className={`product-master-row${needsAction ? " row-needs-action" : ""}`}>
+                <td data-label="管理コード">{highlight(p.productCode, query)}</td>
+                <td className="wrap-cell product-name-cell" data-label="正式名称">
                   {highlight(p.officialName, query)}
+                  {needsAction && (
+                    <div className="product-master-row-badges">
+                      {missingWorkArea && <span className="badge warn">標準作業場所未設定</span>}
+                      {!p.hasBom && <span className="badge warn">レシピ未設定</span>}
+                      {!p.hasCapacity && <span className="badge warn">能力未設定</span>}
+                      {!p.hasBilling && <span className="badge warn">手間賃未設定</span>}
+                    </div>
+                  )}
                   {p.aliases.length > 0 && (
                     <div className="subtext">別名: {p.aliases.join(", ")}</div>
                   )}
@@ -241,37 +290,41 @@ export default function ProductsMasterTable({ products }: { products: ProductRow
                     </div>
                   )}
                 </td>
-                <td>{p.specification ?? "—"}</td>
-                <td>{p.brandName ?? "—"}</td>
-                <td>
+                <td data-label="規格">{p.specification ?? "—"}</td>
+                <td data-label="ブランド">{p.brandName ?? "—"}</td>
+                <td data-label="拠点">
                   {p.usedAtKitagoya ? (
                     <span className="badge info">北名古屋</span>
                   ) : (
                     <span className="badge muted">対象外</span>
                   )}
                 </td>
-                <td>
+                <td data-label="登録状況">
                   <SetupBadge set={p.hasBom} label="レシピ" />
                   <SetupBadge set={p.hasCapacity} label="能力" />
                   <SetupBadge set={p.hasBilling} label="手間賃" />
                 </td>
-                <td className="wrap-cell">{packagingSummary(p)}</td>
-                <td className="wrap-cell">{materialSummary(p)}</td>
-                <td>{productionTypeLabel(p.productionType)}</td>
-                <td>{forecastMethodLabel(p.forecastMethod)}</td>
-                <td>{p.category ?? "—"}</td>
-                <td className="right">{p.safetyStockQuantity}</td>
-                <td className="right">{p.standardProductionLotSize}</td>
-                <td>{p.defaultWorkAreaName ?? "—"}</td>
-                <td className="right">{p.bomItemCount}</td>
-                <td className="wrap-cell">{p.capacitySummary}</td>
-                <td>{p.billingEnabled ? "対象" : "—"}</td>
-                <td>
+                <td className="wrap-cell" data-label="包装">{packagingSummary(p)}</td>
+                <td className="wrap-cell" data-label="分類表資材">{materialSummary(p)}</td>
+                <td data-label="区分">{productionTypeLabel(p.productionType)}</td>
+                <td data-label="予測方式">{forecastMethodLabel(p.forecastMethod)}</td>
+                <td data-label="カテゴリ">{p.category ?? "—"}</td>
+                <td className="right" data-label="安全在庫">{p.safetyStockQuantity}</td>
+                <td className="right" data-label="標準ロット">{p.standardProductionLotSize}</td>
+                <td data-label="標準作業場所">
+                  <span className={`badge ${missingWorkArea ? "warn" : p.defaultWorkAreaName ? "info" : "muted"}`}>
+                    {p.defaultWorkAreaName ?? "—"}
+                  </span>
+                </td>
+                <td className="right" data-label="BOM">{p.bomItemCount}</td>
+                <td className="wrap-cell" data-label="生産能力 / 人時">{p.capacitySummary}</td>
+                <td data-label="請求">{p.billingEnabled ? "対象" : "—"}</td>
+                <td data-label="有効期間">
                   {p.validFromLabel}
                   {" 〜 "}
                   {p.validToLabel}
                 </td>
-                <td className="action-cell">
+                <td className="action-cell" data-label="操作">
                   <div className="table-actions">
                     <Link href={kitagoyaPath(`/masters/products/${p.id}`)}>編集</Link>
                     <MasterDeleteButton
@@ -281,7 +334,8 @@ export default function ProductsMasterTable({ products }: { products: ProductRow
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

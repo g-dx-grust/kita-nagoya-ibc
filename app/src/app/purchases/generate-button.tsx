@@ -34,11 +34,11 @@ export default function GeneratePurchaseCandidatesButton({
   }
 
   return (
-    <>
+    <div className="purchase-generate-control">
       <button type="button" onClick={generate} disabled={busy}>
         {busy ? "生成中..." : "不足から発注候補を生成"}
       </button>
       {message && <span className="muted">{message}</span>}
-    </>
+    </div>
   );
 }

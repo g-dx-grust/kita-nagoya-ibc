@@ -241,8 +241,8 @@ export default async function MonthlyProductionPlansPage({
                       : "現在庫、未処理需要、既存予定を見た結果、追加の生産予定は不要です。"}
                   </div>
                 ) : (
-                  <div className="table-frame">
-                    <table>
+                  <div className="table-frame monthly-suggestion-frame">
+                    <table className="monthly-suggestion-table">
                       <thead>
                         <tr>
                           <th>予定日</th>
@@ -254,12 +254,15 @@ export default async function MonthlyProductionPlansPage({
                       </thead>
                       <tbody>
                         {groupedSuggestions.map((suggestion) => (
-                          <tr key={`${suggestion.scheduleDate}:${suggestion.productId}`}>
-                            <td>{suggestion.scheduleDate}</td>
-                            <td>
-                              {suggestion.productCode} · {suggestion.productName}
+                          <tr key={`${suggestion.scheduleDate}:${suggestion.productId}`} className="monthly-suggestion-row">
+                            <td data-label="予定日">{suggestion.scheduleDate}</td>
+                            <td data-label="商品">
+                              <div className="monthly-suggestion-product">
+                                <strong>{suggestion.productCode} · {suggestion.productName}</strong>
+                                <span className="badge info">{planningBasisLabel(planningBasis)}</span>
+                              </div>
                             </td>
-                            <td className="right">
+                            <td className="right" data-label="数量">
                               <strong>
                                 {formatCases(suggestion.suggestedQuantity, {
                                   casePackQty: caseOf(suggestion.productId),
@@ -267,8 +270,8 @@ export default async function MonthlyProductionPlansPage({
                                 })}
                               </strong>
                             </td>
-                            <td>{suggestion.dueDates.sort().join(", ")}</td>
-                            <td className="wrap-cell">{suggestion.reasons[0]}</td>
+                            <td data-label={planningBasis === "historical_actual" ? "予測基準日" : "不足判定日"}>{suggestion.dueDates.sort().join(", ")}</td>
+                            <td className="wrap-cell" data-label="判定理由">{suggestion.reasons[0]}</td>
                           </tr>
                         ))}
                       </tbody>

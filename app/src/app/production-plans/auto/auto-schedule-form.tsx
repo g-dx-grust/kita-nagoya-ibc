@@ -133,6 +133,78 @@ export default function AutoScheduleForm({
       })),
     [result?.availableStaff],
   );
+  const inputStats = useMemo(() => {
+    const seen = new Set<string>();
+    let duplicateRows = 0;
+    let stockRows = 0;
+    let makeToOrderRows = 0;
+    let missingDefaultArea = 0;
+    let missingCapacity = 0;
+    let totalQuantity = 0;
+
+    for (const row of rows) {
+      if (!row.productId) continue;
+      const product = productMap.get(row.productId);
+      if (seen.has(row.productId)) duplicateRows += 1;
+      seen.add(row.productId);
+      if (row.productionType === "make_to_order") makeToOrderRows += 1;
+      if (row.productionType === "stock") stockRows += 1;
+      if (!product?.defaultWorkAreaName) missingDefaultArea += 1;
+      if (!product?.capacitySummary) missingCapacity += 1;
+      totalQuantity += Number.isFinite(row.quantity) ? row.quantity : 0;
+    }
+
+    return {
+      productCount: seen.size,
+      rowCount: rows.filter((row) => row.productId).length,
+      duplicateRows,
+      stockRows,
+      makeToOrderRows,
+      missingDefaultArea,
+      missingCapacity,
+      totalQuantity,
+      alertCount: duplicateRows + missingDefaultArea + missingCapacity,
+    };
+  }, [productMap, rows]);
+  const resultStats = useMemo(() => {
+    if (!result) return null;
+    const workAreaCount = new Set(result.plans.map((plan) => plan.workAreaId)).size;
+    const warningCount = result.plans.reduce((total, plan) => total + plan.warnings.length, 0);
+    const assignedPeopleCount = result.plans.reduce(
+      (total, plan) => total + (plan.assignedStaff.length > 0 ? plan.assignedStaff.length : plan.assignedCount),
+      0,
+    );
+    const unassignedPlanCount = result.plans.filter(
+      (plan) => plan.assignedStaff.length === 0 && plan.assignedCount === 0,
+    ).length;
+
+    return {
+      planCount: result.plans.length,
+      workAreaCount,
+      warningCount,
+      assignedPeopleCount,
+      unassignedPlanCount,
+    };
+  }, [result]);
+  const inputStatusLabel = result?.persisted
+    ? "確定済み"
+    : result
+      ? "プレビュー済み"
+      : inputStats.alertCount > 0
+        ? "確認あり"
+        : "入力中";
+  const inputStatusClass = result?.persisted
+    ? "success"
+    : result
+      ? "info"
+      : inputStats.alertCount > 0
+        ? "warn"
+        : "muted";
+  const resultStatusClass = result?.persisted
+    ? "success"
+    : (resultStats?.warningCount ?? 0) + (resultStats?.unassignedPlanCount ?? 0) > 0
+      ? "warn"
+      : "info";
 
   useEffect(() => {
     if (!autoLoadSuggestions || initialSuggestionsLoaded) return;
@@ -141,10 +213,17 @@ export default function AutoScheduleForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoLoadSuggestions, initialSuggestionsLoaded]);
 
+  function invalidatePreview() {
+    setResult(null);
+    setPreviewRequest(null);
+    setMessage(null);
+  }
+
   function update(index: number, patch: Partial<Row>) {
     const copy = [...rows];
     copy[index] = { ...copy[index], ...patch };
     setRows(copy);
+    invalidatePreview();
   }
 
   function updateResultPlan(index: number, patch: Partial<Result["plans"][number]>) {
@@ -245,6 +324,7 @@ export default function AutoScheduleForm({
   async function loadProductSuggestions() {
     setLoadingSuggestions(true);
     setError(null);
+    invalidatePreview();
     const res = await fetch(
       kitagoyaApiPath(`/product-planning/suggestions?dateFrom=${date}&dateTo=${addDays(date, 30)}`),
     );
@@ -277,15 +357,29 @@ export default function AutoScheduleForm({
 
   return (
     <form onSubmit={submit}>
-      <div className="panel">
-        <div className="row">
+      <div className="panel auto-schedule-control-panel">
+        <div className="row auto-schedule-fields">
           <label>
             <span>対象日</span>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => {
+                setDate(e.target.value);
+                invalidatePreview();
+              }}
+              required
+            />
           </label>
           <label>
             <span>計算モード</span>
-            <select value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
+            <select
+              value={mode}
+              onChange={(e) => {
+                setMode(e.target.value as typeof mode);
+                invalidatePreview();
+              }}
+            >
               <option value="duration">① 数量固定 → 終了時刻</option>
               <option value="max_quantity">② 時間枠固定 → 最大数量</option>
               <option value="required_people">③ 数量+時間枠 → 必要人数</option>
@@ -293,20 +387,61 @@ export default function AutoScheduleForm({
           </label>
           <label>
             <span>開始時刻</span>
-            <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+            <input
+              type="time"
+              value={startTime}
+              onChange={(e) => {
+                setStartTime(e.target.value);
+                invalidatePreview();
+              }}
+            />
           </label>
           <label>
             <span>終了希望</span>
-            <input type="time" value={desiredEndTime} onChange={(e) => setDesiredEndTime(e.target.value)} />
+            <input
+              type="time"
+              value={desiredEndTime}
+              onChange={(e) => {
+                setDesiredEndTime(e.target.value);
+                invalidatePreview();
+              }}
+            />
           </label>
           <label>
             <span>基準終了</span>
-            <input type="time" value={baselineEndTime} onChange={(e) => setBaselineEndTime(e.target.value)} />
+            <input
+              type="time"
+              value={baselineEndTime}
+              onChange={(e) => {
+                setBaselineEndTime(e.target.value);
+                invalidatePreview();
+              }}
+            />
           </label>
           <label>
             <span>休憩時間帯</span>
             <input value={DAILY_BREAK_LABEL} readOnly aria-label="休憩時間帯" />
           </label>
+        </div>
+        <div className="auto-schedule-command">
+          <div className="auto-schedule-command-title">
+            <span className={`badge ${inputStatusClass}`}>{inputStatusLabel}</span>
+            <strong>入力サマリ</strong>
+            <span className="subtext">
+              {inputStats.rowCount}行 / {formatNumber(inputStats.totalQuantity)}合計数量
+            </span>
+          </div>
+          <div className="auto-schedule-checks">
+            <span className="badge info">在庫 {inputStats.stockRows}</span>
+            <span className="badge info">受注 {inputStats.makeToOrderRows}</span>
+            <span className={`badge ${inputStats.missingDefaultArea > 0 ? "warn" : "success"}`}>
+              標準未設定 {inputStats.missingDefaultArea}
+            </span>
+            <span className={`badge ${inputStats.missingCapacity > 0 ? "warn" : "success"}`}>
+              能力未登録 {inputStats.missingCapacity}
+            </span>
+            {inputStats.duplicateRows > 0 && <span className="badge warn">重複 {inputStats.duplicateRows}</span>}
+          </div>
         </div>
       </div>
 
@@ -325,9 +460,9 @@ export default function AutoScheduleForm({
           {loadingSuggestions ? "読込中..." : "製品在庫から不足候補を読込"}
         </button>
       </div>
-      <div className="panel">
-        <div className="table-frame">
-          <table>
+      <div className="panel auto-schedule-items-panel">
+        <div className="table-frame auto-schedule-item-frame">
+          <table className="auto-schedule-item-table">
             <thead>
               <tr>
                 <th>No.</th>
@@ -342,26 +477,37 @@ export default function AutoScheduleForm({
             <tbody>
               {rows.map((row, index) => {
                 const product = productMap.get(row.productId);
+                const missingDefaultArea = !product?.defaultWorkAreaName;
+                const missingCapacity = !product?.capacitySummary;
                 return (
-                  <tr key={index}>
-                    <td className="right">{index + 1}</td>
-                    <td>
-                      <ProductCombobox
-                        products={products}
-                        value={row.productId}
-                        onChange={(id) => {
-                          const product = productMap.get(id);
-                          update(index, {
-                            productId: id,
-                            quantity: defaultQuantity(product),
-                            productionType:
-                              product?.productionType === "make_to_order" ? "make_to_order" : "stock",
-                          });
-                        }}
-                        required
-                      />
+                  <tr key={index} className={`auto-schedule-item-row${missingCapacity ? " row-needs-action" : ""}`}>
+                    <td className="right" data-label="No.">{index + 1}</td>
+                    <td data-label="商品">
+                      <div className="auto-schedule-product-cell">
+                        <ProductCombobox
+                          products={products}
+                          value={row.productId}
+                          onChange={(id) => {
+                            const product = productMap.get(id);
+                            update(index, {
+                              productId: id,
+                              quantity: defaultQuantity(product),
+                              productionType:
+                                product?.productionType === "make_to_order" ? "make_to_order" : "stock",
+                            });
+                          }}
+                          required
+                        />
+                        {product && (
+                          <div className="auto-schedule-product-badges">
+                            <span className="badge muted">{productionTypeLabel(product.productionType)}</span>
+                            {missingDefaultArea && <span className="badge warn">標準未設定</span>}
+                            {missingCapacity && <span className="badge warn">能力未登録</span>}
+                          </div>
+                        )}
+                      </div>
                     </td>
-                    <td>
+                    <td data-label="数量">
                       <input
                         type="number"
                         min={1}
@@ -375,7 +521,7 @@ export default function AutoScheduleForm({
                           : product?.unit ?? ""}
                       </span>
                     </td>
-                    <td>
+                    <td data-label="区分">
                       <select
                         value={row.productionType}
                         onChange={(e) => update(index, { productionType: e.target.value })}
@@ -387,13 +533,24 @@ export default function AutoScheduleForm({
                         <option value="other">その他</option>
                       </select>
                     </td>
-                    <td>{product?.defaultWorkAreaName ?? "自動選択"}</td>
-                    <td>{product?.capacitySummary ?? "未登録"}</td>
-                    <td>
+                    <td data-label="標準作業場所">
+                      <span className={`badge ${missingDefaultArea ? "warn" : "info"}`}>
+                        {product?.defaultWorkAreaName ?? "自動選択"}
+                      </span>
+                    </td>
+                    <td data-label="生産能力 / 人時">
+                      <span className={`badge ${missingCapacity ? "warn" : "success"}`}>
+                        {product?.capacitySummary ?? "未登録"}
+                      </span>
+                    </td>
+                    <td data-label="操作">
                       <button
                         type="button"
                         className="secondary"
-                        onClick={() => setRows(rows.filter((_, i) => i !== index))}
+                        onClick={() => {
+                          setRows(rows.filter((_, i) => i !== index));
+                          invalidatePreview();
+                        }}
                         disabled={rows.length === 1}
                       >
                         削除
@@ -409,7 +566,7 @@ export default function AutoScheduleForm({
           <button
             type="button"
             className="secondary"
-            onClick={() =>
+            onClick={() => {
               setRows([
                 ...rows,
                 {
@@ -417,8 +574,9 @@ export default function AutoScheduleForm({
                   quantity: defaultQuantity(products[0]),
                   productionType: "stock",
                 },
-              ])
-            }
+              ]);
+              invalidatePreview();
+            }}
           >
             ＋ 商品を追加
           </button>
@@ -432,22 +590,54 @@ export default function AutoScheduleForm({
       {message && <div className="alert success">{message}</div>}
 
       {result && (
-        <div className="panel">
+        <div className="panel auto-schedule-result-panel">
           <h2>
             {result.persisted ? "確定済みスケジュール" : "自動作成プレビュー"}
             {!result.persisted && (
               <HelpTooltip text="出勤者全員を複数部屋へ自動配置し、作業の終わった人は別部屋へ合流させています。作業場所は変更できます。細かな人の入れ替えは当日 人員割り当てで調整します。" />
             )}
           </h2>
-          <div className={result.persisted ? "alert success" : "alert info"}>
-            {result.persisted
-              ? "生産予定として確定しました。"
-              : result.mode === "max_quantity"
-                ? "プレビューです。必要に応じて調整してください。"
-                : "プレビューです。条件や数量を変更できます。"}
-          </div>
-          <div className="table-frame">
-          <table>
+          {resultStats && (
+            <div className="auto-schedule-result-command">
+              <div className="auto-schedule-command-title">
+                <span className={`badge ${resultStatusClass}`}>
+                  {result.persisted ? "確定済み" : resultStats.warningCount > 0 ? "確認が必要" : "保存できます"}
+                </span>
+                <strong>{result.persisted ? "生産予定として確定" : "確定前チェック"}</strong>
+                <span className="subtext">
+                  予定 {resultStats.planCount}件 / 作業場所 {resultStats.workAreaCount}か所
+                </span>
+              </div>
+              <div className="auto-schedule-checks">
+                <span className={`badge ${resultStats.warningCount > 0 ? "warn" : "success"}`}>
+                  注意 {resultStats.warningCount}
+                </span>
+                <span className={`badge ${resultStats.unassignedPlanCount > 0 ? "warn" : "success"}`}>
+                  未配置 {resultStats.unassignedPlanCount}
+                </span>
+                <span className="badge info">配置人数 {resultStats.assignedPeopleCount}</span>
+              </div>
+              <div className="auto-schedule-result-actions">
+                {!result.persisted && (
+                  <button type="button" onClick={confirmPreview} disabled={confirming}>
+                    {confirming ? "確定中..." : "この内容で確定"}
+                  </button>
+                )}
+                {result.persisted && result.printUrls && (
+                  <>
+                    <Link className="button-link" href={kitagoyaPath(result.printUrls.schedule)}>
+                      生産スケジュール印刷
+                    </Link>
+                    <Link className="button-link" href={kitagoyaPath(result.printUrls.staff)}>
+                      スタッフ配置印刷
+                    </Link>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+          <div className="table-frame auto-schedule-result-frame">
+          <table className="auto-schedule-result-table">
             <thead>
               <tr>
                 <th>商品</th>
@@ -462,10 +652,15 @@ export default function AutoScheduleForm({
             </thead>
             <tbody>
               {result.plans.map((plan, planIndex) => (
-                <tr key={plan.id ?? plan.tempId}>
-                  <td>{plan.productName}</td>
-                  <td>{productionTypeLabel(plan.productionType)}</td>
-                  <td>
+                <tr key={plan.id ?? plan.tempId} className={plan.warnings.length > 0 ? "row-needs-action" : ""}>
+                  <td data-label="商品">
+                    <div className="auto-schedule-result-product">
+                      <strong>{plan.productName}</strong>
+                      {plan.warnings.length > 0 && <span className="badge warn">注意 {plan.warnings.length}</span>}
+                    </div>
+                  </td>
+                  <td data-label="区分">{productionTypeLabel(plan.productionType)}</td>
+                  <td data-label="作業場所">
                     {result.persisted ? (
                       plan.workAreaName
                     ) : (
@@ -484,16 +679,16 @@ export default function AutoScheduleForm({
                       />
                     )}
                   </td>
-                  <td>
+                  <td data-label="時間">
                     {plan.startTime} - {plan.endTime}
                   </td>
-                  <td className="right">
+                  <td className="right" data-label="数量">
                     {formatCases(plan.quantity, {
                       casePackQty: productMap.get(plan.productId)?.casePackQty ?? null,
                       baseUnit: productMap.get(plan.productId)?.unit,
                     })}
                   </td>
-                  <td>
+                  <td data-label="配置スタッフ">
                     {result.persisted || result.mode === "max_quantity" ? (
                       plan.assignedStaff.length > 0
                         ? plan.assignedStaff.map((staff) => staff.employeeName).join("、")
@@ -519,8 +714,20 @@ export default function AutoScheduleForm({
                       </div>
                     )}
                   </td>
-                  <td>{plan.warnings.length ? plan.warnings.join(" / ") : "なし"}</td>
-                  <td>
+                  <td data-label="注意">
+                    {plan.warnings.length ? (
+                      <div className="auto-schedule-warning-list">
+                        {plan.warnings.map((warning) => (
+                          <span key={warning} className="badge warn">
+                            {warning}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="badge success">なし</span>
+                    )}
+                  </td>
+                  <td data-label="操作">
                     {plan.id ? <Link href={kitagoyaPath(`/production-plans/${plan.id}`)}>詳細</Link> : "未保存"}
                   </td>
                 </tr>

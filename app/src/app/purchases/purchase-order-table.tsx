@@ -400,8 +400,14 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
             <tbody>
           {filteredRows.map((row) => {
             const editing = editingId === row.id && draft;
+            const rowClass = [
+              "purchase-order-row",
+              editing ? "is-editing" : "",
+              row.urgency === "CRITICAL" ? "is-critical" : "",
+              row.status === "candidate" || row.status === "draft" ? "is-unplaced" : "",
+            ].filter(Boolean).join(" ");
             return (
-              <tr key={row.id} className={`purchase-order-row${editing ? " is-editing" : ""}`}>
+              <tr key={row.id} className={rowClass}>
                 {editing ? (
                   <>
                     <td data-label="状態">
@@ -688,7 +694,10 @@ export function ShortageForecastTable({ rows }: { rows: ShortageForecastRow[] })
             </thead>
             <tbody>
               {filtered.map((row) => (
-                <tr key={row.requirementId} className="shortage-forecast-row">
+                <tr
+                  key={row.requirementId}
+                  className={`shortage-forecast-row${row.shortageType === "hard_shortage" ? " row-needs-action" : ""}`}
+                >
                   <td data-label="不足日">{row.date}</td>
                   <td data-label="区分">{row.itemType === "raw_material" ? "原料" : "資材"}</td>
                   <td className="wrap-cell product-name-cell" data-label="品目">{row.itemName}</td>

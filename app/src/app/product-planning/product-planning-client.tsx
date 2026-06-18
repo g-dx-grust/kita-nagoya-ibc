@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { kitagoyaApiPath } from "@/lib/paths";
+import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 import { ceilDisplayQuantity, formatCases } from "@/lib/units";
 import ProductCombobox from "@/components/ui/product-combobox";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
@@ -52,6 +53,7 @@ type SuggestionRow = {
   openDemandQuantity: number;
   safetyStockQuantity: number;
   shortageQuantity: number;
+  shortageType: "none" | "hard_shortage" | "unconfirmed_dependency";
   suggestedQuantity: number;
   reason: string;
 };
@@ -114,6 +116,35 @@ export default function ProductPlanningClient({
   const [demandDraft, setDemandDraft] = useState<DemandDraft | null>(null);
   const [editingActualId, setEditingActualId] = useState<string | null>(null);
   const [actualDraft, setActualDraft] = useState<MonthlyActualDraft | null>(null);
+  const planningStats = useMemo(() => {
+    const suggestedCount = suggestions.filter((suggestion) => suggestion.suggestedQuantity > 0).length;
+    const hardShortageCount = suggestions.filter((suggestion) => suggestion.shortageType === "hard_shortage").length;
+    const dependencyCount = suggestions.filter(
+      (suggestion) => suggestion.shortageType === "unconfirmed_dependency",
+    ).length;
+    const stockShortageCount = suggestions.filter((suggestion) => suggestion.productionType === "stock").length;
+    const makeToOrderCount = suggestions.filter((suggestion) => suggestion.productionType === "make_to_order").length;
+
+    return {
+      suggestedCount,
+      hardShortageCount,
+      dependencyCount,
+      stockShortageCount,
+      makeToOrderCount,
+      candidateCount: suggestions.length,
+      demandCount: demands.length,
+    };
+  }, [demands.length, suggestions]);
+  const planningStatusClass = planningStats.hardShortageCount > 0
+    ? "warn"
+    : planningStats.dependencyCount > 0
+      ? "info"
+      : "success";
+  const planningStatusLabel = planningStats.hardShortageCount > 0
+    ? "生産候補あり"
+    : planningStats.dependencyCount > 0
+      ? "入荷確認あり"
+      : "不足なし";
 
   async function submitStock(e: React.FormEvent) {
     e.preventDefault();
@@ -431,6 +462,44 @@ export default function ProductPlanningClient({
         </form>
       </div>
 
+      <div className="product-planning-command">
+        <div className="product-planning-command-title">
+          <span className={`badge ${planningStatusClass}`}>{planningStatusLabel}</span>
+          <strong>生産判断</strong>
+          <span className="subtext">
+            {initialDateFrom} - {initialDateTo}
+          </span>
+        </div>
+        <div className="product-planning-checks">
+          <span className={`badge ${planningStats.candidateCount > 0 ? "info" : "success"}`}>
+            候補 {planningStats.candidateCount}
+          </span>
+          <span className={`badge ${planningStats.suggestedCount > 0 ? "warn" : "success"}`}>
+            推奨あり {planningStats.suggestedCount}
+          </span>
+          <span className={`badge ${planningStats.dependencyCount > 0 ? "warn" : "success"}`}>
+            入荷確認 {planningStats.dependencyCount}
+          </span>
+          <span className="badge info">未処理予定 {planningStats.demandCount}</span>
+          <span className="badge muted">在庫 {planningStats.stockShortageCount}</span>
+          <span className="badge muted">受注 {planningStats.makeToOrderCount}</span>
+        </div>
+        <div className="product-planning-command-actions">
+          <Link
+            className="button-link"
+            href={kitagoyaPath(`/production-plans/auto?date=${initialDateFrom}&loadSuggestions=1`)}
+          >
+            候補を読込んでシフト自動作成へ
+          </Link>
+          <Link
+            className="button-link secondary-link"
+            href={kitagoyaPath(`/production-plans/monthly?dateFrom=${initialDateFrom}&dateTo=${initialDateTo}`)}
+          >
+            月間生産予定を生成
+          </Link>
+        </div>
+      </div>
+
       <h2>製品在庫</h2>
       <div className="table-frame">
         <table>
@@ -462,8 +531,8 @@ export default function ProductPlanningClient({
       {suggestions.length === 0 ? (
         <div className="empty-state">対象期間で不足する商品はありません。</div>
       ) : (
-        <div className="table-frame">
-          <table>
+        <div className="table-frame product-planning-suggestion-frame">
+          <table className="product-planning-suggestion-table">
             <thead>
               <tr>
                 <th>商品</th>
@@ -481,19 +550,32 @@ export default function ProductPlanningClient({
                 const cp = caseOf(suggestion.productId);
                 const fmt = (v: number) => formatCases(v, { casePackQty: cp, baseUnit: suggestion.unit });
                 return (
-                  <tr key={suggestion.productId}>
-                    <td>
-                      {suggestion.productCode} · {suggestion.productName}
+                  <tr
+                    key={suggestion.productId}
+                    className={`product-planning-suggestion-row ${suggestion.shortageType === "hard_shortage" ? "row-needs-action" : ""}`}
+                  >
+                    <td data-label="商品">
+                      <div className="product-planning-product-cell">
+                        <strong>{suggestion.productCode} · {suggestion.productName}</strong>
+                        <div className="product-planning-row-badges">
+                          <span className={`badge ${suggestion.shortageType === "hard_shortage" ? "warn" : "info"}`}>
+                            {shortageTypeLabel(suggestion.shortageType)}
+                          </span>
+                          <span className="badge muted">{productionTypeLabel(suggestion.productionType)}</span>
+                        </div>
+                      </div>
                     </td>
-                    <td className="right">{fmt(suggestion.onHandQuantity)}</td>
-                    <td className="right">{fmt(suggestion.plannedProductionQuantity)}</td>
-                    <td className="right">{fmt(suggestion.openDemandQuantity)}</td>
-                    <td className="right">{fmt(suggestion.safetyStockQuantity)}</td>
-                    <td className="right">{fmt(suggestion.shortageQuantity)}</td>
-                    <td className="right">
+                    <td className="right" data-label="現在庫">{fmt(suggestion.onHandQuantity)}</td>
+                    <td className="right" data-label="予定生産">{fmt(suggestion.plannedProductionQuantity)}</td>
+                    <td className="right" data-label="受注/出荷">{fmt(suggestion.openDemandQuantity)}</td>
+                    <td className="right" data-label="安全在庫">{fmt(suggestion.safetyStockQuantity)}</td>
+                    <td className="right" data-label="不足">{fmt(suggestion.shortageQuantity)}</td>
+                    <td className="right" data-label="推奨生産数">
                       <strong>{fmt(suggestion.suggestedQuantity)}</strong>
                     </td>
-                    <td>{suggestion.reason}</td>
+                    <td data-label="理由">
+                      <div className="product-planning-reason">{suggestion.reason}</div>
+                    </td>
                   </tr>
                 );
               })}
@@ -791,6 +873,32 @@ function demandStatusLabel(value: string) {
       return "処理済み";
     case "cancelled":
       return "取消";
+    default:
+      return value;
+  }
+}
+
+function shortageTypeLabel(value: SuggestionRow["shortageType"]) {
+  switch (value) {
+    case "hard_shortage":
+      return "生産が必要";
+    case "unconfirmed_dependency":
+      return "入荷確認";
+    case "none":
+      return "不足なし";
+    default:
+      return value;
+  }
+}
+
+function productionTypeLabel(value: SuggestionRow["productionType"]) {
+  switch (value) {
+    case "stock":
+      return "在庫";
+    case "make_to_order":
+      return "受注";
+    case "both":
+      return "共通";
     default:
       return value;
   }

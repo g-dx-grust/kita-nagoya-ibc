@@ -36,6 +36,7 @@ export default function MaterialsMasterTable({
 }) {
   const [query, setQuery] = useState("");
   const [supplierId, setSupplierId] = useState("");
+  const [needsSetupOnly, setNeedsSetupOnly] = useState(false);
 
   const supplierOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -51,20 +52,54 @@ export default function MaterialsMasterTable({
     () =>
       rows.filter((r) => {
         if (supplierId && r.supplierId !== supplierId) return false;
+        if (needsSetupOnly && !needsSetup(r)) return false;
         return matchesQuery(query, [r.materialCode, r.name, r.unit, r.supplierName, r.note]);
       }),
-    [rows, query, supplierId],
+    [rows, query, supplierId, needsSetupOnly],
   );
 
-  const hasActiveFilters = !!(query || supplierId);
+  const setupSummary = useMemo(() => {
+    const missingSupplier = rows.filter((r) => !r.supplierId).length;
+    const missingPrice = rows.filter((r) => r.standardUnitPrice <= 0).length;
+    const missingLeadTime = rows.filter((r) => r.leadTimeDays <= 0).length;
+    const missingOrderRule = rows.filter((r) => r.orderLotQty == null && r.minOrderQty == null).length;
+    const needsAction = rows.filter(needsSetup).length;
+    return { missingSupplier, missingPrice, missingLeadTime, missingOrderRule, needsAction };
+  }, [rows]);
+
+  const hasActiveFilters = !!(query || supplierId || needsSetupOnly);
 
   function resetFilters() {
     setQuery("");
     setSupplierId("");
+    setNeedsSetupOnly(false);
   }
 
   return (
     <>
+      <div className="material-master-command">
+        <div className="material-master-command-title">
+          <span className={`badge ${setupSummary.needsAction > 0 ? "warn" : "success"}`}>
+            {setupSummary.needsAction > 0 ? "確認が必要" : "整備済み"}
+          </span>
+          <strong>原料整備</strong>
+          <span className="subtext">{rows.length}件</span>
+        </div>
+        <div className="material-master-checks">
+          <span className={`badge ${setupSummary.missingSupplier > 0 ? "warn" : "success"}`}>
+            仕入先未設定 {setupSummary.missingSupplier}
+          </span>
+          <span className={`badge ${setupSummary.missingPrice > 0 ? "warn" : "success"}`}>
+            単価未設定 {setupSummary.missingPrice}
+          </span>
+          <span className={`badge ${setupSummary.missingLeadTime > 0 ? "warn" : "success"}`}>
+            LT未設定 {setupSummary.missingLeadTime}
+          </span>
+          <span className={`badge ${setupSummary.missingOrderRule > 0 ? "warn" : "success"}`}>
+            発注基準未設定 {setupSummary.missingOrderRule}
+          </span>
+        </div>
+      </div>
       <CollapsiblePanel
         title="表内検索・絞り込み"
         summary={`${filtered.length} / ${rows.length} 件${hasActiveFilters ? " / 条件あり" : ""}`}
@@ -86,6 +121,14 @@ export default function MaterialsMasterTable({
             placeholder="仕入先で絞り込み"
             onChange={setSupplierId}
           />
+          <label className="filter-check">
+            <input
+              type="checkbox"
+              checked={needsSetupOnly}
+              onChange={(e) => setNeedsSetupOnly(e.target.checked)}
+            />
+            要整備のみ
+          </label>
           <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
             条件クリア
           </button>
@@ -134,11 +177,25 @@ export default function MaterialsMasterTable({
                 </td>
               </tr>
             ) : null}
-            {filtered.map((r) => (
-              <tr key={r.id} className="material-master-row">
+            {filtered.map((r) => {
+              const missingSupplier = !r.supplierId;
+              const missingPrice = r.standardUnitPrice <= 0;
+              const missingLeadTime = r.leadTimeDays <= 0;
+              const missingOrderRule = r.orderLotQty == null && r.minOrderQty == null;
+              const rowNeedsSetup = needsSetup(r);
+              return (
+              <tr key={r.id} className={`material-master-row${rowNeedsSetup ? " row-needs-action" : ""}`}>
                 <td data-label="番号">{highlight(r.materialCode, query)}</td>
                 <td className="wrap-cell material-name-cell" data-label="名称">
                   {highlight(r.name, query)}
+                  {rowNeedsSetup && (
+                    <div className="material-master-row-badges">
+                      {missingSupplier && <span className="badge warn">仕入先未設定</span>}
+                      {missingPrice && <span className="badge warn">単価未設定</span>}
+                      {missingLeadTime && <span className="badge warn">LT未設定</span>}
+                      {missingOrderRule && <span className="badge warn">発注基準未設定</span>}
+                    </div>
+                  )}
                 </td>
                 <td data-label="単位">{r.unit}</td>
                 <td className={`right ${r.standardUnitPrice <= 0 ? "warn-value" : ""}`} data-label="標準単価">
@@ -198,12 +255,17 @@ export default function MaterialsMasterTable({
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
     </>
   );
+}
+
+function needsSetup(row: MaterialRow) {
+  return !row.supplierId || row.standardUnitPrice <= 0 || row.leadTimeDays <= 0 || (row.orderLotQty == null && row.minOrderQty == null);
 }
 
 function formatCurrency(value: number): string {

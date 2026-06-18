@@ -108,7 +108,25 @@ export default async function PurchasesPage({
     <>
       <div className="page-title-row">
         <h1>発注候補</h1>
-        <div className="page-title-actions">
+      </div>
+      <div className="purchase-command">
+        <div className="purchase-command-title">
+          <span className={`badge ${hardShortageCount > 0 || criticalOrderCount > 0 ? "warn" : "success"}`}>
+            {hardShortageCount > 0 || criticalOrderCount > 0 ? "確認が必要" : "不足なし"}
+          </span>
+          <strong>発注判断</strong>
+          <span className="subtext">
+            {dateFrom} 〜 {dateTo}
+          </span>
+        </div>
+        <div className="purchase-command-checks">
+          <span className={`badge ${hardShortageCount > 0 ? "danger" : "success"}`}>実不足 {hardShortageCount}</span>
+          <span className={`badge ${safetyShortageCount > 0 ? "warn" : "success"}`}>安全在庫割れ {safetyShortageCount}</span>
+          <span className={`badge ${pendingOrderCount > 0 ? "warn" : "success"}`}>未発注 {pendingOrderCount}</span>
+          <span className={`badge ${criticalOrderCount > 0 ? "danger" : "success"}`}>緊急 {criticalOrderCount}</span>
+          <span className="badge info">入荷待ち {waitingArrivalCount}</span>
+        </div>
+        <div className="purchase-command-actions">
           <GeneratePurchaseCandidatesButton dateFrom={dateFrom} dateTo={dateTo} />
         </div>
       </div>
