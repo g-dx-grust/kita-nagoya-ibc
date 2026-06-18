@@ -61,10 +61,14 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
   const [statusFilter, setStatusFilter] = useState("");
   const [urgencyFilter, setUrgencyFilter] = useState("");
   const [itemTypeFilter, setItemTypeFilter] = useState("");
+  const [queueFilter, setQueueFilter] = useState<"" | "unplaced" | "critical" | "receiving">("");
 
   const filteredRows = useMemo(
     () =>
       rows.filter((row) => {
+        if (queueFilter === "unplaced" && row.status !== "candidate" && row.status !== "draft") return false;
+        if (queueFilter === "critical" && row.urgency !== "CRITICAL") return false;
+        if (queueFilter === "receiving" && row.status !== "confirmed") return false;
         if (statusFilter && row.status !== statusFilter) return false;
         if (urgencyFilter && row.urgency !== urgencyFilter) return false;
         if (itemTypeFilter && row.itemType !== itemTypeFilter) return false;
@@ -78,16 +82,32 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
           purchaseOrderUrgencyLabel(row.urgency),
         ]);
       }),
-    [rows, search, statusFilter, urgencyFilter, itemTypeFilter],
+    [rows, search, statusFilter, urgencyFilter, itemTypeFilter, queueFilter],
   );
 
-  const hasActiveFilters = !!(search || statusFilter || urgencyFilter || itemTypeFilter);
+  const queueCounts = useMemo(
+    () => ({
+      unplaced: rows.filter((row) => row.status === "candidate" || row.status === "draft").length,
+      critical: rows.filter((row) => row.urgency === "CRITICAL").length,
+      receiving: rows.filter((row) => row.status === "confirmed").length,
+    }),
+    [rows],
+  );
+
+  const hasActiveFilters = !!(search || statusFilter || urgencyFilter || itemTypeFilter || queueFilter);
 
   function resetFilters() {
     setSearch("");
     setStatusFilter("");
     setUrgencyFilter("");
     setItemTypeFilter("");
+    setQueueFilter("");
+  }
+
+  function applyQueueFilter(next: "" | "unplaced" | "critical" | "receiving") {
+    setQueueFilter((current) => (current === next ? "" : next));
+    setStatusFilter("");
+    setUrgencyFilter("");
   }
 
   function beginEdit(row: PurchaseOrderTableRow) {
@@ -250,6 +270,32 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
     <>
       {message && <div className="alert success">{message}</div>}
       {error && <div className="alert danger">{error}</div>}
+      <div className="purchase-order-queue" aria-label="発注作業キュー">
+        <button
+          type="button"
+          className={queueFilter === "unplaced" ? "is-active" : ""}
+          onClick={() => applyQueueFilter("unplaced")}
+        >
+          <span>未発注</span>
+          <strong>{queueCounts.unplaced}</strong>
+        </button>
+        <button
+          type="button"
+          className={queueFilter === "critical" ? "is-active danger" : "danger"}
+          onClick={() => applyQueueFilter("critical")}
+        >
+          <span>緊急</span>
+          <strong>{queueCounts.critical}</strong>
+        </button>
+        <button
+          type="button"
+          className={queueFilter === "receiving" ? "is-active" : ""}
+          onClick={() => applyQueueFilter("receiving")}
+        >
+          <span>入荷確定待ち</span>
+          <strong>{queueCounts.receiving}</strong>
+        </button>
+      </div>
       <CollapsiblePanel
         title={
           <span className="inline-action">
@@ -271,7 +317,13 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
             onChange={(e) => setSearch(e.target.value)}
             aria-label="発注候補を検索"
           />
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setQueueFilter("");
+              setStatusFilter(e.target.value);
+            }}
+          >
             <option value="">状態(すべて)</option>
             <option value="candidate">候補</option>
             <option value="draft">仮発注</option>
@@ -280,7 +332,13 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
             <option value="received">入荷済み</option>
             <option value="cancelled">取消</option>
           </select>
-          <select value={urgencyFilter} onChange={(e) => setUrgencyFilter(e.target.value)}>
+          <select
+            value={urgencyFilter}
+            onChange={(e) => {
+              setQueueFilter("");
+              setUrgencyFilter(e.target.value);
+            }}
+          >
             <option value="">緊急度(すべて)</option>
             <option value="CRITICAL">緊急</option>
             <option value="WARNING">注意</option>

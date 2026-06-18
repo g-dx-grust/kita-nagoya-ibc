@@ -540,6 +540,63 @@ table {
   color: #9a5b00;
 }
 
+.purchase-order-queue {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.purchase-order-queue button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.purchase-order-queue button:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface-subtle);
+}
+
+.purchase-order-queue button.is-active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.purchase-order-queue button.danger strong {
+  color: var(--danger);
+}
+
+.purchase-order-queue button.is-active.danger {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.purchase-order-queue span,
+.purchase-order-queue strong {
+  min-width: 0;
+}
+
+.purchase-order-queue span {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.purchase-order-queue strong {
+  font-size: 18px;
+  line-height: 1;
+}
+
 .metric-note {
   margin-top: 4px;
   color: var(--muted);
@@ -561,6 +618,10 @@ table {
   .purchase-summary-grid .metric-value,
   .purchase-summary-grid .purchase-summary-period {
     font-size: 14px;
+  }
+
+  .purchase-order-queue {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .purchase-order-frame,
