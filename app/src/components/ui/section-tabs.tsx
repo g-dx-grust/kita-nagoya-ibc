@@ -14,22 +14,33 @@ export default function SectionTabs({
   ariaLabel,
   items,
   initialTabId,
+  activeTabId,
+  onActiveTabChange,
   className,
   inlineHeader = false,
 }: {
   ariaLabel: string;
   items: SectionTabItem[];
   initialTabId?: string;
+  activeTabId?: string;
+  onActiveTabChange?: (tabId: string) => void;
   className?: string;
   inlineHeader?: boolean;
 }) {
   const baseId = useId();
   const firstId = items[0]?.id ?? "";
   const initialId = items.some((item) => item.id === initialTabId) ? initialTabId! : firstId;
-  const [activeId, setActiveId] = useState(initialId);
+  const isControlled = activeTabId != null;
+  const [internalActiveId, setInternalActiveId] = useState(initialId);
+  const activeId = isControlled && items.some((item) => item.id === activeTabId) ? activeTabId : internalActiveId;
   const activeItem = items.find((item) => item.id === activeId) ?? items[0];
 
   if (items.length === 0) return null;
+
+  function setActiveId(tabId: string) {
+    if (!isControlled) setInternalActiveId(tabId);
+    onActiveTabChange?.(tabId);
+  }
 
   function focusTab(index: number) {
     const next = items[index];

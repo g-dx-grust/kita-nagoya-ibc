@@ -595,6 +595,13 @@ table {
   overflow-wrap: anywhere;
 }
 
+.purchase-command-next {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .purchase-command-actions,
 .purchase-generate-control {
   justify-content: flex-end;
@@ -656,6 +663,84 @@ table {
 
 .purchase-summary-grid .warn-value {
   color: #9a5b00;
+}
+
+.purchase-flow-queue {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.purchase-flow-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  align-items: center;
+  min-height: 58px;
+  padding: 8px 10px;
+  color: var(--text);
+  text-decoration: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.purchase-flow-card:hover {
+  background: var(--surface-subtle);
+  border-color: var(--border-strong);
+}
+
+.purchase-flow-card.warn {
+  border-color: var(--warn-border);
+}
+
+.purchase-flow-card.danger {
+  border-color: var(--danger-border);
+}
+
+.purchase-flow-card.success {
+  border-color: var(--success-border);
+}
+
+.purchase-flow-card span,
+.purchase-flow-card strong,
+.purchase-flow-card small {
+  min-width: 0;
+}
+
+.purchase-flow-card span {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.purchase-flow-card strong {
+  grid-row: span 2;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.purchase-flow-card.warn strong {
+  color: var(--warn);
+}
+
+.purchase-flow-card.danger strong {
+  color: var(--danger);
+}
+
+.purchase-flow-card.success strong {
+  color: var(--success);
+}
+
+.purchase-flow-card small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .purchase-order-queue,
@@ -769,6 +854,10 @@ table {
   }
 
   .purchase-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .purchase-flow-queue {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -910,6 +999,130 @@ table {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
   margin: 0 0 14px;
+}
+
+.invoice-flow-command {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin: 0 0 10px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.invoice-flow-command-title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.invoice-flow-command-title strong,
+.invoice-flow-command-title .subtext {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.invoice-flow-next {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 7px 12px;
+  color: var(--primary);
+  font-weight: 900;
+  text-decoration: none;
+  background: var(--primary-soft);
+  border: 1px solid var(--info-border);
+  border-radius: 8px;
+}
+
+.invoice-flow-next:hover {
+  border-color: var(--primary);
+}
+
+.invoice-flow-queue {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.invoice-flow-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  align-items: center;
+  min-height: 58px;
+  padding: 8px 10px;
+  color: var(--text);
+  text-decoration: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.invoice-flow-card:hover {
+  background: var(--surface-subtle);
+  border-color: var(--border-strong);
+}
+
+.invoice-flow-card.info {
+  border-color: var(--info-border);
+}
+
+.invoice-flow-card.warn {
+  border-color: var(--warn-border);
+}
+
+.invoice-flow-card.success {
+  border-color: var(--success-border);
+}
+
+.invoice-flow-card span,
+.invoice-flow-card strong,
+.invoice-flow-card small {
+  min-width: 0;
+}
+
+.invoice-flow-card span {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.invoice-flow-card strong {
+  grid-row: span 2;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.invoice-flow-card.info strong {
+  color: var(--primary);
+}
+
+.invoice-flow-card.warn strong {
+  color: var(--warn);
+}
+
+.invoice-flow-card.success strong {
+  color: var(--success);
+}
+
+.invoice-flow-card small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
 }
 
 .invoice-summary-grid .metric {
@@ -1122,6 +1335,18 @@ table {
 }
 
 @media (max-width: 760px) {
+  .invoice-flow-command {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .invoice-flow-next {
+    width: 100%;
+  }
+
+  .invoice-flow-queue {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .invoice-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -3370,6 +3595,139 @@ table {
   color: #9a5b00;
 }
 
+.daily-report-workflow-command {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.8fr) minmax(320px, 1.4fr) auto;
+  gap: 10px 12px;
+  align-items: center;
+  margin: 0 0 14px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.daily-report-workflow-command.warn {
+  border-color: var(--warn-border);
+  border-left-color: var(--warn);
+}
+
+.daily-report-workflow-command.success {
+  border-color: var(--success-border);
+  border-left-color: var(--success);
+}
+
+.daily-report-workflow-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.daily-report-workflow-main strong,
+.daily-report-workflow-main span:not(.badge) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.daily-report-workflow-main strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.daily-report-workflow-main span:not(.badge) {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.daily-report-workflow-queue {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.daily-report-workflow-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  align-items: center;
+  min-height: 58px;
+  padding: 8px 10px;
+  color: var(--text);
+  text-align: left;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+}
+
+.daily-report-workflow-item:hover:not(:disabled) {
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+
+.daily-report-workflow-item.is-active {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.daily-report-workflow-item.warn {
+  border-color: var(--warn-border);
+}
+
+.daily-report-workflow-item.success {
+  border-color: var(--success-border);
+}
+
+.daily-report-workflow-item span,
+.daily-report-workflow-item strong,
+.daily-report-workflow-item small {
+  min-width: 0;
+}
+
+.daily-report-workflow-item span {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.daily-report-workflow-item strong {
+  grid-row: span 2;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.daily-report-workflow-item.warn strong {
+  color: var(--warn);
+}
+
+.daily-report-workflow-item.success strong {
+  color: var(--success);
+}
+
+.daily-report-workflow-item small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.daily-report-workflow-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.daily-report-workflow-actions button {
+  min-height: 34px;
+}
+
 .daily-report-labor-panel {
   display: grid;
   gap: 14px;
@@ -3774,6 +4132,29 @@ table {
 
 .daily-report-entry-command-actions button {
   min-width: 92px;
+}
+
+.daily-report-entry-jumpbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -4px 0 12px;
+}
+
+.daily-report-entry-jumpbar button {
+  min-height: 30px;
+  padding: 4px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.daily-report-entry-jumpbar button:hover {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .daily-report-entry-sections {
@@ -4271,6 +4652,19 @@ table {
 }
 
 @media (max-width: 920px) {
+  .daily-report-workflow-command {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-report-workflow-queue {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .daily-report-workflow-actions,
+  .daily-report-workflow-actions button {
+    width: 100%;
+  }
+
   .daily-report-review-panel {
     grid-template-columns: 1fr;
   }
@@ -4290,6 +4684,16 @@ table {
   .daily-report-entry-command-actions,
   .daily-report-entry-command-actions button {
     width: 100%;
+  }
+
+  .daily-report-entry-jumpbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .daily-report-entry-jumpbar button {
+    width: 100%;
+    min-width: 0;
   }
 
   .daily-report-review-breakdown,
@@ -4437,6 +4841,16 @@ table {
 
   .section-tabs-header {
     position: static;
+  }
+}
+
+@media (max-width: 520px) {
+  .daily-report-workflow-queue,
+  .daily-report-entry-jumpbar,
+  .daily-report-summary-grid,
+  .daily-report-labor-summary-grid,
+  .daily-report-product-summary-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -9764,6 +10178,17 @@ tr.row-selected td {
   flex-basis: 260px;
 }
 
+.auto-schedule-date-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.auto-schedule-date-jump button {
+  min-height: 30px;
+  padding: 4px 12px;
+}
+
 .auto-schedule-command,
 .auto-schedule-result-command {
   display: grid;
@@ -9805,6 +10230,158 @@ tr.row-selected td {
   min-height: 32px;
 }
 
+.auto-schedule-next {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.auto-schedule-review-queue {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.auto-schedule-review-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  align-items: center;
+  min-width: 0;
+  min-height: 58px;
+  padding: 8px 10px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  color: var(--text);
+  text-align: left;
+}
+
+.auto-schedule-review-item:hover:not(:disabled) {
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+
+.auto-schedule-review-item.is-active {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.auto-schedule-review-item.warn {
+  border-color: var(--warn-border);
+}
+
+.auto-schedule-review-item.danger {
+  border-color: var(--danger-border);
+}
+
+.auto-schedule-review-item.success strong {
+  color: var(--success);
+}
+
+.auto-schedule-review-item.warn strong {
+  color: var(--warn);
+}
+
+.auto-schedule-review-item.danger strong {
+  color: var(--danger);
+}
+
+.auto-schedule-review-item span,
+.auto-schedule-review-item strong,
+.auto-schedule-review-item small {
+  min-width: 0;
+}
+
+.auto-schedule-review-item span {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.auto-schedule-review-item strong {
+  grid-row: span 2;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.auto-schedule-review-item small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.auto-schedule-start-guide {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.2fr) auto;
+  gap: 12px;
+  align-items: center;
+  background: var(--surface-subtle);
+}
+
+.auto-schedule-start-main,
+.auto-schedule-start-steps,
+.auto-schedule-start-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.auto-schedule-start-main strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.auto-schedule-start-main span:last-child {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.auto-schedule-start-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.auto-schedule-start-steps span {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.auto-schedule-start-steps strong {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  background: var(--primary-soft);
+  border-radius: 50%;
+  color: var(--primary);
+  font-size: 12px;
+}
+
+.auto-schedule-start-actions {
+  justify-content: flex-end;
+}
+
+.auto-schedule-start-actions .button-link,
+.auto-schedule-start-actions button,
+.auto-schedule-items-toolbar .ghost-button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+}
+
 .table-frame .auto-schedule-item-table {
   min-width: max(100%, 1120px);
 }
@@ -9840,10 +10417,57 @@ tr.row-selected td {
   align-items: flex-start;
 }
 
+@media (min-width: 761px) {
+  .auto-schedule-control-panel {
+    position: sticky;
+    top: 68px;
+    z-index: 12;
+  }
+}
+
 @media (max-width: 760px) {
   .auto-schedule-command,
   .auto-schedule-result-command {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .auto-schedule-date-jump {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .auto-schedule-date-jump button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .auto-schedule-review-queue {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .auto-schedule-review-item {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .auto-schedule-start-guide {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px;
+  }
+
+  .auto-schedule-start-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .auto-schedule-start-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+
+  .auto-schedule-start-actions .button-link,
+  .auto-schedule-start-actions button {
+    width: 100%;
   }
 
   .auto-schedule-result-actions {
@@ -9959,7 +10583,8 @@ tr.row-selected td {
 @media (max-width: 420px) {
   .auto-schedule-items-panel .form-actions,
   .auto-schedule-result-panel .form-actions,
-  .auto-schedule-result-actions {
+  .auto-schedule-result-actions,
+  .auto-schedule-review-queue {
     grid-template-columns: minmax(0, 1fr);
   }
 }

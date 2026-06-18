@@ -1,4 +1,5 @@
 import CollapsiblePanel from "@/components/ui/collapsible-panel";
+import { AlertTriangle, ClipboardList, PackageCheck, Truck, Warehouse } from "lucide-react";
 import GeneratePurchaseCandidatesButton from "./generate-button";
 import PurchaseOrderTable, {
   ShortageForecastTable,
@@ -99,10 +100,66 @@ export default async function PurchasesPage({
   const hardShortageCount = forecastShortages.filter((line) => line.shortageType === "hard_shortage").length;
   const safetyShortageCount = forecastShortages.filter((line) => line.shortageType === "below_safety").length;
   const pendingOrderCount = purchaseOrderRows.filter((row) => row.status === "candidate" || row.status === "draft").length;
+  const confirmWaitingCount = purchaseOrderRows.filter((row) => row.status === "ordered_unconfirmed").length;
+  const receiveWaitingCount = purchaseOrderRows.filter((row) => row.status === "confirmed").length;
   const waitingArrivalCount = purchaseOrderRows.filter(
     (row) => row.status === "ordered_unconfirmed" || row.status === "confirmed",
   ).length;
   const criticalOrderCount = purchaseOrderRows.filter((row) => row.urgency === "CRITICAL").length;
+  const purchaseNextAction =
+    hardShortageCount > 0
+      ? "実不足を確認"
+      : criticalOrderCount > 0
+        ? "緊急発注を確認"
+        : pendingOrderCount > 0
+          ? "未発注を処理"
+          : confirmWaitingCount > 0
+            ? "発注確定を確認"
+            : receiveWaitingCount > 0
+              ? "入荷を確定"
+              : "不足条件を再確認";
+  const purchaseFlowCards = [
+    {
+      label: "不足見込み",
+      count: forecastShortages.length,
+      detail: `実不足 ${hardShortageCount}`,
+      href: "#purchase-shortages",
+      tone: hardShortageCount > 0 ? "danger" : safetyShortageCount > 0 ? "warn" : "success",
+      Icon: AlertTriangle,
+    },
+    {
+      label: "緊急",
+      count: criticalOrderCount,
+      detail: "推奨発注日",
+      href: "#purchase-orders",
+      tone: criticalOrderCount > 0 ? "danger" : "success",
+      Icon: ClipboardList,
+    },
+    {
+      label: "未発注",
+      count: pendingOrderCount,
+      detail: "候補・下書き",
+      href: "#purchase-orders",
+      tone: pendingOrderCount > 0 ? "warn" : "success",
+      Icon: PackageCheck,
+    },
+    {
+      label: "確定待ち",
+      count: confirmWaitingCount,
+      detail: "未確定発注",
+      href: "#purchase-orders",
+      tone: confirmWaitingCount > 0 ? "warn" : "success",
+      Icon: Truck,
+    },
+    {
+      label: "入荷待ち",
+      count: receiveWaitingCount,
+      detail: "確定発注",
+      href: "#purchase-orders",
+      tone: receiveWaitingCount > 0 ? "info" : "success",
+      Icon: Warehouse,
+    },
+  ];
 
   return (
     <>
@@ -118,6 +175,7 @@ export default async function PurchasesPage({
           <span className="subtext">
             {dateFrom} 〜 {dateTo}
           </span>
+          <span className="purchase-command-next">次: {purchaseNextAction}</span>
         </div>
         <div className="purchase-command-checks">
           <span className={`badge ${hardShortageCount > 0 ? "danger" : "success"}`}>実不足 {hardShortageCount}</span>
@@ -129,6 +187,18 @@ export default async function PurchasesPage({
         <div className="purchase-command-actions">
           <GeneratePurchaseCandidatesButton dateFrom={dateFrom} dateTo={dateTo} />
         </div>
+      </div>
+      <div className="purchase-flow-queue" aria-label="購買確認フロー">
+        {purchaseFlowCards.map(({ label, count, detail, href, tone, Icon }) => (
+          <a key={label} className={`purchase-flow-card ${tone}`} href={href}>
+            <span>
+              <Icon size={15} aria-hidden="true" />
+              {label}
+            </span>
+            <strong>{count}</strong>
+            <small>{detail}</small>
+          </a>
+        ))}
       </div>
       <div className="purchase-summary-grid">
         <div className="metric">
@@ -176,15 +246,19 @@ export default async function PurchasesPage({
         </form>
       </CollapsiblePanel>
 
-      <h2>累積不足見込み</h2>
-      {forecastShortages.length === 0 ? (
-        <div className="empty-state">対象期間で原料/資材不足はありません。</div>
-      ) : (
-        <ShortageForecastTable rows={shortageForecastRows} />
-      )}
+      <section id="purchase-shortages" className="anchor-offset">
+        <h2>累積不足見込み</h2>
+        {forecastShortages.length === 0 ? (
+          <div className="empty-state">対象期間で原料/資材不足はありません。</div>
+        ) : (
+          <ShortageForecastTable rows={shortageForecastRows} />
+        )}
+      </section>
 
-      <h2>発注候補・発注状況</h2>
-      <PurchaseOrderTable rows={purchaseOrderRows} today={today} />
+      <section id="purchase-orders" className="anchor-offset">
+        <h2>発注候補・発注状況</h2>
+        <PurchaseOrderTable rows={purchaseOrderRows} today={today} />
+      </section>
     </>
   );
 }

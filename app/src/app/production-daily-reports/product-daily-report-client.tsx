@@ -4,6 +4,7 @@ import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import {
   AlertTriangle,
   CheckCircle,
+  ClipboardList,
   Image as ImageIcon,
   ListFilter,
   Pencil,
@@ -133,6 +134,7 @@ export type ProductDailyReportRow = {
 type MaterialFormRow = { materialId: string; materialName: string; usedKg: string };
 type DailyReportColumnMode = "review" | "input" | "cost" | "all";
 type DailyReportQuickFilter = "all" | "submitted" | "attention" | "photos" | "noPhotos";
+type DailyReportTabId = "review" | "entry" | "labor-fee" | "summary";
 
 const dailyReportColumnModes: { id: DailyReportColumnMode; label: string }[] = [
   { id: "review", label: "確認" },
@@ -183,6 +185,7 @@ export default function ProductDailyReportClient({
   const [editForm, setEditForm] = useState<EntryFormState | null>(null);
   const [approvalReviewId, setApprovalReviewId] = useState<string | null>(null);
   const [deleteReviewId, setDeleteReviewId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<DailyReportTabId>("review");
   const [columnMode, setColumnMode] = useState<DailyReportColumnMode>("review");
   const [tableSearch, setTableSearch] = useState("");
   const [tableQuickFilter, setTableQuickFilter] = useState<DailyReportQuickFilter>("all");
@@ -278,6 +281,58 @@ export default function ProductDailyReportClient({
     ],
     [form, preview.operatingMinutes],
   );
+  const entryDoneCount = entryChecks.filter((check) => check.done).length;
+  const pendingLaborFeeCount = useMemo(
+    () => monthlyLaborFees.filter((row) => row.status !== "applied").length,
+    [monthlyLaborFees],
+  );
+  const summaryAttentionCount = summaries.filter((summary) =>
+    productSummaryBadges(summary, false).some((badge) => badge.tone === "warn" || badge.tone === "danger"),
+  ).length;
+  const nextWorkflowAction =
+    pendingApproval.length > 0
+      ? "未計上を確認"
+      : alerts.length > 0
+        ? "要確認を編集"
+        : pendingLaborFeeCount > 0
+          ? "月次手間賃を反映"
+          : entryDoneCount < entryChecks.length
+            ? "日報を入力"
+            : "商品別集計を確認";
+  const workflowQueues = [
+    {
+      tab: "review" as const,
+      label: "日報確認",
+      count: alerts.length,
+      detail: pendingApproval.length > 0 ? `未計上 ${pendingApproval.length}` : `表示 ${rows.length}`,
+      tone: alerts.length > 0 ? "warn" : "success",
+      Icon: ListFilter,
+    },
+    {
+      tab: "entry" as const,
+      label: "日報入力",
+      count: entryDoneCount,
+      detail: `${entryChecks.length}項目中`,
+      tone: entryDoneCount === entryChecks.length ? "success" : "info",
+      Icon: Plus,
+    },
+    {
+      tab: "labor-fee" as const,
+      label: "月次手間賃",
+      count: pendingLaborFeeCount,
+      detail: `算出 ${monthlyLaborFees.length}`,
+      tone: pendingLaborFeeCount > 0 ? "warn" : "success",
+      Icon: Save,
+    },
+    {
+      tab: "summary" as const,
+      label: "商品別集計",
+      count: summaries.length,
+      detail: summaryAttentionCount > 0 ? `注意 ${summaryAttentionCount}` : "集計確認",
+      tone: summaryAttentionCount > 0 ? "warn" : "info",
+      Icon: ClipboardList,
+    },
+  ];
   const selectedEditProduct = useMemo(
     () => (editForm ? products.find((p) => p.id === editForm.productId) ?? null : null),
     [editForm, products],
@@ -442,10 +497,82 @@ export default function ProductDailyReportClient({
     setTableSearch("");
   }
 
+  function openWorkflowTab(tab: DailyReportTabId, options?: { reviewOnly?: boolean }) {
+    setActiveTab(tab);
+    if (tab === "review" && options?.reviewOnly && alerts.length > 0) {
+      setShowReviewOnly(true);
+      setTableQuickFilter("all");
+    }
+    window.setTimeout(() => {
+      document.getElementById("daily-report-workflow-tabs")?.scrollIntoView({ block: "start", inline: "nearest" });
+    }, 0);
+  }
+
+  function scrollToEntrySection(id: string) {
+    setActiveTab("entry");
+    window.setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ block: "start", inline: "nearest" });
+    }, 0);
+  }
+
+  function runNextWorkflowAction() {
+    if (nextReviewRow) {
+      if (nextReviewRow.approvalStatus === "submitted") {
+        openApprovalReview(nextReviewRow, { reviewOnly: true });
+      } else {
+        openEdit(nextReviewRow, { reviewOnly: true });
+      }
+      setActiveTab("review");
+      return;
+    }
+    if (pendingLaborFeeCount > 0) {
+      openWorkflowTab("labor-fee");
+      return;
+    }
+    if (entryDoneCount < entryChecks.length) {
+      openWorkflowTab("entry");
+      return;
+    }
+    openWorkflowTab("summary");
+  }
+
   return (
     <>
       {message && <div className="alert success">{message}</div>}
       {error && <div className="alert danger">{error}</div>}
+
+      <div className={`daily-report-workflow-command ${alerts.length > 0 || pendingLaborFeeCount > 0 ? "warn" : "success"}`}>
+        <div className="daily-report-workflow-main">
+          <span className={`badge ${alerts.length > 0 || pendingLaborFeeCount > 0 ? "warn" : "success"}`}>
+            {alerts.length > 0 ? `要確認 ${alerts.length}` : pendingLaborFeeCount > 0 ? `未反映 ${pendingLaborFeeCount}` : "順調"}
+          </span>
+          <strong>{selectedMonth} の日報フロー</strong>
+          <span>次: {nextWorkflowAction}</span>
+        </div>
+        <div className="daily-report-workflow-queue" aria-label="日報作業キュー">
+          {workflowQueues.map(({ tab, label, count, detail, tone, Icon }) => (
+            <button
+              key={tab}
+              type="button"
+              className={`daily-report-workflow-item ${tone}${activeTab === tab ? " is-active" : ""}`}
+              onClick={() => openWorkflowTab(tab, { reviewOnly: tab === "review" })}
+            >
+              <span>
+                <Icon className="h-4 w-4" />
+                {label}
+              </span>
+              <strong>{count}</strong>
+              <small>{detail}</small>
+            </button>
+          ))}
+        </div>
+        <div className="daily-report-workflow-actions">
+          <button type="button" className="gap-2" onClick={runNextWorkflowAction} disabled={busy}>
+            <CheckCircle className="h-4 w-4" />
+            次へ
+          </button>
+        </div>
+      </div>
 
       <div className={`daily-report-review-panel ${alerts.length > 0 ? "warn" : "success"}`}>
         <div className="daily-report-review-status">
@@ -917,11 +1044,14 @@ export default function ProductDailyReportClient({
         </section>
       )}
 
-      <SectionTabs
-        ariaLabel="日報の表示切り替え"
-        initialTabId="review"
-        inlineHeader
-        items={[
+      <div id="daily-report-workflow-tabs" className="anchor-offset">
+        <SectionTabs
+          ariaLabel="日報の表示切り替え"
+          initialTabId="review"
+          activeTabId={activeTab}
+          onActiveTabChange={(tabId) => setActiveTab(tabId as DailyReportTabId)}
+          inlineHeader
+          items={[
           {
             id: "review",
             label: "日報確認",
@@ -1232,12 +1362,26 @@ export default function ProductDailyReportClient({
                       </button>
                     </div>
                   </div>
+                  <div className="daily-report-entry-jumpbar" aria-label="日報入力セクション移動">
+                    <button type="button" onClick={() => scrollToEntrySection("daily-report-entry-basic")}>
+                      基本情報
+                    </button>
+                    <button type="button" onClick={() => scrollToEntrySection("daily-report-entry-work")}>
+                      作業実績
+                    </button>
+                    <button type="button" onClick={() => scrollToEntrySection("daily-report-entry-materials")}>
+                      原料・備考
+                    </button>
+                    <button type="button" onClick={() => scrollToEntrySection("daily-report-entry-preview")}>
+                      自動計算
+                    </button>
+                  </div>
 
                   <div className="daily-report-form-layout">
                     <div className="entry-card">
                       <h3>入力項目</h3>
                       <div className="daily-report-entry-sections">
-                        <div className="daily-report-entry-group">
+                        <div id="daily-report-entry-basic" className="daily-report-entry-group anchor-offset">
                           <h4>基本情報</h4>
                           <div className="grid grid-4 daily-report-field-grid">
                             <label>
@@ -1279,7 +1423,7 @@ export default function ProductDailyReportClient({
                           </div>
                         </div>
 
-                        <div className="daily-report-entry-group">
+                        <div id="daily-report-entry-work" className="daily-report-entry-group anchor-offset">
                           <h4>作業実績</h4>
                           <div className="grid grid-4 daily-report-field-grid">
                             <label>
@@ -1335,7 +1479,7 @@ export default function ProductDailyReportClient({
                           </div>
                         </div>
 
-                        <div className="daily-report-entry-group">
+                        <div id="daily-report-entry-materials" className="daily-report-entry-group anchor-offset">
                           <h4>原料・備考</h4>
                           <div className="grid grid-4 daily-report-field-grid">
                             <label>
@@ -1371,7 +1515,7 @@ export default function ProductDailyReportClient({
                       </div>
                     </div>
 
-                    <div className="entry-card calculated daily-report-preview-card">
+                    <div id="daily-report-entry-preview" className="entry-card calculated daily-report-preview-card anchor-offset">
                       <h3>自動計算</h3>
                       <div className="stat-grid compact-metrics">
                         <Metric label="入り数(g)" value={formatOptionalNumber(selectedProduct?.capacityG ?? null)} />
@@ -1473,8 +1617,9 @@ export default function ProductDailyReportClient({
               </section>
             ),
           },
-        ]}
-      />
+          ]}
+        />
+      </div>
     </>
   );
 }

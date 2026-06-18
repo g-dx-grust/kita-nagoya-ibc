@@ -1,7 +1,17 @@
 "use client";
 
+import {
+  AlertTriangle,
+  CalendarDays,
+  CheckCircle2,
+  ClipboardList,
+  ListChecks,
+  PackageCheck,
+  Printer,
+  RotateCcw,
+} from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DAILY_BREAK_LABEL } from "@/lib/calculations";
 import { productionTypeLabel } from "@/lib/labels";
@@ -35,6 +45,8 @@ type Row = {
   productionType: string;
 };
 type Mode = "duration" | "max_quantity" | "required_people";
+type ItemReviewFocus = "all" | "invalid" | "defaults" | "capacity";
+type ResultReviewFocus = "all" | "warnings" | "unassigned" | "prints";
 type AutoScheduleRequest = {
   date: string;
   mode: Mode;
@@ -118,6 +130,11 @@ export default function AutoScheduleForm({
   const [message, setMessage] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [previewRequest, setPreviewRequest] = useState<AutoScheduleRequest | null>(null);
+  const [itemReviewFocus, setItemReviewFocus] = useState<ItemReviewFocus>("all");
+  const [resultReviewFocus, setResultReviewFocus] = useState<ResultReviewFocus>("all");
+  const controlRef = useRef<HTMLDivElement>(null);
+  const itemsRef = useRef<HTMLDivElement>(null);
+  const resultRef = useRef<HTMLDivElement>(null);
 
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
   const workAreaOptions = useMemo(
@@ -133,8 +150,26 @@ export default function AutoScheduleForm({
       })),
     [result?.availableStaff],
   );
+  const itemRows = useMemo(
+    () =>
+      rows.map((row, index) => {
+        const product = row.productId ? productMap.get(row.productId) : undefined;
+        return {
+          row,
+          index,
+          product,
+          missingProduct: !row.productId,
+          invalidQuantity: !Number.isFinite(row.quantity) || row.quantity <= 0,
+          missingDefaultArea: Boolean(row.productId && !product?.defaultWorkAreaName),
+          missingCapacity: Boolean(row.productId && !product?.capacitySummary),
+        };
+      }),
+    [productMap, rows],
+  );
   const inputStats = useMemo(() => {
     const seen = new Set<string>();
+    let emptyProductRows = 0;
+    let invalidQuantityRows = 0;
     let duplicateRows = 0;
     let stockRows = 0;
     let makeToOrderRows = 0;
@@ -142,30 +177,45 @@ export default function AutoScheduleForm({
     let missingCapacity = 0;
     let totalQuantity = 0;
 
-    for (const row of rows) {
-      if (!row.productId) continue;
-      const product = productMap.get(row.productId);
+    for (const item of itemRows) {
+      const { row } = item;
+      if (!row.productId) {
+        emptyProductRows += 1;
+        continue;
+      }
       if (seen.has(row.productId)) duplicateRows += 1;
       seen.add(row.productId);
       if (row.productionType === "make_to_order") makeToOrderRows += 1;
       if (row.productionType === "stock") stockRows += 1;
-      if (!product?.defaultWorkAreaName) missingDefaultArea += 1;
-      if (!product?.capacitySummary) missingCapacity += 1;
-      totalQuantity += Number.isFinite(row.quantity) ? row.quantity : 0;
+      if (item.invalidQuantity) invalidQuantityRows += 1;
+      if (item.missingDefaultArea) missingDefaultArea += 1;
+      if (item.missingCapacity) missingCapacity += 1;
+      totalQuantity += Number.isFinite(row.quantity) && row.quantity > 0 ? row.quantity : 0;
     }
 
     return {
       productCount: seen.size,
-      rowCount: rows.filter((row) => row.productId).length,
+      rowCount: itemRows.filter((item) => item.row.productId).length,
+      emptyProductRows,
+      invalidQuantityRows,
       duplicateRows,
       stockRows,
       makeToOrderRows,
       missingDefaultArea,
       missingCapacity,
       totalQuantity,
-      alertCount: duplicateRows + missingDefaultArea + missingCapacity,
+      alertCount: emptyProductRows + invalidQuantityRows + duplicateRows + missingDefaultArea + missingCapacity,
     };
-  }, [productMap, rows]);
+  }, [itemRows]);
+  const startMinutes = timeToMinutes(startTime);
+  const desiredEndMinutes = timeToMinutes(desiredEndTime);
+  const baselineEndMinutes = timeToMinutes(baselineEndTime);
+  const invalidTimeRange =
+    startMinutes === null ||
+    desiredEndMinutes === null ||
+    baselineEndMinutes === null ||
+    desiredEndMinutes <= startMinutes ||
+    baselineEndMinutes <= startMinutes;
   const resultStats = useMemo(() => {
     if (!result) return null;
     const workAreaCount = new Set(result.plans.map((plan) => plan.workAreaId)).size;
@@ -186,6 +236,21 @@ export default function AutoScheduleForm({
       unassignedPlanCount,
     };
   }, [result]);
+  const visibleItemRows = itemRows.filter((item) => {
+    if (itemReviewFocus === "invalid") return item.missingProduct || item.invalidQuantity;
+    if (itemReviewFocus === "defaults") return item.missingDefaultArea;
+    if (itemReviewFocus === "capacity") return item.missingCapacity;
+    return true;
+  });
+  const resultRows = useMemo(
+    () => result?.plans.map((plan, planIndex) => ({ plan, planIndex })) ?? [],
+    [result?.plans],
+  );
+  const visibleResultRows = resultRows.filter(({ plan }) => {
+    if (resultReviewFocus === "warnings") return plan.warnings.length > 0;
+    if (resultReviewFocus === "unassigned") return plan.assignedStaff.length === 0 && plan.assignedCount === 0;
+    return true;
+  });
   const inputStatusLabel = result?.persisted
     ? "確定済み"
     : result
@@ -205,6 +270,107 @@ export default function AutoScheduleForm({
     : (resultStats?.warningCount ?? 0) + (resultStats?.unassignedPlanCount ?? 0) > 0
       ? "warn"
       : "info";
+  const canPreview =
+    products.length > 0 &&
+    inputStats.rowCount > 0 &&
+    inputStats.emptyProductRows === 0 &&
+    inputStats.invalidQuantityRows === 0 &&
+    inputStats.missingCapacity === 0 &&
+    !invalidTimeRange;
+  const nextAutoAction = result?.persisted
+    ? "印刷へ進む"
+    : result
+      ? (resultStats?.warningCount ?? 0) > 0 || (resultStats?.unassignedPlanCount ?? 0) > 0
+        ? "注意・未配置を確認"
+        : "この内容で確定"
+      : inputStats.rowCount === 0 || inputStats.emptyProductRows > 0
+        ? "商品を選択"
+        : inputStats.invalidQuantityRows > 0
+          ? "数量を確認"
+          : invalidTimeRange
+            ? "時間帯を確認"
+            : inputStats.missingCapacity > 0
+              ? "能力未登録を確認"
+              : inputStats.missingDefaultArea > 0
+                ? "標準作業場所を確認"
+                : "プレビューを作成";
+  const resultNextAction = !result
+    ? ""
+    : result.persisted
+      ? "印刷へ進む"
+      : (resultStats?.warningCount ?? 0) > 0
+        ? "注意行を確認"
+        : (resultStats?.unassignedPlanCount ?? 0) > 0
+          ? "未配置を確認"
+          : "この内容で確定";
+  const itemReviewQueues = [
+    {
+      key: "all" as const,
+      label: "商品行",
+      count: inputStats.rowCount,
+      detail: `${formatNumber(inputStats.totalQuantity)}合計数量`,
+      tone: inputStats.rowCount > 0 ? "info" : "warn",
+      Icon: ClipboardList,
+    },
+    {
+      key: "invalid" as const,
+      label: "数量確認",
+      count: inputStats.emptyProductRows + inputStats.invalidQuantityRows,
+      detail: "未選択・0以下",
+      tone: inputStats.emptyProductRows + inputStats.invalidQuantityRows > 0 ? "danger" : "success",
+      Icon: AlertTriangle,
+    },
+    {
+      key: "defaults" as const,
+      label: "標準場所",
+      count: inputStats.missingDefaultArea,
+      detail: "自動選択対象",
+      tone: inputStats.missingDefaultArea > 0 ? "warn" : "success",
+      Icon: CalendarDays,
+    },
+    {
+      key: "capacity" as const,
+      label: "能力登録",
+      count: inputStats.missingCapacity,
+      detail: "プレビュー前に解消",
+      tone: inputStats.missingCapacity > 0 ? "danger" : "success",
+      Icon: ListChecks,
+    },
+  ];
+  const resultReviewQueues = [
+    {
+      key: "all" as const,
+      label: "予定",
+      count: resultStats?.planCount ?? 0,
+      detail: `${resultStats?.workAreaCount ?? 0}か所`,
+      tone: "info",
+      Icon: PackageCheck,
+    },
+    {
+      key: "warnings" as const,
+      label: "注意",
+      count: resultStats?.warningCount ?? 0,
+      detail: "警告行",
+      tone: (resultStats?.warningCount ?? 0) > 0 ? "warn" : "success",
+      Icon: AlertTriangle,
+    },
+    {
+      key: "unassigned" as const,
+      label: "未配置",
+      count: resultStats?.unassignedPlanCount ?? 0,
+      detail: "人員なし",
+      tone: (resultStats?.unassignedPlanCount ?? 0) > 0 ? "danger" : "success",
+      Icon: CheckCircle2,
+    },
+    {
+      key: "prints" as const,
+      label: "印刷",
+      count: result?.persisted && result.printUrls ? 2 : 0,
+      detail: result?.persisted ? "帳票準備" : "確定後",
+      tone: result?.persisted && result.printUrls ? "success" : "muted",
+      Icon: Printer,
+    },
+  ];
 
   useEffect(() => {
     if (!autoLoadSuggestions || initialSuggestionsLoaded) return;
@@ -217,6 +383,31 @@ export default function AutoScheduleForm({
     setResult(null);
     setPreviewRequest(null);
     setMessage(null);
+    setResultReviewFocus("all");
+  }
+
+  function scrollToSection(ref: React.RefObject<HTMLDivElement | null>) {
+    ref.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }
+
+  function showItemReview(focus: ItemReviewFocus) {
+    setItemReviewFocus(focus);
+    scrollToSection(itemsRef);
+  }
+
+  function showResultReview(focus: ResultReviewFocus) {
+    setResultReviewFocus(focus);
+    scrollToSection(resultRef);
+  }
+
+  function moveDate(days: number) {
+    setDate(addDays(date, days));
+    invalidatePreview();
+  }
+
+  function moveToday() {
+    setDate(todayInputString());
+    invalidatePreview();
   }
 
   function update(index: number, patch: Partial<Row>) {
@@ -274,11 +465,16 @@ export default function AutoScheduleForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
     setError(null);
     setMessage(null);
     setResult(null);
 
+    if (!canPreview) {
+      setError(previewBlockedLabel(inputStats, invalidTimeRange));
+      return;
+    }
+
+    setBusy(true);
     const request = requestBody(false, "draft");
     const res = await fetch(kitagoyaApiPath("/production-plans/auto-schedule"), {
       method: "POST",
@@ -345,6 +541,7 @@ export default function AutoScheduleForm({
       );
       return;
     }
+    setItemReviewFocus("all");
     setRows(
       suggestions.map((suggestion) => ({
         productId: suggestion.productId,
@@ -357,7 +554,7 @@ export default function AutoScheduleForm({
 
   return (
     <form onSubmit={submit}>
-      <div className="panel auto-schedule-control-panel">
+      <div ref={controlRef} className="panel auto-schedule-control-panel">
         <div className="row auto-schedule-fields">
           <label>
             <span>対象日</span>
@@ -423,6 +620,17 @@ export default function AutoScheduleForm({
             <input value={DAILY_BREAK_LABEL} readOnly aria-label="休憩時間帯" />
           </label>
         </div>
+        <div className="auto-schedule-date-jump" aria-label="対象日移動">
+          <button type="button" className="secondary" onClick={() => moveDate(-1)}>
+            前日
+          </button>
+          <button type="button" className="secondary" onClick={moveToday}>
+            今日
+          </button>
+          <button type="button" className="secondary" onClick={() => moveDate(1)}>
+            翌日
+          </button>
+        </div>
         <div className="auto-schedule-command">
           <div className="auto-schedule-command-title">
             <span className={`badge ${inputStatusClass}`}>{inputStatusLabel}</span>
@@ -430,10 +638,17 @@ export default function AutoScheduleForm({
             <span className="subtext">
               {inputStats.rowCount}行 / {formatNumber(inputStats.totalQuantity)}合計数量
             </span>
+            <span className="auto-schedule-next">次: {nextAutoAction}</span>
           </div>
           <div className="auto-schedule-checks">
             <span className="badge info">在庫 {inputStats.stockRows}</span>
             <span className="badge info">受注 {inputStats.makeToOrderRows}</span>
+            <span className={`badge ${invalidTimeRange ? "warn" : "success"}`}>
+              時間 {invalidTimeRange ? "要確認" : "OK"}
+            </span>
+            <span className={`badge ${inputStats.invalidQuantityRows > 0 ? "danger" : "success"}`}>
+              数量 {inputStats.invalidQuantityRows}
+            </span>
             <span className={`badge ${inputStats.missingDefaultArea > 0 ? "warn" : "success"}`}>
               標準未設定 {inputStats.missingDefaultArea}
             </span>
@@ -443,9 +658,68 @@ export default function AutoScheduleForm({
             {inputStats.duplicateRows > 0 && <span className="badge warn">重複 {inputStats.duplicateRows}</span>}
           </div>
         </div>
+        <div className="auto-schedule-review-queue" aria-label="自動作成入力レビュー順">
+          {itemReviewQueues.map(({ key, label, count, detail, tone, Icon }) => (
+            <button
+              key={key}
+              type="button"
+              className={`auto-schedule-review-item ${tone}${itemReviewFocus === key ? " is-active" : ""}`}
+              onClick={() => showItemReview(key)}
+            >
+              <span>
+                <Icon size={15} aria-hidden="true" />
+                {label}
+              </span>
+              <strong>{count}</strong>
+              <small>{detail}</small>
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="toolbar">
+      {!result && (
+        <div className="panel auto-schedule-start-guide">
+          <div className="auto-schedule-start-main">
+            <span className="badge muted">未プレビュー</span>
+            <strong>{date} の自動作成準備</strong>
+            <span>商品候補、作業場所ごとの能力、出勤シフトをそろえてからプレビューへ進みます。</span>
+          </div>
+          <div className="auto-schedule-start-steps">
+            <span>
+              <strong>1</strong>
+              日付・時間
+            </span>
+            <span>
+              <strong>2</strong>
+              商品候補
+            </span>
+            <span>
+              <strong>3</strong>
+              シフト
+            </span>
+            <span>
+              <strong>4</strong>
+              プレビュー・確定
+            </span>
+          </div>
+          <div className="auto-schedule-start-actions">
+            <Link className="button-link secondary-link" href={kitagoyaPath(`/product-planning?date=${date}`)}>
+              <PackageCheck size={15} aria-hidden="true" />
+              製品計画
+            </Link>
+            <Link className="button-link secondary-link" href={kitagoyaPath(`/shifts?date=${date}`)}>
+              <CalendarDays size={15} aria-hidden="true" />
+              シフト確認
+            </Link>
+            <button type="submit" disabled={busy || !canPreview}>
+              <ClipboardList size={15} aria-hidden="true" />
+              {busy ? "計算中..." : canPreview ? "プレビュー開始" : "入力を確認"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="toolbar auto-schedule-items-toolbar">
         <h2>
           今日作る商品
           <HelpTooltip text="生産能力が1部屋分だけ登録されている商品は、外注以外の部屋にも同じ能力を仮適用して自動配置します。自動作成では受注生産を先に配置し、在庫生産は後工程に回します。部屋の使い分けは作業場所マスターの自動予定の役割で設定します。" />
@@ -459,8 +733,14 @@ export default function AutoScheduleForm({
         >
           {loadingSuggestions ? "読込中..." : "製品在庫から不足候補を読込"}
         </button>
+        {itemReviewFocus !== "all" && (
+          <button type="button" className="ghost-button" onClick={() => setItemReviewFocus("all")}>
+            <RotateCcw size={15} aria-hidden="true" />
+            絞り込み解除
+          </button>
+        )}
       </div>
-      <div className="panel auto-schedule-items-panel">
+      <div ref={itemsRef} className="panel auto-schedule-items-panel">
         <div className="table-frame auto-schedule-item-frame">
           <table className="auto-schedule-item-table">
             <thead>
@@ -475,12 +755,18 @@ export default function AutoScheduleForm({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, index) => {
-                const product = productMap.get(row.productId);
-                const missingDefaultArea = !product?.defaultWorkAreaName;
-                const missingCapacity = !product?.capacitySummary;
-                return (
-                  <tr key={index} className={`auto-schedule-item-row${missingCapacity ? " row-needs-action" : ""}`}>
+              {visibleItemRows.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="muted center">
+                    この条件に該当する商品行はありません。
+                  </td>
+                </tr>
+              ) : (
+                visibleItemRows.map(({ row, index, product, missingDefaultArea, missingCapacity, invalidQuantity }) => (
+                  <tr
+                    key={index}
+                    className={`auto-schedule-item-row${missingCapacity || invalidQuantity ? " row-needs-action" : ""}`}
+                  >
                     <td className="right" data-label="No.">{index + 1}</td>
                     <td data-label="商品">
                       <div className="auto-schedule-product-cell">
@@ -501,6 +787,7 @@ export default function AutoScheduleForm({
                         {product && (
                           <div className="auto-schedule-product-badges">
                             <span className="badge muted">{productionTypeLabel(product.productionType)}</span>
+                            {invalidQuantity && <span className="badge danger">数量確認</span>}
                             {missingDefaultArea && <span className="badge warn">標準未設定</span>}
                             {missingCapacity && <span className="badge warn">能力未登録</span>}
                           </div>
@@ -557,8 +844,8 @@ export default function AutoScheduleForm({
                       </button>
                     </td>
                   </tr>
-                );
-              })}
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -580,7 +867,7 @@ export default function AutoScheduleForm({
           >
             ＋ 商品を追加
           </button>
-          <button type="submit" disabled={busy || products.length === 0}>
+          <button type="submit" disabled={busy || !canPreview}>
             {busy ? "計算中..." : "シフトに合わせてプレビュー"}
           </button>
         </div>
@@ -590,7 +877,7 @@ export default function AutoScheduleForm({
       {message && <div className="alert success">{message}</div>}
 
       {result && (
-        <div className="panel auto-schedule-result-panel">
+        <div ref={resultRef} className="panel auto-schedule-result-panel">
           <h2>
             {result.persisted ? "確定済みスケジュール" : "自動作成プレビュー"}
             {!result.persisted && (
@@ -607,6 +894,7 @@ export default function AutoScheduleForm({
                 <span className="subtext">
                   予定 {resultStats.planCount}件 / 作業場所 {resultStats.workAreaCount}か所
                 </span>
+                <span className="auto-schedule-next">次: {resultNextAction}</span>
               </div>
               <div className="auto-schedule-checks">
                 <span className={`badge ${resultStats.warningCount > 0 ? "warn" : "success"}`}>
@@ -636,6 +924,25 @@ export default function AutoScheduleForm({
               </div>
             </div>
           )}
+          {resultStats && (
+            <div className="auto-schedule-review-queue auto-schedule-result-queue" aria-label="自動作成結果レビュー順">
+              {resultReviewQueues.map(({ key, label, count, detail, tone, Icon }) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`auto-schedule-review-item ${tone}${resultReviewFocus === key ? " is-active" : ""}`}
+                  onClick={() => showResultReview(key)}
+                >
+                  <span>
+                    <Icon size={15} aria-hidden="true" />
+                    {label}
+                  </span>
+                  <strong>{count}</strong>
+                  <small>{detail}</small>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="table-frame auto-schedule-result-frame">
           <table className="auto-schedule-result-table">
             <thead>
@@ -651,7 +958,14 @@ export default function AutoScheduleForm({
               </tr>
             </thead>
             <tbody>
-              {result.plans.map((plan, planIndex) => (
+              {visibleResultRows.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="muted center">
+                    この条件に該当する予定はありません。
+                  </td>
+                </tr>
+              ) : (
+                visibleResultRows.map(({ plan, planIndex }) => (
                 <tr key={plan.id ?? plan.tempId} className={plan.warnings.length > 0 ? "row-needs-action" : ""}>
                   <td data-label="商品">
                     <div className="auto-schedule-result-product">
@@ -731,7 +1045,8 @@ export default function AutoScheduleForm({
                     {plan.id ? <Link href={kitagoyaPath(`/production-plans/${plan.id}`)}>詳細</Link> : "未保存"}
                   </td>
                 </tr>
-              ))}
+                ))
+              )}
             </tbody>
           </table>
           </div>
@@ -773,6 +1088,45 @@ function addDays(date: string, days: number) {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+function todayInputString() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function timeToMinutes(value: string) {
+  const [hh, mm] = value.split(":").map(Number);
+  if (!Number.isInteger(hh) || !Number.isInteger(mm)) return null;
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  return hh * 60 + mm;
+}
+
+function previewBlockedLabel(
+  inputStats: {
+    rowCount: number;
+    emptyProductRows: number;
+    invalidQuantityRows: number;
+    missingCapacity: number;
+  },
+  invalidTimeRange: boolean,
+) {
+  if (inputStats.rowCount === 0 || inputStats.emptyProductRows > 0) {
+    return "プレビュー前に、今日作る商品を選択してください。";
+  }
+  if (inputStats.invalidQuantityRows > 0) {
+    return "数量が0以下、または未入力の商品があります。数量確認のキューから修正してください。";
+  }
+  if (invalidTimeRange) {
+    return "開始時刻、終了希望、基準終了の並びを確認してください。終了時刻は開始時刻より後にしてください。";
+  }
+  if (inputStats.missingCapacity > 0) {
+    return "生産能力が未登録の商品があります。能力登録のキューから対象商品を確認してください。";
+  }
+  return "プレビュー前に入力内容を確認してください。";
 }
 
 function errorLabel(error: string | undefined, details: unknown) {
