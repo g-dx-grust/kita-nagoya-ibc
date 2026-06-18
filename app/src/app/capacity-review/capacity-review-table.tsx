@@ -9,8 +9,10 @@ export type CapacityReviewRow = {
   productId: string;
   productCode: string;
   productName: string;
+  productionType: string;
   unit: string;
   standardProductionLotSize: number;
+  defaultWorkAreaId: string | null;
   defaultWorkAreaName: string | null;
   workAreaId: string;
   workAreaName: string;
@@ -48,7 +50,10 @@ type Filter =
   | "low"
   | "high"
   | "missing_room"
-  | "missing_product";
+  | "missing_product"
+  | "primary"
+  | "default_missing"
+  | "primary_missing_capacity";
 
 const statusLabels: Record<CapacityReviewRow["reviewStatus"], string> = {
   unreviewed: "未確認",
@@ -66,6 +71,9 @@ const filterLabels: Record<Filter, string> = {
   high: "300以上",
   missing_room: "部屋別未登録",
   missing_product: "商品能力未登録",
+  primary: "標準候補",
+  default_missing: "標準未設定",
+  primary_missing_capacity: "標準能力未登録",
 };
 
 export default function CapacityReviewTable({ rows: initialRows }: { rows: CapacityReviewRow[] }) {
@@ -75,16 +83,27 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
   const [filter, setFilter] = useState<Filter>("action_needed");
   const [query, setQuery] = useState("");
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [savingDefaultProductId, setSavingDefaultProductId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const stats = useMemo(() => {
     const existing = rows.filter((row) => row.unitsPerPersonHour != null);
+    const productMap = new Map<string, CapacityReviewRow>();
+    for (const row of rows) {
+      if (!productMap.has(row.productId)) productMap.set(row.productId, row);
+    }
+    const products = [...productMap.values()];
     return {
       total: rows.length,
+      products: products.length,
       registered: existing.length,
       missingRoom: rows.filter((row) => row.missingCapacity).length,
       missingProduct: rows.filter((row) => !row.productHasAnyCapacity && row.isPrimaryReviewRow).length,
+      defaultSet: products.filter((row) => Boolean(row.defaultWorkAreaId)).length,
+      defaultMissing: products.filter((row) => !row.defaultWorkAreaId).length,
+      primaryRows: rows.filter((row) => row.isPrimaryReviewRow).length,
+      primaryMissingCapacity: rows.filter((row) => row.isPrimaryReviewRow && row.missingCapacity).length,
       actionNeeded: rows.filter(needsAction).length,
       unreviewed: rows.filter((row) => row.reviewStatus === "unreviewed").length,
       needsReview: rows.filter((row) => row.reviewStatus === "needs_review").length,
@@ -118,6 +137,12 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
           return row.missingCapacity;
         case "missing_product":
           return !row.productHasAnyCapacity && row.isPrimaryReviewRow;
+        case "primary":
+          return row.isPrimaryReviewRow;
+        case "default_missing":
+          return !row.defaultWorkAreaId && row.isPrimaryReviewRow;
+        case "primary_missing_capacity":
+          return row.isPrimaryReviewRow && row.missingCapacity;
         default:
           return true;
       }
@@ -238,6 +263,38 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
     router.refresh();
   }
 
+  async function setDefaultWorkArea(row: CapacityReviewRow) {
+    setSavingDefaultProductId(row.productId);
+    setError(null);
+    setMessage(null);
+    const res = await fetch(kitagoyaApiPath(`/products/${row.productId}`), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ defaultWorkAreaId: row.workAreaId }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setSavingDefaultProductId(null);
+    if (!res.ok) {
+      setError(`標準作業場所の保存に失敗しました: ${json.error ?? "unknown"}`);
+      return;
+    }
+
+    setRows((current) =>
+      current.map((item) =>
+        item.productId === row.productId
+          ? {
+              ...item,
+              defaultWorkAreaId: row.workAreaId,
+              defaultWorkAreaName: row.workAreaName,
+              isPrimaryReviewRow: item.workAreaId === row.workAreaId,
+            }
+          : item,
+      ),
+    );
+    setMessage(`${row.productCode} の標準作業場所を ${row.workAreaName} にしました。`);
+    router.refresh();
+  }
+
   async function deleteCapacity(row: CapacityReviewRow) {
     if (!row.capacityId) return;
     if (!confirm(`${row.productCode} ${row.workAreaName} の生産能力を削除します。よろしいですか？`)) return;
@@ -266,6 +323,7 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
               reviewMemo: "",
               reviewedAt: null,
               missingCapacity: true,
+              isPrimaryReviewRow: item.defaultWorkAreaId === item.workAreaId || (!item.defaultWorkAreaId && item.isPrimaryReviewRow),
             }
           : item,
       ),
@@ -294,10 +352,16 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
           note={`${stats.total.toLocaleString()}件中`}
         />
         <Metric
+          label="標準作業場所"
+          value={stats.defaultSet}
+          note={`${stats.products.toLocaleString()}商品中 / 未設定 ${stats.defaultMissing.toLocaleString()}`}
+          tone={stats.defaultMissing > 0 ? "warn" : "normal"}
+        />
+        <Metric
           label="能力未登録"
           value={stats.missingProduct}
-          note={`部屋別未登録 ${stats.missingRoom.toLocaleString()}件`}
-          tone={stats.missingProduct > 0 ? "warn" : "normal"}
+          note={`標準能力未登録 ${stats.primaryMissingCapacity.toLocaleString()} / 部屋別 ${stats.missingRoom.toLocaleString()}`}
+          tone={stats.missingProduct + stats.primaryMissingCapacity > 0 ? "warn" : "normal"}
         />
         <Metric
           label="異常値候補"
@@ -334,6 +398,9 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
             <option value="high">300以上 ({stats.high.toLocaleString()})</option>
             <option value="missing_room">部屋別能力未登録 ({stats.missingRoom.toLocaleString()})</option>
             <option value="missing_product">商品能力未登録 ({stats.missingProduct.toLocaleString()})</option>
+            <option value="primary">標準候補 ({stats.primaryRows.toLocaleString()})</option>
+            <option value="default_missing">標準未設定 ({stats.defaultMissing.toLocaleString()})</option>
+            <option value="primary_missing_capacity">標準能力未登録 ({stats.primaryMissingCapacity.toLocaleString()})</option>
           </select>
           <button
             type="button"
@@ -352,6 +419,9 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
             [
               ["action_needed", stats.actionNeeded],
               ["needs_review", stats.needsReview],
+              ["primary", stats.primaryRows],
+              ["default_missing", stats.defaultMissing],
+              ["primary_missing_capacity", stats.primaryMissingCapacity],
               ["missing_product", stats.missingProduct],
               ["missing_room", stats.missingRoom],
               ["low", stats.low],
@@ -422,6 +492,8 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
               {filteredRows.map((row) => {
                 const draft = draftFor(row);
                 const key = keyOf(row);
+                const isDefaultWorkArea = row.defaultWorkAreaId === row.workAreaId;
+                const isFirstCandidate = draft.candidatePriority === "1";
                 return (
                   <tr key={key} className={needsAction(row) ? "capacity-review-row needs-action" : "capacity-review-row"}>
                     <td className="wrap-cell capacity-product-cell" data-label="商品">
@@ -433,12 +505,20 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
                           {row.unit}
                         </div>
                       )}
-                      {row.defaultWorkAreaName && (
-                        <div className="subtext">標準: {row.defaultWorkAreaName}</div>
-                      )}
+                      <div className="capacity-product-badges">
+                        <span className={`badge ${row.defaultWorkAreaId ? "info" : "warn"}`}>
+                          標準: {row.defaultWorkAreaName ?? "未設定"}
+                        </span>
+                        {row.productionType === "stock" && <span className="badge muted">在庫</span>}
+                        {row.productionType === "make_to_order" && <span className="badge muted">受注</span>}
+                      </div>
                     </td>
                     <td data-label="作業場所">
                       <span className="capacity-work-area-name">{row.workAreaName}</span>
+                      <div className="capacity-work-area-badges">
+                        {isDefaultWorkArea && <span className="badge success">標準</span>}
+                        {isFirstCandidate && <span className="badge info">第1候補</span>}
+                      </div>
                       {row.missingCapacity && <span className="badge warn">未登録</span>}
                     </td>
                     <td data-label="候補順位">
@@ -541,6 +621,14 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
                     </td>
                     <td className="action-cell capacity-actions" data-label="操作">
                       <div className="capacity-row-actions">
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={savingDefaultProductId === row.productId || isDefaultWorkArea}
+                          onClick={() => setDefaultWorkArea(row)}
+                        >
+                          標準にする
+                        </button>
                         <button type="button" disabled={savingKey === key} onClick={() => save(row)}>
                           保存
                         </button>

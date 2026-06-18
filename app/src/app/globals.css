@@ -7775,7 +7775,7 @@ button.mini {
 }
 
 .capacity-review-table col.capacity-action-col {
-  width: 160px;
+  width: 176px;
 }
 
 .capacity-review-table th {
@@ -7835,6 +7835,20 @@ button.mini {
   display: block;
   margin-bottom: 4px;
   font-weight: 700;
+}
+
+.capacity-product-badges,
+.capacity-work-area-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.capacity-product-badges .badge,
+.capacity-work-area-badges .badge {
+  display: inline-flex;
+  align-items: center;
 }
 
 .capacity-review-table input[type="number"],
@@ -8003,7 +8017,7 @@ button.mini {
   }
 
   .capacity-row-actions {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
 
@@ -9247,6 +9261,53 @@ tr.row-muted > td {
   padding-top: 10px;
   border-top: 1px solid var(--border);
 }
+.allocation-check-strip {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(240px, 1.2fr) auto;
+  gap: 10px 12px;
+  align-items: center;
+  min-width: 0;
+  padding: 10px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.allocation-readiness,
+.allocation-check-metrics,
+.allocation-check-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+}
+.allocation-readiness strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.allocation-check-metrics span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-height: 24px;
+  padding: 2px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.allocation-check-metrics strong {
+  color: var(--text);
+  font-size: 14px;
+}
+.allocation-check-actions {
+  justify-content: flex-end;
+}
+.allocation-check-actions button {
+  min-height: 30px;
+}
 .allocation-save-alert {
   display: flex;
   flex-wrap: wrap;
@@ -9342,6 +9403,22 @@ tr.row-muted > td {
 
   .allocation-control-status .subtext {
     flex: 1 1 100%;
+  }
+
+  .allocation-check-strip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .allocation-check-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .allocation-check-actions button {
+    width: 100%;
+    min-width: 0;
+    white-space: normal;
   }
 
   .allocation-save-alert {
@@ -9742,6 +9819,32 @@ tr.row-muted > td {
   align-items: center;
   gap: 8px;
   min-width: 260px;
+}
+.alloc-job-row.is-moved > td {
+  background: #f5f9ff;
+}
+.alloc-job-row.has-warning > td {
+  background: #fffaf0;
+}
+.alloc-job-product {
+  display: grid;
+  gap: 4px;
+  min-width: 220px;
+}
+.alloc-job-product strong,
+.alloc-job-warning-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.alloc-job-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.alloc-job-warning-text {
+  color: var(--warn);
+  font-size: 12px;
+  font-weight: 700;
 }
 .alloc-room-select {
   width: 180px;

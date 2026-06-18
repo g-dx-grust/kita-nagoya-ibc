@@ -406,6 +406,16 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
     : 0;
   const resultStatusLabel = persisted ? "保存済み" : result ? "プレビュー" : "未計算";
   const resultStatusClass = persisted ? "success" : result ? "info" : "muted";
+  const movedJobCount = allocation?.jobs.filter((job) => (job.originalWorkAreaId ?? job.workAreaId) !== job.workAreaId).length ?? 0;
+  const overflowJobCount = allocation?.jobs.filter((job) => job.overflowQuantity > 0).length ?? 0;
+  const jobWarningCount = allocation?.jobs.reduce((total, job) => total + job.warnings.length, 0) ?? 0;
+  const skippedPlanCount = result?.skippedPlans.length ?? 0;
+  const allocationWarningCount = allocation?.warnings.length ?? 0;
+  const bottleneckAlertCount = summary?.capacityBottleneck ? 1 : 0;
+  const totalAlertCount = overflowJobCount + jobWarningCount + skippedPlanCount + allocationWarningCount + bottleneckAlertCount;
+  const manualAdjustmentCount = pins.length + workAreaOverrides.length;
+  const readinessLabel = !result ? "未計算" : totalAlertCount > 0 ? "確認が必要" : persisted ? "保存済み" : "保存できます";
+  const readinessClass = !result ? "muted" : totalAlertCount > 0 ? "warn" : persisted ? "success" : "info";
 
   return (
     <>
@@ -459,6 +469,49 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
             <span className="subtext">対象日と時間を指定してプレビュー</span>
           )}
         </div>
+        {result && summary && (
+          <div className="allocation-check-strip">
+            <div className="allocation-readiness">
+              <span className={`badge ${readinessClass}`}>{readinessLabel}</span>
+              <strong>保存前チェック</strong>
+              <span className="subtext">
+                手動調整 {manualAdjustmentCount}件 / 商品部屋変更 {workAreaOverrides.length}件
+              </span>
+            </div>
+            <div className="allocation-check-metrics">
+              <span>
+                警告 <strong>{totalAlertCount}</strong>
+              </span>
+              <span>
+                未完了 <strong>{overflowJobCount}</strong>
+              </span>
+              <span>
+                商品移動 <strong>{movedJobCount}</strong>
+              </span>
+              <span>
+                能力未登録 <strong>{skippedPlanCount}</strong>
+              </span>
+            </div>
+            <div className="allocation-check-actions">
+              <button type="button" className="ghost-button" onClick={() => setView("jobs")} disabled={loading}>
+                商品別を確認
+              </button>
+              <button type="button" className="ghost-button" onClick={() => setView("board")} disabled={loading}>
+                部屋ボックス
+              </button>
+              {workAreaOverrides.length > 0 && (
+                <button type="button" className="ghost-button" onClick={clearWorkAreaOverrides} disabled={loading}>
+                  部屋変更を戻す
+                </button>
+              )}
+              {pins.length > 0 && (
+                <button type="button" className="ghost-button" onClick={clearPins} disabled={loading}>
+                  手動固定を戻す
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {error && <div className="alert danger">エラー: {error}</div>}
@@ -678,9 +731,24 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
                       const selectedWorkAreaId =
                         workAreaOverrides.find((override) => override.planId === job.jobId)?.workAreaId ?? job.workAreaId;
                       const moved = (job.originalWorkAreaId ?? job.workAreaId) !== job.workAreaId;
+                      const hasJobWarning = job.warnings.length > 0 || job.overflowQuantity > 0;
                       return (
-                        <tr key={job.jobId}>
-                          <td>{job.productName}</td>
+                        <tr key={job.jobId} className={`alloc-job-row${moved ? " is-moved" : ""}${hasJobWarning ? " has-warning" : ""}`}>
+                          <td>
+                            <div className="alloc-job-product">
+                              <strong>{job.productName}</strong>
+                              {(moved || hasJobWarning) && (
+                                <div className="alloc-job-badges">
+                                  {moved && <span className="badge info">部屋変更</span>}
+                                  {job.warnings.length > 0 && <span className="badge warn">注意 {job.warnings.length}</span>}
+                                  {job.overflowQuantity > 0 && <span className="badge warn">未完了あり</span>}
+                                </div>
+                              )}
+                              {job.warnings.length > 0 && (
+                                <div className="alloc-job-warning-text">{job.warnings.join(" / ")}</div>
+                              )}
+                            </div>
+                          </td>
                           <td>
                             <div className="alloc-room-cell">
                               <span className="gantt-legend-swatch" style={{ background: colorOf(job.workAreaId) }} />
