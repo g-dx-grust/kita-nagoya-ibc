@@ -94,6 +94,13 @@ type DragChip = {
 };
 
 type View = "room" | "people" | "jobs" | "board";
+type InitialReadiness = {
+  planCount: number;
+  draftPlanCount: number;
+  confirmedPlanCount: number;
+  shiftCount: number;
+  activeEmployeeCount: number;
+};
 
 // 部屋ボックス（Kanban）用カード。人の作業セグメント=1カード、手すきは未割当ボックスへ。
 type WorkCard = {
@@ -152,7 +159,13 @@ function clamp(v: number, min: number, max: number) {
   return Math.max(min, Math.min(max, v));
 }
 
-export default function DayAllocationClient({ initialDate }: { initialDate: string }) {
+export default function DayAllocationClient({
+  initialDate,
+  initialReadiness,
+}: {
+  initialDate: string;
+  initialReadiness: InitialReadiness;
+}) {
   const [date, setDate] = useState(initialDate);
   const [dayStart, setDayStart] = useState("09:00");
   const [dayEnd, setDayEnd] = useState("17:00");
@@ -434,8 +447,20 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
   const staffPrintHref = kitagoyaPath(`/prints/staff-assignments?date=${date}`);
   const schedulePrintHref = kitagoyaPath(`/prints/production-schedule?date=${date}`);
   const allocationFlowTone = result && totalAlertCount === 0 && persisted ? "success" : "warn";
+  const previewPlanCount = allocation?.jobs.length ?? initialReadiness.planCount;
+  const previewStaffCount = summary?.totalStaff ?? initialReadiness.shiftCount;
+  const previewBlockedReason =
+    !result && initialReadiness.planCount === 0
+      ? "no_plans"
+      : !result && initialReadiness.shiftCount === 0
+        ? "no_shifts"
+        : null;
   const nextAllocationLabel = !result
-    ? "プレビュー開始"
+    ? previewBlockedReason === "no_plans"
+      ? "生産予定を確認"
+      : previewBlockedReason === "no_shifts"
+        ? "シフトを確認"
+        : "プレビュー開始"
     : totalAlertCount > 0
       ? "商品別を確認"
       : persisted
@@ -450,6 +475,14 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
 
   function runNextAllocationAction() {
     if (!result) {
+      if (previewBlockedReason === "no_plans") {
+        window.location.href = productionPlansHref;
+        return;
+      }
+      if (previewBlockedReason === "no_shifts") {
+        window.location.href = shiftsHref;
+        return;
+      }
       void call(false);
       return;
     }
@@ -491,7 +524,8 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
           </span>
           <strong>当日割り当てフロー</strong>
           <span className="subtext">
-            {date} / {result ? `出勤者 ${summary?.totalStaff ?? 0}名 / 注意 ${totalAlertCount}件` : "プレビュー前"}
+            {date} / 予定 {previewPlanCount}件 / 出勤 {previewStaffCount}名
+            {result ? ` / 注意 ${totalAlertCount}件` : " / プレビュー前"}
           </span>
         </div>
         {persisted ? (
@@ -510,16 +544,16 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
             <ClipboardList size={15} aria-hidden="true" />
             生産予定
           </span>
-          <strong>{allocation?.jobs.length ?? "確認"}</strong>
-          <small>{date}</small>
+          <strong>{previewPlanCount}</strong>
+          <small>仮 {initialReadiness.draftPlanCount} / 確定 {initialReadiness.confirmedPlanCount}</small>
         </Link>
         <Link className="allocation-flow-card info" href={shiftsHref}>
           <span>
             <CalendarDays size={15} aria-hidden="true" />
             シフト
           </span>
-          <strong>{summary?.totalStaff ?? "確認"}</strong>
-          <small>出勤者</small>
+          <strong>{previewStaffCount}</strong>
+          <small>有効スタッフ {initialReadiness.activeEmployeeCount}名</small>
         </Link>
         <button type="button" className={`allocation-flow-card ${result ? (totalAlertCount > 0 ? "warn" : "success") : "info"}`} onClick={() => call(false)} disabled={loading}>
           <span>
@@ -647,7 +681,9 @@ export default function DayAllocationClient({ initialDate }: { initialDate: stri
           <div className="allocation-start-main">
             <span className="badge muted">未計算</span>
             <strong>{date} の割り当て準備</strong>
-            <span>確定済みの生産予定と出勤シフトを確認してから、割り当てプレビューを作成します。</span>
+            <span>
+              予定 {initialReadiness.planCount}件、出勤 {initialReadiness.shiftCount}名。確定済みの生産予定と出勤シフトを確認してから、割り当てプレビューを作成します。
+            </span>
           </div>
           <div className="allocation-start-steps">
             <span>

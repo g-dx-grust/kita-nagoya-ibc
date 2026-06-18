@@ -554,7 +554,7 @@ export default function AutoScheduleForm({
 
   return (
     <form onSubmit={submit}>
-      <div ref={controlRef} className="panel auto-schedule-control-panel">
+      <div id="auto-schedule-control" ref={controlRef} className="panel auto-schedule-control-panel anchor-offset">
         <div className="row auto-schedule-fields">
           <label>
             <span>対象日</span>
@@ -740,7 +740,7 @@ export default function AutoScheduleForm({
           </button>
         )}
       </div>
-      <div ref={itemsRef} className="panel auto-schedule-items-panel">
+      <div id="auto-schedule-items" ref={itemsRef} className="panel auto-schedule-items-panel anchor-offset">
         <div className="table-frame auto-schedule-item-frame">
           <table className="auto-schedule-item-table">
             <thead>
@@ -877,7 +877,7 @@ export default function AutoScheduleForm({
       {message && <div className="alert success">{message}</div>}
 
       {result && (
-        <div ref={resultRef} className="panel auto-schedule-result-panel">
+        <div id="auto-schedule-result" ref={resultRef} className="panel auto-schedule-result-panel anchor-offset">
           <h2>
             {result.persisted ? "確定済みスケジュール" : "自動作成プレビュー"}
             {!result.persisted && (
