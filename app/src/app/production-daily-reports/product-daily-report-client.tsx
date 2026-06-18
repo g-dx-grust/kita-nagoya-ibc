@@ -26,6 +26,7 @@ import {
   type ProductDailyReportSummaryRow,
 } from "@/lib/product-daily-report-calculations";
 import { kitagoyaApiPath } from "@/lib/paths";
+import { matchesQuery } from "@/lib/search";
 
 export type ProductDailyReportBomMaterial = {
   materialId: string;
@@ -131,6 +132,7 @@ export type ProductDailyReportRow = {
 
 type MaterialFormRow = { materialId: string; materialName: string; usedKg: string };
 type DailyReportColumnMode = "review" | "input" | "cost" | "all";
+type DailyReportQuickFilter = "all" | "submitted" | "attention" | "photos" | "noPhotos";
 
 const dailyReportColumnModes: { id: DailyReportColumnMode; label: string }[] = [
   { id: "review", label: "確認" },
@@ -182,6 +184,8 @@ export default function ProductDailyReportClient({
   const [approvalReviewId, setApprovalReviewId] = useState<string | null>(null);
   const [deleteReviewId, setDeleteReviewId] = useState<string | null>(null);
   const [columnMode, setColumnMode] = useState<DailyReportColumnMode>("review");
+  const [tableSearch, setTableSearch] = useState("");
+  const [tableQuickFilter, setTableQuickFilter] = useState<DailyReportQuickFilter>("all");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -209,13 +213,40 @@ export default function ProductDailyReportClient({
   );
   const missingPriceCount = useMemo(() => rows.filter((row) => row.unitPriceSnapshot <= 0).length, [rows]);
   const warningCount = useMemo(() => rows.filter((row) => row.calculationWarnings.length > 0).length, [rows]);
+  const photoCount = useMemo(() => rows.filter((row) => row.labelPhotos.length > 0).length, [rows]);
+  const noPhotoCount = rows.length - photoCount;
   const reviewListRows = useMemo(() => {
     const pendingIds = new Set(pendingApproval.map((row) => row.id));
     return [...pendingApproval, ...alerts.filter((row) => !pendingIds.has(row.id))].slice(0, 4);
   }, [alerts, pendingApproval]);
   const nextReviewRow = reviewListRows[0] ?? null;
   const [showReviewOnly, setShowReviewOnly] = useState(initialReviewOnly && alerts.length > 0);
-  const displayRows = showReviewOnly ? alerts : rows;
+  const baseDisplayRows = showReviewOnly ? alerts : rows;
+  const displayRows = useMemo(() => {
+    const query = tableSearch.trim();
+    return baseDisplayRows.filter((row) => {
+      const matchesQuickFilter =
+        tableQuickFilter === "all" ||
+        (tableQuickFilter === "submitted" && row.approvalStatus === "submitted") ||
+        (tableQuickFilter === "attention" && needsDailyReportAttention(row)) ||
+        (tableQuickFilter === "photos" && row.labelPhotos.length > 0) ||
+        (tableQuickFilter === "noPhotos" && row.labelPhotos.length === 0);
+      const matchesText =
+        !query ||
+        matchesQuery(query, [
+          row.reportDate,
+          row.productName,
+          row.productCode,
+          row.displayName,
+          row.officialName,
+          row.note,
+          row.submittedBy,
+          ...dailyReportAttentionLabels(row),
+        ]);
+      return matchesQuickFilter && matchesText;
+    });
+  }, [baseDisplayRows, tableQuickFilter, tableSearch]);
+  const hasTableFilters = Boolean(showReviewOnly || tableQuickFilter !== "all" || tableSearch.trim());
   const editingRow = useMemo(() => rows.find((row) => row.id === editingId) ?? null, [editingId, rows]);
   const approvalReviewRow = useMemo(
     () => rows.find((row) => row.id === approvalReviewId && row.approvalStatus === "submitted") ?? null,
@@ -353,7 +384,10 @@ export default function ProductDailyReportClient({
 
   function openApprovalReview(row: ProductDailyReportRow, options?: { reviewOnly?: boolean }) {
     if (row.approvalStatus !== "submitted") return;
-    if (options?.reviewOnly) setShowReviewOnly(true);
+    if (options?.reviewOnly) {
+      setShowReviewOnly(true);
+      setTableQuickFilter("all");
+    }
     setApprovalReviewId(row.id);
     setDeleteReviewId(null);
     setEditingId(null);
@@ -374,7 +408,10 @@ export default function ProductDailyReportClient({
   }
 
   function openEdit(row: ProductDailyReportRow, options?: { reviewOnly?: boolean }) {
-    if (options?.reviewOnly) setShowReviewOnly(true);
+    if (options?.reviewOnly) {
+      setShowReviewOnly(true);
+      setTableQuickFilter("all");
+    }
     setApprovalReviewId(null);
     setDeleteReviewId(null);
     setEditingId(row.id);
@@ -382,6 +419,27 @@ export default function ProductDailyReportClient({
     window.setTimeout(() => {
       document.getElementById("daily-report-edit-panel")?.scrollIntoView({ block: "start", inline: "nearest" });
     }, 0);
+  }
+
+  function showOnlyReviewRows() {
+    setShowReviewOnly(true);
+    setTableQuickFilter("all");
+  }
+
+  function showAllReportRows() {
+    setShowReviewOnly(false);
+    setTableQuickFilter("all");
+  }
+
+  function applyQuickFilter(filter: DailyReportQuickFilter) {
+    setShowReviewOnly(false);
+    setTableQuickFilter(filter);
+  }
+
+  function clearTableFilters() {
+    setShowReviewOnly(false);
+    setTableQuickFilter("all");
+    setTableSearch("");
   }
 
   return (
@@ -434,7 +492,7 @@ export default function ProductDailyReportClient({
           <button
             type="button"
             className={showReviewOnly ? "gap-2" : "secondary gap-2"}
-            onClick={() => setShowReviewOnly(true)}
+            onClick={showOnlyReviewRows}
             disabled={alerts.length === 0}
           >
             <ListFilter className="h-4 w-4" />
@@ -443,7 +501,7 @@ export default function ProductDailyReportClient({
           <button
             type="button"
             className={showReviewOnly ? "secondary gap-2" : "gap-2"}
-            onClick={() => setShowReviewOnly(false)}
+            onClick={showAllReportRows}
           >
             <Table2 className="h-4 w-4" />
             全件表示
@@ -868,7 +926,11 @@ export default function ProductDailyReportClient({
             id: "review",
             label: "日報確認",
             heading: "月別製造日報",
-            count: showReviewOnly ? `確認 ${displayRows.length}` : pendingApproval.length > 0 ? `未計上 ${pendingApproval.length}` : rows.length,
+            count: hasTableFilters
+              ? `表示 ${displayRows.length}`
+              : pendingApproval.length > 0
+                ? `未計上 ${pendingApproval.length}`
+                : rows.length,
             content: (
               <section>
                 <div className="daily-report-heading">
@@ -893,6 +955,69 @@ export default function ProductDailyReportClient({
                     <span className="column-kind input">入力</span>
                     <span className="column-kind auto">自動計算</span>
                   </div>
+                </div>
+                <div className="daily-report-list-filter" aria-label="日報一覧の絞り込み">
+                  <label className="filter-search">
+                    <span>一覧検索</span>
+                    <input
+                      type="search"
+                      value={tableSearch}
+                      placeholder="商品名・コード・入力者・備考"
+                      onChange={(event) => setTableSearch(event.target.value)}
+                    />
+                  </label>
+                  <div className="daily-report-list-filter-buttons">
+                    <button
+                      type="button"
+                      className={!showReviewOnly && tableQuickFilter === "all" ? "is-active" : ""}
+                      onClick={showAllReportRows}
+                    >
+                      <Table2 className="h-4 w-4" />
+                      全件 {rows.length}
+                    </button>
+                    <button
+                      type="button"
+                      className={tableQuickFilter === "submitted" ? "is-active" : ""}
+                      onClick={() => applyQuickFilter("submitted")}
+                      disabled={pendingApproval.length === 0}
+                    >
+                      <AlertTriangle className="h-4 w-4" />
+                      未計上 {pendingApproval.length}
+                    </button>
+                    <button
+                      type="button"
+                      className={showReviewOnly || tableQuickFilter === "attention" ? "is-active danger" : "danger"}
+                      onClick={() => applyQuickFilter("attention")}
+                      disabled={alerts.length === 0}
+                    >
+                      <ListFilter className="h-4 w-4" />
+                      要確認 {alerts.length}
+                    </button>
+                    <button
+                      type="button"
+                      className={tableQuickFilter === "photos" ? "is-active" : ""}
+                      onClick={() => applyQuickFilter("photos")}
+                      disabled={photoCount === 0}
+                    >
+                      <ImageIcon className="h-4 w-4" />
+                      写真あり {photoCount}
+                    </button>
+                    <button
+                      type="button"
+                      className={tableQuickFilter === "noPhotos" ? "is-active" : ""}
+                      onClick={() => applyQuickFilter("noPhotos")}
+                      disabled={noPhotoCount === 0}
+                    >
+                      <ImageIcon className="h-4 w-4" />
+                      写真なし {noPhotoCount}
+                    </button>
+                  </div>
+                  {hasTableFilters && (
+                    <button type="button" className="secondary gap-2 daily-report-list-filter-reset" onClick={clearTableFilters}>
+                      <X className="h-4 w-4" />
+                      条件解除
+                    </button>
+                  )}
                 </div>
                 <div className="table-frame daily-report-frame">
                   <table className={`daily-report-table daily-report-column-mode-${columnMode}`}>
@@ -1053,7 +1178,9 @@ export default function ProductDailyReportClient({
                       {displayRows.length === 0 && (
                         <tr>
                           <td colSpan={26} className="muted">
-                            {showReviewOnly ? "確認対象の日報はありません。" : "対象月の日報はありません。"}
+                            {hasTableFilters
+                              ? "条件に合う日報はありません。検索条件を外してください。"
+                              : "対象月の日報はありません。"}
                           </td>
                         </tr>
                       )}
@@ -1733,6 +1860,12 @@ function StatusBadges({ row }: { row: ProductDailyReportRow }) {
       {row.productMatchStatus === "fuzzy" && <span className="badge warn">曖昧照合</span>}
       {row.productMatchStatus !== "unmatched" && row.productMatchStatus !== "fuzzy" && (
         <span className="badge success">照合済</span>
+      )}
+      {row.labelPhotos.length > 0 && (
+        <span className="badge info">
+          <ImageIcon className="h-3 w-3" />
+          写真 {row.labelPhotos.length}
+        </span>
       )}
       {row.unitPriceSnapshot <= 0 && <span className="badge danger">売値未設定</span>}
       {row.calculationWarnings.includes("missing_material_unit_cost") && <span className="badge warn">原料単価未設定</span>}

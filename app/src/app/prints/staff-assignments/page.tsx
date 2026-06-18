@@ -29,6 +29,11 @@ export default async function StaffAssignmentsPrintPage({
   const { plans, employees } = await loadPlansAndEmployees(date);
   const byWorkArea = groupByWorkArea(plans);
   const employeeRows = buildEmployeeRows(employees, plans);
+  const requiredStaffCount = plans.reduce((sum, plan) => sum + plan.plannedPeopleCount, 0);
+  const assignedCount = plans.reduce((sum, plan) => sum + plan.assignments.length, 0);
+  const unassignedCount = Math.max(0, requiredStaffCount - assignedCount);
+  const unassignedEmployeeCount = employeeRows.filter((row) => row.assignmentTime === "未配置").length;
+  const isReady = plans.length > 0 && unassignedCount === 0;
 
   // 部屋別タイムライン（印刷用ガント）の窓・色
   const startsEnds = plans.flatMap((p) => [hm(p.plannedStartTime), hm(p.plannedEndTime ?? p.desiredEndTime ?? "17:00")]);
@@ -51,6 +56,32 @@ export default async function StaffAssignmentsPrintPage({
         <Link href={kitagoyaPath(`/prints?date=${date}`)}>← 現場印刷へ</Link>
         <div className="spacer" />
         <PrintButton label="スタッフ配置を印刷" />
+      </div>
+
+      <div className={`no-print print-readiness-command ${isReady ? "success" : "warn"}`}>
+        <div className="print-readiness-title">
+          <span className={`badge ${isReady ? "success" : "warn"}`}>{isReady ? "印刷OK" : "要確認"}</span>
+          <strong>スタッフ配置表</strong>
+          <span>{date}</span>
+        </div>
+        <div className="print-readiness-checks">
+          <span className="badge info">部屋 {byWorkArea.length}</span>
+          <span className="badge info">予定 {plans.length}</span>
+          <span className={unassignedCount > 0 ? "badge warn" : "badge success"}>未配置 {unassignedCount}</span>
+          <span className={unassignedEmployeeCount > 0 ? "badge warn" : "badge success"}>
+            未割当スタッフ {unassignedEmployeeCount}
+          </span>
+        </div>
+        <div className="print-readiness-actions">
+          {unassignedCount > 0 && (
+            <Link className="button-link secondary-link" href={kitagoyaPath(`/production-plans/allocate?date=${date}`)}>
+              割り当て確認
+            </Link>
+          )}
+          <Link className="button-link secondary-link" href={kitagoyaPath(`/prints/production-schedule?date=${date}`)}>
+            作業日報
+          </Link>
+        </div>
       </div>
 
       <header className="print-title">
@@ -128,7 +159,7 @@ export default async function StaffAssignmentsPrintPage({
                   {areaPlans.map((plan) => {
                     const shortage = Math.max(0, plan.plannedPeopleCount - plan.assignments.length);
                     return (
-                      <tr key={plan.id}>
+                      <tr key={plan.id} className={shortage > 0 ? "print-row-warn" : undefined}>
                         <td>
                           {plan.plannedStartTime} - {plan.plannedEndTime ?? plan.desiredEndTime ?? "未計算"}
                         </td>
@@ -171,7 +202,7 @@ export default async function StaffAssignmentsPrintPage({
           </thead>
           <tbody>
             {employeeRows.map((row) => (
-              <tr key={row.key}>
+              <tr key={row.key} className={row.assignmentTime === "未配置" ? "print-row-warn" : undefined}>
                 <td>
                   <strong>{row.employee.name}</strong>
                   <div className="subtext">{employeeMeta(row.employee)}</div>

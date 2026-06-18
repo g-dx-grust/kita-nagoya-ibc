@@ -36,6 +36,11 @@ export default async function ProductionSchedulePrintPage({
   const timelines = buildTimelines(plans);
   const printedAt = formatDateTime(new Date());
   const workDate = formatWorkDate(date);
+  const assignedCount = plans.reduce((sum, plan) => sum + plan.assignments.length, 0);
+  const requiredStaffCount = plans.reduce((sum, plan) => sum + plan.plannedPeopleCount, 0);
+  const unassignedCount = Math.max(0, requiredStaffCount - assignedCount);
+  const warningCount = plans.filter((plan) => plan.status === "draft" || warningList(plan).length > 0).length;
+  const isReady = plans.length > 0 && unassignedCount === 0 && warningCount === 0;
 
   return (
     <div className="print-page nippo-page">
@@ -43,6 +48,30 @@ export default async function ProductionSchedulePrintPage({
         <Link href={kitagoyaPath(`/prints?date=${date}`)}>← 現場印刷へ</Link>
         <div className="spacer" />
         <PrintButton label="作業日報を印刷" />
+      </div>
+
+      <div className={`no-print print-readiness-command ${isReady ? "success" : "warn"}`}>
+        <div className="print-readiness-title">
+          <span className={`badge ${isReady ? "success" : "warn"}`}>{isReady ? "印刷OK" : "要確認"}</span>
+          <strong>作業日報印刷</strong>
+          <span>{workDate}</span>
+        </div>
+        <div className="print-readiness-checks">
+          <span className="badge info">部屋 {grouped.length}</span>
+          <span className="badge info">予定 {plans.length}</span>
+          <span className={unassignedCount > 0 ? "badge warn" : "badge success"}>未配置 {unassignedCount}</span>
+          <span className={warningCount > 0 ? "badge warn" : "badge success"}>注意 {warningCount}</span>
+        </div>
+        <div className="print-readiness-actions">
+          {unassignedCount > 0 && (
+            <Link className="button-link secondary-link" href={kitagoyaPath(`/production-plans/allocate?date=${date}`)}>
+              割り当て確認
+            </Link>
+          )}
+          <Link className="button-link secondary-link" href={kitagoyaPath(`/prints/staff-assignments?date=${date}`)}>
+            配置表
+          </Link>
+        </div>
       </div>
 
       {plans.length === 0 ? (
@@ -123,7 +152,7 @@ export default async function ProductionSchedulePrintPage({
                 </thead>
                 <tbody>
                   {areaPlans.map((plan) => (
-                    <tr key={plan.id}>
+                    <tr key={plan.id} className={plan.status === "draft" || warningList(plan).length > 0 ? "print-row-warn" : undefined}>
                       <td className="center">
                         {plan.plannedStartTime}～{plan.plannedEndTime ?? plan.desiredEndTime ?? "　"}
                       </td>

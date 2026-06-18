@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { kitagoyaApiPath } from "@/lib/paths";
+import { matchesQuery } from "@/lib/search";
 
 export type CapacityReviewRow = {
   productId: string;
@@ -114,11 +115,19 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
   }, [rows]);
 
   const filteredRows = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     return rows.filter((row) => {
       if (q) {
-        const haystack = `${row.productCode} ${row.productName} ${row.workAreaName}`.toLowerCase();
-        if (!haystack.includes(q)) return false;
+        if (
+          !matchesQuery(q, [
+            row.productCode,
+            row.productName,
+            row.workAreaName,
+            row.defaultWorkAreaName,
+            row.productionType,
+          ])
+        )
+          return false;
       }
       switch (filter) {
         case "action_needed":
@@ -148,6 +157,44 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
       }
     });
   }, [filter, query, rows]);
+  const nextActionRow = useMemo(() => rows.find(needsAction) ?? null, [rows]);
+  const reviewQueue = [
+    {
+      filter: "action_needed" as const,
+      label: "確認が必要",
+      count: stats.actionNeeded,
+      detail: `未確認 ${stats.unreviewed.toLocaleString()} / 再確認 ${stats.needsReview.toLocaleString()}`,
+      tone: stats.actionNeeded > 0 ? "warn" : "success",
+    },
+    {
+      filter: "default_missing" as const,
+      label: "標準未設定",
+      count: stats.defaultMissing,
+      detail: "商品の正規作業場所",
+      tone: stats.defaultMissing > 0 ? "warn" : "success",
+    },
+    {
+      filter: "primary_missing_capacity" as const,
+      label: "標準能力未登録",
+      count: stats.primaryMissingCapacity,
+      detail: "標準場所の人時能力",
+      tone: stats.primaryMissingCapacity > 0 ? "warn" : "success",
+    },
+    {
+      filter: "missing_product" as const,
+      label: "商品能力未登録",
+      count: stats.missingProduct,
+      detail: "候補が未作成の商品",
+      tone: stats.missingProduct > 0 ? "warn" : "success",
+    },
+    {
+      filter: stats.low > 0 ? ("low" as const) : ("high" as const),
+      label: "異常値候補",
+      count: stats.low + stats.high,
+      detail: `10以下 ${stats.low.toLocaleString()} / 300以上 ${stats.high.toLocaleString()}`,
+      tone: stats.low + stats.high > 0 ? "warn" : "success",
+    },
+  ];
 
   function keyOf(row: CapacityReviewRow) {
     return `${row.productId}:${row.workAreaId}`;
@@ -371,6 +418,63 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
         />
       </div>
 
+      <div className={`capacity-review-command ${stats.actionNeeded > 0 ? "warn" : "success"}`}>
+        <div className="capacity-review-command-title">
+          <span className={`badge ${stats.actionNeeded > 0 ? "warn" : "success"}`}>
+            {stats.actionNeeded > 0 ? "確認待ち" : "確認OK"}
+          </span>
+          <strong>作業場所・生産能力の確認キュー</strong>
+          <span>
+            標準作業場所、標準場所の能力、異常値候補を先に見ます。
+          </span>
+        </div>
+        <div className="capacity-review-queue" aria-label="生産能力の確認キュー">
+          {reviewQueue.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              className={`capacity-review-queue-card ${item.tone} ${filter === item.filter ? "is-active" : ""}`}
+              onClick={() => {
+                setFilter(item.filter);
+                setQuery("");
+              }}
+            >
+              <span>{item.label}</span>
+              <strong>{item.count.toLocaleString()}件</strong>
+              <small>{item.detail}</small>
+            </button>
+          ))}
+        </div>
+        {nextActionRow && (
+          <div className="capacity-next-review">
+            <div>
+              <span className="badge warn">次の確認候補</span>
+              <strong>
+                {nextActionRow.productCode} {nextActionRow.productName}
+              </strong>
+              <small>{nextActionRow.workAreaName}</small>
+              <div className="capacity-product-badges">
+                {capacityActionLabels(nextActionRow).map((label) => (
+                  <span key={label} className="badge warn">
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setFilter("action_needed");
+                setQuery(nextActionRow.productCode);
+              }}
+            >
+              この商品を表示
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="panel capacity-filter-panel">
         <div className="capacity-filter-head">
           <div>
@@ -511,6 +615,12 @@ export default function CapacityReviewTable({ rows: initialRows }: { rows: Capac
                         </span>
                         {row.productionType === "stock" && <span className="badge muted">在庫</span>}
                         {row.productionType === "make_to_order" && <span className="badge muted">受注</span>}
+                        {needsAction(row) &&
+                          capacityActionLabels(row).map((label) => (
+                            <span key={label} className="badge warn">
+                              {label}
+                            </span>
+                          ))}
                       </div>
                     </td>
                     <td data-label="作業場所">
@@ -670,6 +780,18 @@ function statusBadgeClass(value: CapacityReviewRow["reviewStatus"]) {
     default:
       return "muted";
   }
+}
+
+function capacityActionLabels(row: CapacityReviewRow) {
+  const labels: string[] = [];
+  if (!row.defaultWorkAreaId && row.isPrimaryReviewRow) labels.push("標準未設定");
+  if (!row.productHasAnyCapacity && row.isPrimaryReviewRow) labels.push("商品能力未登録");
+  if (row.isPrimaryReviewRow && row.missingCapacity) labels.push("標準能力未登録");
+  if (row.reviewStatus === "unreviewed" && row.unitsPerPersonHour != null) labels.push("未確認");
+  if (row.reviewStatus === "needs_review") labels.push("要再確認");
+  if (row.unitsPerPersonHour != null && row.unitsPerPersonHour <= 10) labels.push("能力低め");
+  if (row.unitsPerPersonHour != null && row.unitsPerPersonHour >= 300) labels.push("能力高め");
+  return labels.length > 0 ? Array.from(new Set(labels)) : ["確認"];
 }
 
 function isSuspiciousCapacity(row: CapacityReviewRow) {

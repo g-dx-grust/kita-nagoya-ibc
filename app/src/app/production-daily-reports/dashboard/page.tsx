@@ -101,6 +101,57 @@ export default async function ProductionDailyReportDashboardPage({
   const alertStatusText = hasAlerts
     ? "商品照合、単価、ロス率、利率を確認してください。"
     : "確認対象はありません。";
+  const topProduct = dashboard.productRows[0] ?? null;
+  const lowestProfitProduct = dashboard.productRows
+    .filter((row) => row.sales > 0)
+    .slice()
+    .sort((a, b) => a.profitRate - b.profitRate || b.productionQty - a.productionQty)[0] ?? null;
+  const highestLossProduct = dashboard.productRows
+    .slice()
+    .sort((a, b) => b.averageLossRate - a.averageLossRate || b.productionQty - a.productionQty)[0] ?? null;
+  const focusCards = [
+    {
+      label: "最優先確認",
+      value: `${dashboard.totals.alertRowCount} 件`,
+      detail: hasAlerts ? `${dashboard.totals.alertIssueCount}項目を確認` : "注意表示なし",
+      href: hasAlerts ? "#dashboard-alerts" : dailyReportHref(month, productId, q),
+      tone: hasAlerts ? "warn" : "success",
+    },
+    {
+      label: "最多生産",
+      value: topProduct ? formatNumber(topProduct.productionQty) : "—",
+      detail: topProduct ? topProduct.productName : "確定済み日報なし",
+      href: "#dashboard-products",
+      tone: "info",
+    },
+    {
+      label: "低利率",
+      value: lowestProfitProduct ? formatPercent(lowestProfitProduct.profitRate) : "—",
+      detail: lowestProfitProduct ? lowestProfitProduct.productName : "売値データなし",
+      href: "#dashboard-products",
+      tone:
+        lowestProfitProduct && lowestProfitProduct.profitRate <= DEFAULT_DAILY_REPORT_DASHBOARD_THRESHOLDS.lowProfitRate
+          ? "warn"
+          : "neutral",
+    },
+    {
+      label: "ロス率",
+      value: highestLossProduct ? formatPercent(highestLossProduct.averageLossRate) : "—",
+      detail: highestLossProduct ? highestLossProduct.productName : "確定済み日報なし",
+      href: "#dashboard-products",
+      tone:
+        highestLossProduct && highestLossProduct.averageLossRate >= DEFAULT_DAILY_REPORT_DASHBOARD_THRESHOLDS.highLossRate
+          ? "warn"
+          : "neutral",
+    },
+    {
+      label: "在庫反映",
+      value: `${dashboard.totals.inventoryReflectedCount}/${dashboard.totals.entryCount} 件`,
+      detail: `履歴取込 ${dashboard.totals.historyOnlyCount}件`,
+      href: "#dashboard-data-split",
+      tone: dashboard.totals.historyOnlyCount > 0 ? "warn" : "success",
+    },
+  ] satisfies Array<{ label: string; value: string; detail: string; href: string; tone: "warn" | "success" | "info" | "neutral" }>;
 
   return (
     <>
@@ -185,6 +236,16 @@ export default async function ProductionDailyReportDashboardPage({
         </a>
       </div>
 
+      <div className="dashboard-focus-grid" aria-label="今月の確認キュー">
+        {focusCards.map((card) => (
+          <a key={card.label} className={`dashboard-focus-card ${card.tone}`} href={card.href}>
+            <span>{card.label}</span>
+            <strong>{card.value}</strong>
+            <small>{card.detail}</small>
+          </a>
+        ))}
+      </div>
+
       <div className="stat-grid dashboard-kpis">
         <Metric
           label="生産数合計"
@@ -226,7 +287,7 @@ export default async function ProductionDailyReportDashboardPage({
       </div>
 
       <div className="dashboard-grid dashboard-grid-2">
-        <section className="panel dashboard-panel">
+        <section id="dashboard-products" className="panel dashboard-panel anchor-offset">
           <div className="dashboard-section-heading">
             <h2>商品別 実績上位</h2>
             <span className="badge info">生産数順</span>
@@ -362,7 +423,7 @@ export default async function ProductionDailyReportDashboardPage({
       </div>
 
       <div className="dashboard-grid dashboard-grid-2">
-        <section className="panel dashboard-panel">
+        <section id="dashboard-daily" className="panel dashboard-panel anchor-offset">
           <div className="dashboard-section-heading">
             <h2>日別推移</h2>
             <span className="badge info">{month}</span>
@@ -461,7 +522,7 @@ export default async function ProductionDailyReportDashboardPage({
             </div>
           </section>
 
-          <section className="panel dashboard-panel">
+          <section id="dashboard-data-split" className="panel dashboard-panel anchor-offset">
             <div className="dashboard-section-heading">
               <h2>データ区分</h2>
               <span className="badge muted">在庫二重差引防止</span>
