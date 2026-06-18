@@ -76,6 +76,7 @@ export default function ShiftMonthEditor({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [reviewOnly, setReviewOnly] = useState(false);
 
   const days = useMemo(() => {
     const list: { day: number; weekday: string; isWeekend: boolean }[] = [];
@@ -180,12 +181,82 @@ export default function ShiftMonthEditor({
       ),
     [grid, employees, days],
   );
+  const employeeReview = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        dayCount: number;
+        weekendCount: number;
+        invalidDefault: boolean;
+        workMinutes: number;
+        needsReview: boolean;
+      }
+    >();
+    for (const employee of employees) {
+      const row = grid[employee.id];
+      const defaults = employeeDefaults[employee.id];
+      const dayCount = days.reduce((sum, day) => sum + (row[day.day] === "present" ? 1 : 0), 0);
+      const weekendCount = days.reduce(
+        (sum, day) => sum + (day.isWeekend && row[day.day] === "present" ? 1 : 0),
+        0,
+      );
+      const invalidDefault = !isValidDefaultWorkTime(defaults);
+      const workMinutes = Math.max(0, workMinutesFor(defaults)) * dayCount;
+      map.set(employee.id, {
+        dayCount,
+        weekendCount,
+        invalidDefault,
+        workMinutes,
+        needsReview: dayCount === 0 || invalidDefault || weekendCount > 0,
+      });
+    }
+    return map;
+  }, [days, employeeDefaults, employees, grid]);
+  const monthReview = useMemo(() => {
+    const daysWithoutStaff = days.filter((day) =>
+      employees.every((employee) => grid[employee.id][day.day] !== "present"),
+    ).length;
+    const employeesWithoutShift = employees.filter(
+      (employee) => (employeeReview.get(employee.id)?.dayCount ?? 0) === 0,
+    ).length;
+    const invalidDefaultCount = employees.filter(
+      (employee) => employeeReview.get(employee.id)?.invalidDefault,
+    ).length;
+    const weekendPresentCount = employees.reduce(
+      (sum, employee) => sum + (employeeReview.get(employee.id)?.weekendCount ?? 0),
+      0,
+    );
+    const estimatedWorkMinutes = employees.reduce(
+      (sum, employee) => sum + (employeeReview.get(employee.id)?.workMinutes ?? 0),
+      0,
+    );
+    const needsActionCount = [
+      daysWithoutStaff > 0,
+      employeesWithoutShift > 0,
+      invalidDefaultCount > 0,
+      weekendPresentCount > 0,
+    ].filter(Boolean).length;
+    return {
+      daysWithoutStaff,
+      employeesWithoutShift,
+      invalidDefaultCount,
+      weekendPresentCount,
+      estimatedWorkMinutes,
+      needsActionCount,
+    };
+  }, [days, employeeReview, employees, grid]);
   const visibleEmployees = useMemo(
     () =>
-      employees.filter((employee) =>
-        matchesQuery(query, [employee.name, employee.affiliation, employee.defaultStartTime, employee.defaultEndTime]),
-      ),
-    [employees, query],
+      employees.filter((employee) => {
+        if (reviewOnly && !employeeReview.get(employee.id)?.needsReview) return false;
+        return matchesQuery(query, [
+          employee.name,
+          employee.affiliation,
+          employee.defaultStartTime,
+          employee.defaultEndTime,
+        ]);
+      }),
+    [employeeReview, employees, query, reviewOnly],
   );
 
   async function save() {
@@ -297,6 +368,34 @@ export default function ShiftMonthEditor({
         </div>
       </div>
 
+      <div className="panel shift-month-command">
+        <div className="shift-month-command-title">
+          <span className={`badge ${monthReview.needsActionCount > 0 ? "warn" : "success"}`}>
+            {monthReview.needsActionCount > 0 ? "確認が必要" : "整備済み"}
+          </span>
+          <strong>月次シフト確認</strong>
+          <span className="subtext">{monthReview.needsActionCount}項目</span>
+        </div>
+        <div className="shift-month-checks">
+          <span className={`badge ${presentCount > 0 ? "success" : "warn"}`}>
+            出勤セル {presentCount} / {totalCells}
+          </span>
+          <span className={`badge ${monthReview.employeesWithoutShift > 0 ? "warn" : "success"}`}>
+            出勤なし {monthReview.employeesWithoutShift}人
+          </span>
+          <span className={`badge ${monthReview.daysWithoutStaff > 0 ? "warn" : "success"}`}>
+            スタッフ0の日 {monthReview.daysWithoutStaff}日
+          </span>
+          <span className={`badge ${monthReview.invalidDefaultCount > 0 ? "warn" : "success"}`}>
+            時間要確認 {monthReview.invalidDefaultCount}人
+          </span>
+          <span className={`badge ${monthReview.weekendPresentCount > 0 ? "warn" : "success"}`}>
+            土日出勤 {monthReview.weekendPresentCount}セル
+          </span>
+          <span className="badge info">見込 {formatMinutesAsHours(monthReview.estimatedWorkMinutes)}</span>
+        </div>
+      </div>
+
       <div className="panel shift-month-filter-panel">
         <div className="shift-month-filter-head">
           <span className="muted">
@@ -313,6 +412,14 @@ export default function ShiftMonthEditor({
             onChange={(event) => setQuery(event.target.value)}
             aria-label="シフトスタッフを検索"
           />
+          <label className="filter-check">
+            <input
+              type="checkbox"
+              checked={reviewOnly}
+              onChange={(event) => setReviewOnly(event.target.checked)}
+            />
+            要確認のみ
+          </label>
           <span className="filter-count">
             表示 {visibleEmployees.length} / {employees.length} 人
           </span>
@@ -358,12 +465,10 @@ export default function ShiftMonthEditor({
             {visibleEmployees.map((e) => {
               const row = grid[e.id];
               const defaults = employeeDefaults[e.id];
-              const dayCount = days.reduce(
-                (a, d) => a + (row[d.day] === "present" ? 1 : 0),
-                0,
-              );
+              const review = employeeReview.get(e.id);
+              const dayCount = review?.dayCount ?? 0;
               return (
-                <tr key={e.id}>
+                <tr key={e.id} className={review?.needsReview ? "shift-review-row" : ""}>
                   <td className="sticky-col">
                     <div>
                       <strong>{e.name}</strong>
@@ -371,6 +476,15 @@ export default function ShiftMonthEditor({
                     <div className="subtext">
                       {e.affiliation ?? "—"} ・ {dayCount}日
                     </div>
+                    {review?.needsReview && (
+                      <div className="shift-row-badges">
+                        {dayCount === 0 && <span className="badge warn">出勤なし</span>}
+                        {review.invalidDefault && <span className="badge warn">時間要確認</span>}
+                        {review.weekendCount > 0 && (
+                          <span className="badge warn">土日 {review.weekendCount}</span>
+                        )}
+                      </div>
+                    )}
                   </td>
                   <td className="shift-default-cell">
                     <input
@@ -456,4 +570,27 @@ export default function ShiftMonthEditor({
       </div>
     </>
   );
+}
+
+function isValidDefaultWorkTime(defaults: DefaultWorkTime) {
+  return workMinutesFor(defaults) > 0 && defaults.breakMinutes >= 0;
+}
+
+function workMinutesFor(defaults: DefaultWorkTime) {
+  const start = parseTimeMinutes(defaults.startTime);
+  const end = parseTimeMinutes(defaults.endTime);
+  if (start == null || end == null) return 0;
+  return end - start - defaults.breakMinutes;
+}
+
+function parseTimeMinutes(value: string) {
+  const [hour, minute] = value.split(":").map(Number);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  return hour * 60 + minute;
+}
+
+function formatMinutesAsHours(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours}h` : `${hours}h${rest}m`;
 }

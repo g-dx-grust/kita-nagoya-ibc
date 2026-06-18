@@ -28,25 +28,62 @@ export default function SuppliersMasterTable({
   fields: MasterField[];
 }) {
   const [query, setQuery] = useState("");
+  const [needsReviewOnly, setNeedsReviewOnly] = useState(false);
 
   const filtered = useMemo(
     () =>
-      rows.filter((r) =>
-        matchesQuery(query, [r.name, r.contact, r.orderingUnit, r.closingInfo]),
-      ),
-    [rows, query],
+      rows.filter((r) => {
+        if (needsReviewOnly && !needsReview(r)) return false;
+        return matchesQuery(query, [r.name, r.contact, r.orderingUnit, r.closingInfo]);
+      }),
+    [rows, query, needsReviewOnly],
   );
+
+  const reviewSummary = useMemo(() => {
+    const unused = rows.filter((r) => linkedItemCount(r) === 0).length;
+    const missingContact = rows.filter((r) => !hasText(r.contact)).length;
+    const missingOrderingUnit = rows.filter((r) => !hasText(r.orderingUnit)).length;
+    const missingClosingInfo = rows.filter((r) => !hasText(r.closingInfo)).length;
+    const needsAction = rows.filter(needsReview).length;
+    return { unused, missingContact, missingOrderingUnit, missingClosingInfo, needsAction };
+  }, [rows]);
+
+  const hasActiveFilters = !!(query || needsReviewOnly);
 
   function resetFilters() {
     setQuery("");
+    setNeedsReviewOnly(false);
   }
 
   return (
     <>
+      <div className="supplier-master-command">
+        <div className="supplier-master-command-title">
+          <span className={`badge ${reviewSummary.needsAction > 0 ? "warn" : "success"}`}>
+            {reviewSummary.needsAction > 0 ? "確認が必要" : "整備済み"}
+          </span>
+          <strong>仕入先整備</strong>
+          <span className="subtext">{rows.length}件</span>
+        </div>
+        <div className="supplier-master-checks">
+          <span className={`badge ${reviewSummary.unused > 0 ? "warn" : "success"}`}>
+            未使用 {reviewSummary.unused}
+          </span>
+          <span className={`badge ${reviewSummary.missingContact > 0 ? "warn" : "success"}`}>
+            連絡先なし {reviewSummary.missingContact}
+          </span>
+          <span className={`badge ${reviewSummary.missingOrderingUnit > 0 ? "warn" : "success"}`}>
+            発注単位なし {reviewSummary.missingOrderingUnit}
+          </span>
+          <span className={`badge ${reviewSummary.missingClosingInfo > 0 ? "warn" : "success"}`}>
+            締め情報なし {reviewSummary.missingClosingInfo}
+          </span>
+        </div>
+      </div>
       <CollapsiblePanel
-        title="表内検索"
-        summary={`${filtered.length} / ${rows.length} 件${query ? ` / ${query}` : ""}`}
-        open={!!query}
+        title="表内検索・絞り込み"
+        summary={`${filtered.length} / ${rows.length} 件${hasActiveFilters ? " / 条件あり" : ""}`}
+        open={hasActiveFilters}
       >
         <div className="filter-bar compact-controls">
           <input
@@ -57,7 +94,15 @@ export default function SuppliersMasterTable({
             onChange={(event) => setQuery(event.target.value)}
             aria-label="仕入先を検索"
           />
-          <button type="button" className="secondary" onClick={resetFilters} disabled={!query}>
+          <label className="filter-check">
+            <input
+              type="checkbox"
+              checked={needsReviewOnly}
+              onChange={(event) => setNeedsReviewOnly(event.target.checked)}
+            />
+            要確認のみ
+          </label>
+          <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
             条件クリア
           </button>
           <span className="filter-count">
@@ -95,10 +140,24 @@ export default function SuppliersMasterTable({
                 </td>
               </tr>
             ) : null}
-            {filtered.map((r) => (
-              <tr key={r.id} className="supplier-master-row">
+            {filtered.map((r) => {
+              const unused = linkedItemCount(r) === 0;
+              const missingContact = !hasText(r.contact);
+              const missingOrderingUnit = !hasText(r.orderingUnit);
+              const missingClosingInfo = !hasText(r.closingInfo);
+              const rowNeedsReview = needsReview(r);
+              return (
+              <tr key={r.id} className={`supplier-master-row${rowNeedsReview ? " row-needs-action" : ""}`}>
                 <td className="wrap-cell supplier-name-cell" data-label="名称">
                   {r.name}
+                  {rowNeedsReview && (
+                    <div className="supplier-master-row-badges">
+                      {unused && <span className="badge warn">未使用</span>}
+                      {missingContact && <span className="badge warn">連絡先なし</span>}
+                      {missingOrderingUnit && <span className="badge warn">発注単位なし</span>}
+                      {missingClosingInfo && <span className="badge warn">締め情報なし</span>}
+                    </div>
+                  )}
                 </td>
                 <td data-label="紐付け">
                   <SupplierLinkBadges materialCount={r.materialCount} packagingCount={r.packagingCount} />
@@ -139,12 +198,30 @@ export default function SuppliersMasterTable({
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
     </>
   );
+}
+
+function needsReview(row: SupplierRow) {
+  return (
+    linkedItemCount(row) === 0 ||
+    !hasText(row.contact) ||
+    !hasText(row.orderingUnit) ||
+    !hasText(row.closingInfo)
+  );
+}
+
+function linkedItemCount(row: SupplierRow) {
+  return row.materialCount + row.packagingCount;
+}
+
+function hasText(value: string | null) {
+  return Boolean(value && value.trim());
 }
 
 function SupplierLinkBadges({

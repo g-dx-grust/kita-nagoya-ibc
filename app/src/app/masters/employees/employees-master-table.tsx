@@ -32,6 +32,7 @@ export default function EmployeesMasterTable({
 }) {
   const [query, setQuery] = useState("");
   const [employmentType, setEmploymentType] = useState("");
+  const [needsReviewOnly, setNeedsReviewOnly] = useState(false);
 
   const employmentTypes = useMemo(
     () => Array.from(new Set(rows.map((r) => r.employmentType))),
@@ -43,20 +44,65 @@ export default function EmployeesMasterTable({
       rows.filter(
         (r) =>
           (employmentType === "" || r.employmentType === employmentType) &&
+          (!needsReviewOnly || needsReview(r)) &&
           matchesQuery(query, [r.name, r.affiliation, employmentTypeLabel(r.employmentType), r.note]),
       ),
-    [rows, query, employmentType],
+    [rows, query, employmentType, needsReviewOnly],
   );
 
-  const hasActiveFilters = !!(query || employmentType);
+  const reviewSummary = useMemo(() => {
+    const missingAffiliation = rows.filter((r) => !hasText(r.affiliation)).length;
+    const missingWorkTime = rows.filter((r) => !hasWorkTime(r)).length;
+    const invalidBreak = rows.filter((r) => r.defaultBreakMinutes < 0).length;
+    const shiftUrlUnissued = rows.filter((r) => r.shiftEntryEnabled && !r.shiftEntryToken).length;
+    const shiftEntryDisabled = rows.filter((r) => !r.shiftEntryEnabled).length;
+    const needsAction = rows.filter(needsReview).length;
+    return {
+      missingAffiliation,
+      missingWorkTime,
+      invalidBreak,
+      shiftUrlUnissued,
+      shiftEntryDisabled,
+      needsAction,
+    };
+  }, [rows]);
+
+  const hasActiveFilters = !!(query || employmentType || needsReviewOnly);
 
   function resetFilters() {
     setQuery("");
     setEmploymentType("");
+    setNeedsReviewOnly(false);
   }
 
   return (
     <>
+      <div className="employee-master-command">
+        <div className="employee-master-command-title">
+          <span className={`badge ${reviewSummary.needsAction > 0 ? "warn" : "success"}`}>
+            {reviewSummary.needsAction > 0 ? "確認が必要" : "整備済み"}
+          </span>
+          <strong>従業員整備</strong>
+          <span className="subtext">{rows.length}名</span>
+        </div>
+        <div className="employee-master-checks">
+          <span className={`badge ${reviewSummary.missingAffiliation > 0 ? "warn" : "success"}`}>
+            所属なし {reviewSummary.missingAffiliation}
+          </span>
+          <span className={`badge ${reviewSummary.missingWorkTime > 0 ? "warn" : "success"}`}>
+            勤務時間なし {reviewSummary.missingWorkTime}
+          </span>
+          <span className={`badge ${reviewSummary.invalidBreak > 0 ? "warn" : "success"}`}>
+            休憩要確認 {reviewSummary.invalidBreak}
+          </span>
+          <span className={`badge ${reviewSummary.shiftUrlUnissued > 0 ? "warn" : "success"}`}>
+            URL未発行 {reviewSummary.shiftUrlUnissued}
+          </span>
+          <span className={`badge ${reviewSummary.shiftEntryDisabled > 0 ? "warn" : "success"}`}>
+            本人入力停止 {reviewSummary.shiftEntryDisabled}
+          </span>
+        </div>
+      </div>
       <CollapsiblePanel
         title="表内検索・絞り込み"
         summary={`${filtered.length} / ${rows.length} 件${hasActiveFilters ? " / 条件あり" : ""}`}
@@ -79,6 +125,14 @@ export default function EmployeesMasterTable({
               </option>
             ))}
           </select>
+          <label className="filter-check">
+            <input
+              type="checkbox"
+              checked={needsReviewOnly}
+              onChange={(event) => setNeedsReviewOnly(event.target.checked)}
+            />
+            要確認のみ
+          </label>
           <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
             条件クリア
           </button>
@@ -115,54 +169,89 @@ export default function EmployeesMasterTable({
                 </td>
               </tr>
             ) : null}
-            {filtered.map((r) => (
-              <tr key={r.id} className="employee-master-row">
-                <td className="wrap-cell employee-name-cell" data-label="氏名">
-                  {r.name}
-                </td>
-                <td data-label="雇用区分">{employmentTypeLabel(r.employmentType)}</td>
-                <td className="wrap-cell" data-label="所属">
-                  {r.affiliation ?? "—"}
-                </td>
-                <td data-label="基本勤務">
-                  {r.defaultStartTime}-{r.defaultEndTime} / 休憩 {r.defaultBreakMinutes}分
-                </td>
-                <td className="employee-shift-link-cell" data-label="本人入力URL">
-                  <ShiftEntryLinkButton
-                    employeeId={r.id}
-                    employeeName={r.name}
-                    initialToken={r.shiftEntryToken}
-                    enabled={r.shiftEntryEnabled}
-                  />
-                </td>
-                <td className="action-cell" data-label="操作">
-                  <div className="table-actions">
-                    <MasterEditButton
-                      endpoint={kitagoyaApiPath(`/employees/${r.id}`)}
-                      fields={fields}
-                      initialValues={{
-                        name: r.name,
-                        employmentType: r.employmentType,
-                        affiliation: r.affiliation,
-                        defaultStartTime: r.defaultStartTime,
-                        defaultEndTime: r.defaultEndTime,
-                        defaultBreakMinutes: r.defaultBreakMinutes,
-                        shiftEntryEnabled: r.shiftEntryEnabled,
-                        note: r.note,
-                      }}
-                      label={`従業員「${r.name}」`}
+            {filtered.map((r) => {
+              const missingAffiliation = !hasText(r.affiliation);
+              const missingWorkTime = !hasWorkTime(r);
+              const invalidBreak = r.defaultBreakMinutes < 0;
+              const shiftUrlUnissued = r.shiftEntryEnabled && !r.shiftEntryToken;
+              const shiftEntryDisabled = !r.shiftEntryEnabled;
+              const rowNeedsReview = needsReview(r);
+              return (
+                <tr key={r.id} className={`employee-master-row${rowNeedsReview ? " row-needs-action" : ""}`}>
+                  <td className="wrap-cell employee-name-cell" data-label="氏名">
+                    {r.name}
+                    {rowNeedsReview && (
+                      <div className="employee-master-row-badges">
+                        {missingAffiliation && <span className="badge warn">所属なし</span>}
+                        {missingWorkTime && <span className="badge warn">勤務時間なし</span>}
+                        {invalidBreak && <span className="badge warn">休憩要確認</span>}
+                        {shiftUrlUnissued && <span className="badge warn">URL未発行</span>}
+                        {shiftEntryDisabled && <span className="badge warn">本人入力停止</span>}
+                      </div>
+                    )}
+                  </td>
+                  <td data-label="雇用区分">{employmentTypeLabel(r.employmentType)}</td>
+                  <td className="wrap-cell" data-label="所属">
+                    {r.affiliation ?? "—"}
+                  </td>
+                  <td data-label="基本勤務">
+                    {r.defaultStartTime}-{r.defaultEndTime} / 休憩 {r.defaultBreakMinutes}分
+                  </td>
+                  <td className="employee-shift-link-cell" data-label="本人入力URL">
+                    <ShiftEntryLinkButton
+                      employeeId={r.id}
+                      employeeName={r.name}
+                      initialToken={r.shiftEntryToken}
+                      enabled={r.shiftEntryEnabled}
                     />
-                    <MasterDeleteButton
-                      endpoint={kitagoyaApiPath(`/employees/${r.id}`)}
-                      label={`従業員「${r.name}」`}
-                    />
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="action-cell" data-label="操作">
+                    <div className="table-actions">
+                      <MasterEditButton
+                        endpoint={kitagoyaApiPath(`/employees/${r.id}`)}
+                        fields={fields}
+                        initialValues={{
+                          name: r.name,
+                          employmentType: r.employmentType,
+                          affiliation: r.affiliation,
+                          defaultStartTime: r.defaultStartTime,
+                          defaultEndTime: r.defaultEndTime,
+                          defaultBreakMinutes: r.defaultBreakMinutes,
+                          shiftEntryEnabled: r.shiftEntryEnabled,
+                          note: r.note,
+                        }}
+                        label={`従業員「${r.name}」`}
+                      />
+                      <MasterDeleteButton
+                        endpoint={kitagoyaApiPath(`/employees/${r.id}`)}
+                        label={`従業員「${r.name}」`}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
     </>
   );
+}
+
+function needsReview(row: EmployeeRow) {
+  return (
+    !hasText(row.affiliation) ||
+    !hasWorkTime(row) ||
+    row.defaultBreakMinutes < 0 ||
+    (row.shiftEntryEnabled && !row.shiftEntryToken) ||
+    !row.shiftEntryEnabled
+  );
+}
+
+function hasWorkTime(row: EmployeeRow) {
+  return Boolean(row.defaultStartTime && row.defaultEndTime);
+}
+
+function hasText(value: string | null) {
+  return Boolean(value && value.trim());
 }

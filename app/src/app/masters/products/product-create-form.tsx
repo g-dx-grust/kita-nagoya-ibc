@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import SearchableCombobox from "@/components/ui/searchable-combobox";
+import { forecastMethodLabel, productionTypeLabel } from "@/lib/labels";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -70,6 +71,56 @@ export default function ProductCreateForm({
     () => workAreas.map((workArea) => ({ value: workArea.id, label: workArea.name })),
     [workAreas],
   );
+  const defaultWorkAreaName = useMemo(
+    () => workAreas.find((workArea) => workArea.id === defaultWorkAreaId)?.name ?? null,
+    [workAreas, defaultWorkAreaId],
+  );
+  const capacityWorkAreaName = useMemo(
+    () => workAreas.find((workArea) => workArea.id === capWorkAreaId)?.name ?? null,
+    [workAreas, capWorkAreaId],
+  );
+  const createSummary = useMemo(() => {
+    const missingCode = !productCode.trim();
+    const missingName = !officialName.trim();
+    const missingCasePack = usedAtKitagoya && !casePackQty && !packCount;
+    const missingDefaultWorkArea = usedAtKitagoya && !defaultWorkAreaId;
+    const wantsCapacity = Boolean(unitsPerPersonHour.trim());
+    const invalidCapacity =
+      wantsCapacity &&
+      (!capWorkAreaId || !(Number(unitsPerPersonHour) > 0) || !(Number(standardPeople || "0") > 0));
+    const wantsBilling = Boolean(billingUnitPrice.trim());
+    const invalidBilling = wantsBilling && !(Number(billingUnitPrice) > 0);
+    const needsActionCount = [
+      missingCode,
+      missingName,
+      missingCasePack,
+      missingDefaultWorkArea,
+      invalidCapacity,
+      invalidBilling,
+    ].filter(Boolean).length;
+    return {
+      missingCode,
+      missingName,
+      missingCasePack,
+      missingDefaultWorkArea,
+      wantsCapacity,
+      invalidCapacity,
+      wantsBilling,
+      invalidBilling,
+      needsActionCount,
+    };
+  }, [
+    billingUnitPrice,
+    capWorkAreaId,
+    casePackQty,
+    defaultWorkAreaId,
+    officialName,
+    packCount,
+    productCode,
+    standardPeople,
+    unitsPerPersonHour,
+    usedAtKitagoya,
+  ]);
 
   function resetForm() {
     setProductCode("");
@@ -242,13 +293,58 @@ export default function ProductCreateForm({
   }
 
   return (
-    <form className="panel" onSubmit={submit}>
+    <form className="panel product-create-form" onSubmit={submit}>
       <div className="toolbar flush-top">
         <strong>新規商品</strong>
         <HelpTooltip text="ここでは商品マスターの基本情報を登録します。レシピ（BOM: 原料・資材）は登録後の編集画面で設定します。" />
       </div>
+      <div className="product-create-command">
+        <div className="product-create-command-title">
+          <span className={`badge ${createSummary.needsActionCount > 0 ? "warn" : "success"}`}>
+            {createSummary.needsActionCount > 0 ? "確認が必要" : "登録準備OK"}
+          </span>
+          <strong>登録前チェック</strong>
+          <span className="subtext">{createSummary.needsActionCount}項目</span>
+        </div>
+        <div className="product-create-checks">
+          <span className="badge info">{productionTypeLabel(productionType)}</span>
+          <span className="badge info">{forecastMethodLabel(forecastMethod)}</span>
+          <a
+            className={`badge ${createSummary.missingCode || createSummary.missingName ? "warn" : "success"}`}
+            href="#product-create-basic"
+          >
+            基本情報 {createSummary.missingCode || createSummary.missingName ? "要入力" : "OK"}
+          </a>
+          <a className={`badge ${createSummary.missingCasePack ? "warn" : "success"}`} href="#product-create-package">
+            ケース入数 {createSummary.missingCasePack ? "なし" : "OK"}
+          </a>
+          <a
+            className={`badge ${createSummary.missingDefaultWorkArea ? "warn" : "success"}`}
+            href="#product-create-work-area"
+          >
+            標準場所 {defaultWorkAreaName ?? "未設定"}
+          </a>
+          <a
+            className={`badge ${
+              createSummary.invalidCapacity ? "warn" : createSummary.wantsCapacity ? "success" : "muted"
+            }`}
+            href="#product-create-capacity"
+          >
+            能力 {createSummary.wantsCapacity ? capacityWorkAreaName ?? "要確認" : "後で設定"}
+          </a>
+          <a
+            className={`badge ${
+              createSummary.invalidBilling ? "warn" : createSummary.wantsBilling ? "success" : "muted"
+            }`}
+            href="#product-create-billing"
+          >
+            手間賃 {createSummary.wantsBilling ? "入力あり" : "後で設定"}
+          </a>
+          <span className="badge info">登録後にBOM設定へ</span>
+        </div>
+      </div>
 
-      <fieldset>
+      <fieldset id="product-create-basic">
         <legend>基本情報</legend>
         <div className="row">
           <label>
@@ -306,7 +402,7 @@ export default function ProductCreateForm({
         </div>
       </fieldset>
 
-      <fieldset>
+      <fieldset id="product-create-package">
         <legend>包装</legend>
         <div className="row">
           <label>
@@ -390,7 +486,7 @@ export default function ProductCreateForm({
         </div>
       </fieldset>
 
-      <fieldset>
+      <fieldset id="product-create-forecast">
         <legend>予測・在庫</legend>
         <div className="row">
           <label>
@@ -443,7 +539,7 @@ export default function ProductCreateForm({
         </div>
       </fieldset>
 
-      <fieldset>
+      <fieldset id="product-create-work-area">
         <legend>標準作業場所</legend>
         <div className="row">
           <label>
@@ -459,7 +555,7 @@ export default function ProductCreateForm({
         </div>
       </fieldset>
 
-      <fieldset>
+      <fieldset id="product-create-capacity">
         <legend>
           <span className="inline-action">
             生産能力（任意）
@@ -501,7 +597,7 @@ export default function ProductCreateForm({
         </div>
       </fieldset>
 
-      <fieldset>
+      <fieldset id="product-create-billing">
         <legend>
           <span className="inline-action">
             手間賃単価（任意）

@@ -39,6 +39,7 @@ export default function PackagingMasterTable({
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState("");
   const [supplierId, setSupplierId] = useState("");
+  const [needsSetupOnly, setNeedsSetupOnly] = useState(false);
 
   const kinds = useMemo(
     () => distinct(rows.map((r) => r.kind ?? "")),
@@ -59,21 +60,63 @@ export default function PackagingMasterTable({
       rows.filter((r) => {
         if (kind && (r.kind ?? "") !== kind) return false;
         if (supplierId && r.supplierId !== supplierId) return false;
+        if (needsSetupOnly && !needsSetup(r)) return false;
         return matchesQuery(query, [r.materialCode, r.name, r.unit, r.supplierName, r.note]);
       }),
-    [rows, query, kind, supplierId],
+    [rows, query, kind, supplierId, needsSetupOnly],
   );
 
-  const hasActiveFilters = !!(query || kind || supplierId);
+  const setupSummary = useMemo(() => {
+    const missingKind = rows.filter((r) => !r.kind).length;
+    const missingSupplier = rows.filter((r) => !r.supplierId).length;
+    const missingPrice = rows.filter((r) => r.standardUnitPrice <= 0).length;
+    const missingLeadTime = rows.filter((r) => r.leadTimeDays <= 0).length;
+    const missingCasePack = rows.filter((r) => r.casePackQty == null || r.casePackQty <= 0).length;
+    const missingOrderRule = rows.filter((r) => r.orderLotQty == null && r.minOrderQty == null).length;
+    const needsAction = rows.filter(needsSetup).length;
+    return { missingKind, missingSupplier, missingPrice, missingLeadTime, missingCasePack, missingOrderRule, needsAction };
+  }, [rows]);
+
+  const hasActiveFilters = !!(query || kind || supplierId || needsSetupOnly);
 
   function resetFilters() {
     setQuery("");
     setKind("");
     setSupplierId("");
+    setNeedsSetupOnly(false);
   }
 
   return (
     <>
+      <div className="packaging-master-command">
+        <div className="packaging-master-command-title">
+          <span className={`badge ${setupSummary.needsAction > 0 ? "warn" : "success"}`}>
+            {setupSummary.needsAction > 0 ? "確認が必要" : "整備済み"}
+          </span>
+          <strong>資材整備</strong>
+          <span className="subtext">{rows.length}件</span>
+        </div>
+        <div className="packaging-master-checks">
+          <span className={`badge ${setupSummary.missingKind > 0 ? "warn" : "success"}`}>
+            種類未設定 {setupSummary.missingKind}
+          </span>
+          <span className={`badge ${setupSummary.missingSupplier > 0 ? "warn" : "success"}`}>
+            仕入先未設定 {setupSummary.missingSupplier}
+          </span>
+          <span className={`badge ${setupSummary.missingPrice > 0 ? "warn" : "success"}`}>
+            単価未設定 {setupSummary.missingPrice}
+          </span>
+          <span className={`badge ${setupSummary.missingLeadTime > 0 ? "warn" : "success"}`}>
+            LT未設定 {setupSummary.missingLeadTime}
+          </span>
+          <span className={`badge ${setupSummary.missingCasePack > 0 ? "warn" : "success"}`}>
+            ケース入数なし {setupSummary.missingCasePack}
+          </span>
+          <span className={`badge ${setupSummary.missingOrderRule > 0 ? "warn" : "success"}`}>
+            発注基準未設定 {setupSummary.missingOrderRule}
+          </span>
+        </div>
+      </div>
       <CollapsiblePanel
         title="表内検索・絞り込み"
         summary={`${filtered.length} / ${rows.length} 件${hasActiveFilters ? " / 条件あり" : ""}`}
@@ -103,6 +146,14 @@ export default function PackagingMasterTable({
             placeholder="仕入先で絞り込み"
             onChange={setSupplierId}
           />
+          <label className="filter-check">
+            <input
+              type="checkbox"
+              checked={needsSetupOnly}
+              onChange={(e) => setNeedsSetupOnly(e.target.checked)}
+            />
+            要整備のみ
+          </label>
           <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
             条件クリア
           </button>
@@ -153,11 +204,29 @@ export default function PackagingMasterTable({
                 </td>
               </tr>
             ) : null}
-            {filtered.map((r) => (
-              <tr key={r.id} className="packaging-master-row">
+            {filtered.map((r) => {
+              const missingKind = !r.kind;
+              const missingSupplier = !r.supplierId;
+              const missingPrice = r.standardUnitPrice <= 0;
+              const missingLeadTime = r.leadTimeDays <= 0;
+              const missingCasePack = r.casePackQty == null || r.casePackQty <= 0;
+              const missingOrderRule = r.orderLotQty == null && r.minOrderQty == null;
+              const rowNeedsSetup = needsSetup(r);
+              return (
+              <tr key={r.id} className={`packaging-master-row${rowNeedsSetup ? " row-needs-action" : ""}`}>
                 <td data-label="番号">{highlight(r.materialCode, query)}</td>
                 <td className="wrap-cell packaging-name-cell" data-label="名称">
                   {highlight(r.name, query)}
+                  {rowNeedsSetup && (
+                    <div className="packaging-master-row-badges">
+                      {missingKind && <span className="badge warn">種類未設定</span>}
+                      {missingSupplier && <span className="badge warn">仕入先未設定</span>}
+                      {missingPrice && <span className="badge warn">単価未設定</span>}
+                      {missingLeadTime && <span className="badge warn">LT未設定</span>}
+                      {missingCasePack && <span className="badge warn">ケース入数なし</span>}
+                      {missingOrderRule && <span className="badge warn">発注基準未設定</span>}
+                    </div>
+                  )}
                 </td>
                 <td data-label="種類">
                   <span className={`badge ${r.kind ? "info" : "muted"}`}>
@@ -221,11 +290,24 @@ export default function PackagingMasterTable({
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
     </>
+  );
+}
+
+function needsSetup(row: PackagingRow) {
+  return (
+    !row.kind ||
+    !row.supplierId ||
+    row.standardUnitPrice <= 0 ||
+    row.leadTimeDays <= 0 ||
+    row.casePackQty == null ||
+    row.casePackQty <= 0 ||
+    (row.orderLotQty == null && row.minOrderQty == null)
   );
 }
 

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import SearchableCombobox from "@/components/ui/searchable-combobox";
+import { forecastMethodLabel, productionTypeLabel } from "@/lib/labels";
 import { kitagoyaApiPath } from "@/lib/paths";
 
 type Product = {
@@ -136,6 +137,49 @@ export default function ProductEditor({
     () => workAreas.map((workArea) => ({ value: workArea.id, label: workArea.name })),
     [workAreas],
   );
+  const defaultWorkAreaName = useMemo(
+    () => workAreas.find((workArea) => workArea.id === defaultWorkAreaId)?.name ?? null,
+    [workAreas, defaultWorkAreaId],
+  );
+  const setupSummary = useMemo(() => {
+    const invalidBomCount = bomRows.filter((row) => !isValidBomRow(row)).length;
+    const invalidCapacityCount = capRows.filter((row) => !isValidCapacityRow(row)).length;
+    const validBillingCount = billingRows.filter(isValidBillingRow).length;
+    const missingDefaultWorkArea = usedAtKitagoya && !defaultWorkAreaId;
+    const missingCasePack = usedAtKitagoya && !casePackQty && !packCount;
+    const missingBom = bomRows.length === 0;
+    const missingCapacity = capRows.length === 0;
+    const missingBilling = billingEnabled && validBillingCount === 0;
+    const needsActionCount = [
+      missingDefaultWorkArea,
+      missingCasePack,
+      missingBom,
+      invalidBomCount > 0,
+      missingCapacity,
+      invalidCapacityCount > 0,
+      missingBilling,
+    ].filter(Boolean).length;
+    return {
+      invalidBomCount,
+      invalidCapacityCount,
+      validBillingCount,
+      missingDefaultWorkArea,
+      missingCasePack,
+      missingBom,
+      missingCapacity,
+      missingBilling,
+      needsActionCount,
+    };
+  }, [
+    billingEnabled,
+    billingRows,
+    bomRows,
+    capRows,
+    casePackQty,
+    defaultWorkAreaId,
+    packCount,
+    usedAtKitagoya,
+  ]);
 
   async function saveMeta() {
     setSavingMeta(true);
@@ -299,6 +343,11 @@ export default function ProductEditor({
           <span className={`badge ${usedAtKitagoya ? "success" : "muted"}`}>
             {usedAtKitagoya ? "北名古屋使用" : "北名古屋対象外"}
           </span>
+          <span className="badge info">{productionTypeLabel(productionType)}</span>
+          <span className="badge info">{forecastMethodLabel(forecastMethod)}</span>
+          <span className={`badge ${defaultWorkAreaId ? "success" : "warn"}`}>
+            標準場所 {defaultWorkAreaName ?? "未設定"}
+          </span>
           <span className={`badge ${billingEnabled ? "success" : "muted"}`}>
             {billingEnabled ? "請求対象" : "請求対象外"}
           </span>
@@ -307,6 +356,43 @@ export default function ProductEditor({
           <span className={`badge ${billingRows.length > 0 ? "success" : "muted"}`}>
             手間賃 {billingRows.length}件
           </span>
+        </div>
+        <div className="product-editor-command">
+          <div className="product-editor-command-title">
+            <span className={`badge ${setupSummary.needsActionCount > 0 ? "warn" : "success"}`}>
+              {setupSummary.needsActionCount > 0 ? "確認が必要" : "整備済み"}
+            </span>
+            <strong>商品セットアップ</strong>
+            <span className="subtext">{setupSummary.needsActionCount}項目</span>
+          </div>
+          <div className="product-editor-checks">
+            <a
+              className={`badge ${setupSummary.missingDefaultWorkArea ? "warn" : "success"}`}
+              href="#product-basic"
+            >
+              標準場所 {setupSummary.missingDefaultWorkArea ? "未設定" : "設定済み"}
+            </a>
+            <a className={`badge ${setupSummary.missingCasePack ? "warn" : "success"}`} href="#product-basic">
+              ケース入数 {setupSummary.missingCasePack ? "なし" : "設定済み"}
+            </a>
+            <a
+              className={`badge ${setupSummary.missingBom || setupSummary.invalidBomCount > 0 ? "warn" : "success"}`}
+              href="#product-bom"
+            >
+              BOM {setupSummary.missingBom ? "未設定" : `要確認 ${setupSummary.invalidBomCount}`}
+            </a>
+            <a
+              className={`badge ${
+                setupSummary.missingCapacity || setupSummary.invalidCapacityCount > 0 ? "warn" : "success"
+              }`}
+              href="#product-capacity"
+            >
+              能力 {setupSummary.missingCapacity ? "未設定" : `要確認 ${setupSummary.invalidCapacityCount}`}
+            </a>
+            <a className={`badge ${setupSummary.missingBilling ? "warn" : "success"}`} href="#product-billing">
+              手間賃 {billingEnabled ? `${setupSummary.validBillingCount}件` : "対象外"}
+            </a>
+          </div>
         </div>
         <nav className="product-editor-nav" aria-label="商品編集セクション">
           <a href="#product-basic">基本情報</a>
@@ -553,84 +639,97 @@ export default function ProductEditor({
             </tr>
           </thead>
           <tbody>
-            {billingRows.map((r, idx) => (
-              <tr key={r.id ?? `new-${idx}`}>
-                <td>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={r.unitPrice}
-                    onChange={(e) => {
-                      const copy = [...billingRows];
-                      copy[idx] = { ...r, unitPrice: Number(e.target.value) };
-                      setBillingRows(copy);
-                    }}
-                  />
-                </td>
-                <td>
-                  <input
-                    className="unit-field"
-                    value={r.unit}
-                    onChange={(e) => {
-                      const copy = [...billingRows];
-                      copy[idx] = { ...r, unit: e.target.value };
-                      setBillingRows(copy);
-                    }}
-                  />
-                </td>
-                <td>
-                  <input
-                    type="date"
-                    value={r.effectiveFrom}
-                    onChange={(e) => {
-                      const copy = [...billingRows];
-                      copy[idx] = { ...r, effectiveFrom: e.target.value };
-                      setBillingRows(copy);
-                    }}
-                  />
-                </td>
-                <td>
-                  <input
-                    type="date"
-                    value={r.effectiveTo ?? ""}
-                    onChange={(e) => {
-                      const copy = [...billingRows];
-                      copy[idx] = { ...r, effectiveTo: e.target.value || null };
-                      setBillingRows(copy);
-                    }}
-                  />
-                </td>
-                <td>
-                  <select
-                    value={r.billingTarget ? "1" : "0"}
-                    onChange={(e) => {
-                      const copy = [...billingRows];
-                      copy[idx] = { ...r, billingTarget: e.target.value === "1" };
-                      setBillingRows(copy);
-                    }}
-                  >
-                    <option value="1">対象</option>
-                    <option value="0">対象外</option>
-                  </select>
-                </td>
-                <td>
-                  <div className="table-actions">
-                    <button type="button" onClick={() => saveBillingPrice(r, idx)} disabled={savingBilling}>
-                      保存
-                    </button>
-                    <button
-                      type="button"
-                      className="danger"
-                      onClick={() => deleteBillingPrice(r, idx)}
-                      disabled={savingBilling}
+            {billingRows.map((r, idx) => {
+              const missingUnit = !r.unit.trim();
+              const missingEffectiveFrom = !r.effectiveFrom;
+              const invalidPrice = !(r.unitPrice >= 0);
+              const rowNeedsReview = missingUnit || missingEffectiveFrom || invalidPrice;
+              return (
+                <tr key={r.id ?? `new-${idx}`} className={rowNeedsReview ? "row-needs-action" : ""}>
+                  <td>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={r.unitPrice}
+                      onChange={(e) => {
+                        const copy = [...billingRows];
+                        copy[idx] = { ...r, unitPrice: Number(e.target.value) };
+                        setBillingRows(copy);
+                      }}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="unit-field"
+                      value={r.unit}
+                      onChange={(e) => {
+                        const copy = [...billingRows];
+                        copy[idx] = { ...r, unit: e.target.value };
+                        setBillingRows(copy);
+                      }}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="date"
+                      value={r.effectiveFrom}
+                      onChange={(e) => {
+                        const copy = [...billingRows];
+                        copy[idx] = { ...r, effectiveFrom: e.target.value };
+                        setBillingRows(copy);
+                      }}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="date"
+                      value={r.effectiveTo ?? ""}
+                      onChange={(e) => {
+                        const copy = [...billingRows];
+                        copy[idx] = { ...r, effectiveTo: e.target.value || null };
+                        setBillingRows(copy);
+                      }}
+                    />
+                  </td>
+                  <td>
+                    <select
+                      value={r.billingTarget ? "1" : "0"}
+                      onChange={(e) => {
+                        const copy = [...billingRows];
+                        copy[idx] = { ...r, billingTarget: e.target.value === "1" };
+                        setBillingRows(copy);
+                      }}
                     >
-                      削除
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                      <option value="1">対象</option>
+                      <option value="0">対象外</option>
+                    </select>
+                  </td>
+                  <td>
+                    <div className="table-actions">
+                      {rowNeedsReview && (
+                        <div className="product-editor-row-badges">
+                          {invalidPrice && <span className="badge warn">単価要確認</span>}
+                          {missingUnit && <span className="badge warn">単位なし</span>}
+                          {missingEffectiveFrom && <span className="badge warn">開始日なし</span>}
+                        </div>
+                      )}
+                      <button type="button" onClick={() => saveBillingPrice(r, idx)} disabled={savingBilling}>
+                        保存
+                      </button>
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() => deleteBillingPrice(r, idx)}
+                        disabled={savingBilling}
+                      >
+                        削除
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
           </table>
         </div>
@@ -676,8 +775,13 @@ export default function ProductEditor({
             {bomRows.map((r, idx) => {
               const options = r.itemType === "raw_material" ? materials : packaging;
               const comboboxOptions = r.itemType === "raw_material" ? materialComboboxOptions : packagingComboboxOptions;
+              const missingItem = !r.itemId;
+              const invalidQuantity = !(r.quantityPerUnit > 0);
+              const missingUnit = !r.unit.trim();
+              const invalidLossRate = r.lossRate < 0;
+              const rowNeedsReview = missingItem || invalidQuantity || missingUnit || invalidLossRate;
               return (
-                <tr key={idx}>
+                <tr key={idx} className={rowNeedsReview ? "row-needs-action" : ""}>
                   <td>
                     <select
                       value={r.itemType}
@@ -741,13 +845,23 @@ export default function ProductEditor({
                     />
                   </td>
                   <td>
-                    <button
-                      type="button"
-                      className="secondary"
-                      onClick={() => setBomRows(bomRows.filter((_, i) => i !== idx))}
-                    >
-                      削除
-                    </button>
+                    <div className="table-actions product-editor-row-actions">
+                      {rowNeedsReview && (
+                        <div className="product-editor-row-badges">
+                          {missingItem && <span className="badge warn">品目未選択</span>}
+                          {invalidQuantity && <span className="badge warn">使用量要確認</span>}
+                          {missingUnit && <span className="badge warn">単位なし</span>}
+                          {invalidLossRate && <span className="badge warn">ロス率要確認</span>}
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => setBomRows(bomRows.filter((_, i) => i !== idx))}
+                      >
+                        削除
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -790,72 +904,85 @@ export default function ProductEditor({
             </tr>
           </thead>
           <tbody>
-            {capRows.map((r, idx) => (
-              <tr key={idx}>
-                <td>
-                  <SearchableCombobox
-                    value={r.workAreaId}
-                    disabled={!!r.id}
-                    options={workAreaOptions}
-                    emptyOptionLabel="選択"
-                    placeholder="作業場所名で検索"
-                    onChange={(workAreaId) => {
-                      const copy = [...capRows];
-                      copy[idx] = { ...r, workAreaId };
-                      setCapRows(copy);
-                    }}
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={r.candidatePriority ?? ""}
-                    onChange={(e) => {
-                      const copy = [...capRows];
-                      const value = e.target.value === "" ? null : Number(e.target.value);
-                      copy[idx] = { ...r, candidatePriority: value };
-                      setCapRows(copy);
-                    }}
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={r.unitsPerPersonHour}
-                    onChange={(e) => {
-                      const copy = [...capRows];
-                      copy[idx] = { ...r, unitsPerPersonHour: Number(e.target.value) };
-                      setCapRows(copy);
-                    }}
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    step="0.5"
-                    value={r.standardPeople}
-                    onChange={(e) => {
-                      const copy = [...capRows];
-                      copy[idx] = { ...r, standardPeople: Number(e.target.value) };
-                      setCapRows(copy);
-                    }}
-                  />
-                </td>
-                <td>
-                  <div className="table-actions">
-                    <button type="button" onClick={() => saveCapacity(r, idx)} disabled={savingCap || !r.workAreaId}>
-                      保存
-                    </button>
-                    <button type="button" className="danger" onClick={() => deleteCapacity(r, idx)} disabled={savingCap}>
-                      削除
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {capRows.map((r, idx) => {
+              const missingWorkArea = !r.workAreaId;
+              const invalidRate = !(r.unitsPerPersonHour > 0);
+              const invalidPeople = !(r.standardPeople > 0);
+              const rowNeedsReview = missingWorkArea || invalidRate || invalidPeople;
+              return (
+                <tr key={idx} className={rowNeedsReview ? "row-needs-action" : ""}>
+                  <td>
+                    <SearchableCombobox
+                      value={r.workAreaId}
+                      disabled={!!r.id}
+                      options={workAreaOptions}
+                      emptyOptionLabel="選択"
+                      placeholder="作業場所名で検索"
+                      onChange={(workAreaId) => {
+                        const copy = [...capRows];
+                        copy[idx] = { ...r, workAreaId };
+                        setCapRows(copy);
+                      }}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={r.candidatePriority ?? ""}
+                      onChange={(e) => {
+                        const copy = [...capRows];
+                        const value = e.target.value === "" ? null : Number(e.target.value);
+                        copy[idx] = { ...r, candidatePriority: value };
+                        setCapRows(copy);
+                      }}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={r.unitsPerPersonHour}
+                      onChange={(e) => {
+                        const copy = [...capRows];
+                        copy[idx] = { ...r, unitsPerPersonHour: Number(e.target.value) };
+                        setCapRows(copy);
+                      }}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={r.standardPeople}
+                      onChange={(e) => {
+                        const copy = [...capRows];
+                        copy[idx] = { ...r, standardPeople: Number(e.target.value) };
+                        setCapRows(copy);
+                      }}
+                    />
+                  </td>
+                  <td>
+                    <div className="table-actions product-editor-row-actions">
+                      {rowNeedsReview && (
+                        <div className="product-editor-row-badges">
+                          {missingWorkArea && <span className="badge warn">場所未選択</span>}
+                          {invalidRate && <span className="badge warn">生産量要確認</span>}
+                          {invalidPeople && <span className="badge warn">人数要確認</span>}
+                        </div>
+                      )}
+                      <button type="button" onClick={() => saveCapacity(r, idx)} disabled={savingCap || !r.workAreaId}>
+                        保存
+                      </button>
+                      <button type="button" className="danger" onClick={() => deleteCapacity(r, idx)} disabled={savingCap}>
+                        削除
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
           </table>
         </div>
@@ -892,4 +1019,16 @@ function itemRefComboboxOptions(items: ItemRef[]) {
     label: item.name,
     description: item.unit,
   }));
+}
+
+function isValidBomRow(row: BomRow) {
+  return Boolean(row.itemId && row.quantityPerUnit > 0 && row.unit.trim() && row.lossRate >= 0);
+}
+
+function isValidCapacityRow(row: CapacityRow) {
+  return Boolean(row.workAreaId && row.unitsPerPersonHour > 0 && row.standardPeople > 0);
+}
+
+function isValidBillingRow(row: BillingPriceRow) {
+  return Boolean(row.billingTarget && row.unitPrice >= 0 && row.unit.trim() && row.effectiveFrom);
 }
