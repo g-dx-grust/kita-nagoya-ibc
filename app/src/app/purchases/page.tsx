@@ -184,7 +184,7 @@ export default async function PurchasesPage({
       )}
 
       <h2>発注候補・発注状況</h2>
-      <PurchaseOrderTable rows={purchaseOrderRows} />
+      <PurchaseOrderTable rows={purchaseOrderRows} today={today} />
     </>
   );
 }

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
+import { matchesQuery } from "@/lib/search";
 import { ceilDisplayQuantity, formatCases } from "@/lib/units";
 
 export type DayRequirementRow = {
@@ -83,6 +84,8 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [viewFilter, setViewFilter] = useState<"" | "pending" | "issues" | "variance">("");
 
   const pending = useMemo(() => rows.filter((r) => r.reportStatus !== "confirmed"), [rows]);
   const confirmedCount = useMemo(() => rows.filter((r) => r.reportStatus === "confirmed").length, [rows]);
@@ -95,9 +98,33 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
     () => pending.filter((row) => rowNeedsReview(row, qty, cons)),
     [cons, pending, qty],
   );
-  const expandedCount = useMemo(() => Object.values(expanded).filter(Boolean).length, [expanded]);
-  const requirementRowCount = useMemo(() => rows.filter((row) => row.requirements.length > 0).length, [rows]);
-  const allRequirementRowsOpen = requirementRowCount > 0 && expandedCount >= requirementRowCount;
+  const filteredRows = useMemo(
+    () =>
+      rows.filter((row) => {
+        if (
+          !matchesQuery(search, [
+            row.productCode,
+            row.productName,
+            row.workAreaName,
+            reportStatusBadge(row.reportStatus).label,
+            row.planStatus,
+          ])
+        ) {
+          return false;
+        }
+        if (viewFilter === "pending" && row.reportStatus === "confirmed") return false;
+        if (viewFilter === "issues" && !rowNeedsReview(row, qty, cons)) return false;
+        if (viewFilter === "variance" && !rowHasVariance(row, qty, cons)) return false;
+        return true;
+      }),
+    [cons, qty, rows, search, viewFilter],
+  );
+  const visibleRequirementRows = useMemo(
+    () => filteredRows.filter((row) => row.requirements.length > 0),
+    [filteredRows],
+  );
+  const allRequirementRowsOpen =
+    visibleRequirementRows.length > 0 && visibleRequirementRows.every((row) => expanded[row.planId]);
   const canDraft = !busy && pending.length > 0 && pending.every((row) => rowHasNonNegativeValues(row, qty, cons));
   const canConfirm = canDraft && issueRows.length === 0;
   const saveStatus =
@@ -173,10 +200,22 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
 
   function toggleAllUsage() {
     if (allRequirementRowsOpen) {
-      setExpanded({});
+      setExpanded((prev) => {
+        const next = { ...prev };
+        for (const row of visibleRequirementRows) delete next[row.planId];
+        return next;
+      });
       return;
     }
-    setExpanded(Object.fromEntries(rows.filter((row) => row.requirements.length > 0).map((row) => [row.planId, true])));
+    setExpanded((prev) => ({
+      ...prev,
+      ...Object.fromEntries(visibleRequirementRows.map((row) => [row.planId, true])),
+    }));
+  }
+
+  function resetViewFilters() {
+    setSearch("");
+    setViewFilter("");
   }
 
   function resetPendingToPlan() {
@@ -221,6 +260,9 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
           <strong>{date} の日報入力</strong>
         </div>
         <div className="daily-report-day-checks" aria-label="当日日報の状態">
+          <span className="badge info">
+            表示 {filteredRows.length}/{rows.length}件
+          </span>
           <span className="badge muted">予定 {rows.length}件</span>
           <span className="badge success">確定 {confirmedCount}件</span>
           <span className="badge info">下書き {draftCount}件</span>
@@ -231,7 +273,7 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
           </span>
         </div>
         <div className="daily-report-day-command-actions">
-          <button type="button" className="secondary" onClick={toggleAllUsage} disabled={requirementRowCount === 0}>
+          <button type="button" className="secondary" onClick={toggleAllUsage} disabled={visibleRequirementRows.length === 0}>
             <ListTree size={15} aria-hidden="true" />
             {allRequirementRowsOpen ? "使用量を閉じる" : "使用量を開く"}
           </button>
@@ -242,6 +284,46 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
         </div>
       </div>
 
+      <div className="daily-report-day-filter">
+        <input
+          className="filter-search"
+          type="search"
+          placeholder="商品名・コード・場所で検索"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          aria-label="日報行を検索"
+        />
+        <div className="daily-report-day-filter-buttons" aria-label="日報表示切替">
+          <button
+            type="button"
+            className={viewFilter === "pending" ? "is-active" : ""}
+            onClick={() => setViewFilter((current) => (current === "pending" ? "" : "pending"))}
+          >
+            未確定
+          </button>
+          <button
+            type="button"
+            className={viewFilter === "issues" ? "is-active danger" : "danger"}
+            onClick={() => setViewFilter((current) => (current === "issues" ? "" : "issues"))}
+          >
+            要確認
+          </button>
+          <button
+            type="button"
+            className={viewFilter === "variance" ? "is-active" : ""}
+            onClick={() => setViewFilter((current) => (current === "variance" ? "" : "variance"))}
+          >
+            差異あり
+          </button>
+        </div>
+        <button type="button" className="secondary" onClick={resetViewFilters} disabled={!search && !viewFilter}>
+          条件クリア
+        </button>
+      </div>
+
+      {filteredRows.length === 0 ? (
+        <div className="empty-state">条件に一致する日報行はありません。</div>
+      ) : (
       <div className="table-frame daily-report-day-frame">
         <table className="daily-report-day-table">
           <thead>
@@ -257,7 +339,7 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
+            {filteredRows.map((r) => {
               const confirmed = r.reportStatus === "confirmed";
               const badge = reportStatusBadge(r.reportStatus);
               const actual = ceilDisplayQuantity(toNum(qty[r.planId])) ?? 0;
@@ -391,6 +473,7 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
           </tbody>
         </table>
       </div>
+      )}
 
       <div className="dr-actions">
         <div className="dr-save-status">

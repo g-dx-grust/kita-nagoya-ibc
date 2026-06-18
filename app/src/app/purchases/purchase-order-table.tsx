@@ -49,7 +49,18 @@ type ReceivingDraft = {
   receivedDate: string;
 };
 
-export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableRow[] }) {
+type PurchaseOrderReview = {
+  needsAction: boolean;
+  isUnplaced: boolean;
+  isCritical: boolean;
+  needsConfirm: boolean;
+  canReceive: boolean;
+  missingRecommendedDate: boolean;
+  missingExpectedArrivalDate: boolean;
+  isOverdueArrival: boolean;
+};
+
+export default function PurchaseOrderTable({ rows, today }: { rows: PurchaseOrderTableRow[]; today: string }) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -62,10 +73,14 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
   const [urgencyFilter, setUrgencyFilter] = useState("");
   const [itemTypeFilter, setItemTypeFilter] = useState("");
   const [queueFilter, setQueueFilter] = useState<"" | "unplaced" | "critical" | "receiving">("");
+  const [attentionOnly, setAttentionOnly] = useState(false);
 
+  const rowReviews = useMemo(() => buildPurchaseOrderReviews(rows, today), [rows, today]);
   const filteredRows = useMemo(
     () =>
       rows.filter((row) => {
+        const review = rowReviews.get(row.id);
+        if (attentionOnly && !review?.needsAction) return false;
         if (queueFilter === "unplaced" && row.status !== "candidate" && row.status !== "draft") return false;
         if (queueFilter === "critical" && row.urgency !== "CRITICAL") return false;
         if (queueFilter === "receiving" && row.status !== "confirmed") return false;
@@ -80,9 +95,10 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
           row.itemType === "raw_material" ? "原料" : "資材",
           purchaseOrderStatusLabel(row.status),
           purchaseOrderUrgencyLabel(row.urgency),
+          ...(review ? reviewKeywords(review) : []),
         ]);
       }),
-    [rows, search, statusFilter, urgencyFilter, itemTypeFilter, queueFilter],
+    [rows, search, statusFilter, urgencyFilter, itemTypeFilter, queueFilter, attentionOnly, rowReviews],
   );
 
   const queueCounts = useMemo(
@@ -93,8 +109,30 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
     }),
     [rows],
   );
+  const reviewSummary = useMemo(() => {
+    return [...rowReviews.values()].reduce(
+      (summary, review) => ({
+        needsAction: summary.needsAction + (review.needsAction ? 1 : 0),
+        unplaced: summary.unplaced + (review.isUnplaced ? 1 : 0),
+        critical: summary.critical + (review.isCritical ? 1 : 0),
+        confirmWaiting: summary.confirmWaiting + (review.needsConfirm ? 1 : 0),
+        receiveWaiting: summary.receiveWaiting + (review.canReceive ? 1 : 0),
+        missingDate: summary.missingDate + (review.missingRecommendedDate || review.missingExpectedArrivalDate ? 1 : 0),
+        overdueArrival: summary.overdueArrival + (review.isOverdueArrival ? 1 : 0),
+      }),
+      {
+        needsAction: 0,
+        unplaced: 0,
+        critical: 0,
+        confirmWaiting: 0,
+        receiveWaiting: 0,
+        missingDate: 0,
+        overdueArrival: 0,
+      },
+    );
+  }, [rowReviews]);
 
-  const hasActiveFilters = !!(search || statusFilter || urgencyFilter || itemTypeFilter || queueFilter);
+  const hasActiveFilters = !!(search || statusFilter || urgencyFilter || itemTypeFilter || queueFilter || attentionOnly);
 
   function resetFilters() {
     setSearch("");
@@ -102,12 +140,14 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
     setUrgencyFilter("");
     setItemTypeFilter("");
     setQueueFilter("");
+    setAttentionOnly(false);
   }
 
   function applyQueueFilter(next: "" | "unplaced" | "critical" | "receiving") {
     setQueueFilter((current) => (current === next ? "" : next));
     setStatusFilter("");
     setUrgencyFilter("");
+    setAttentionOnly(false);
   }
 
   function beginEdit(row: PurchaseOrderTableRow) {
@@ -270,6 +310,37 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
     <>
       {message && <div className="alert success">{message}</div>}
       {error && <div className="alert danger">{error}</div>}
+      <div className="purchase-order-review-command">
+        <div className="purchase-order-review-title">
+          <strong>発注一覧確認</strong>
+          <span className={`badge ${reviewSummary.needsAction > 0 ? "warn" : "success"}`}>
+            {reviewSummary.needsAction > 0 ? `要対応 ${reviewSummary.needsAction}件` : "対応済み"}
+          </span>
+        </div>
+        <div className="purchase-order-review-checks">
+          <span className="badge info">
+            表示 {filteredRows.length} / {rows.length} 件
+          </span>
+          <span className={`badge ${reviewSummary.unplaced > 0 ? "warn" : "success"}`}>
+            未発注 {reviewSummary.unplaced}
+          </span>
+          <span className={`badge ${reviewSummary.critical > 0 ? "danger" : "success"}`}>
+            緊急 {reviewSummary.critical}
+          </span>
+          <span className={`badge ${reviewSummary.confirmWaiting > 0 ? "warn" : "success"}`}>
+            確定待ち {reviewSummary.confirmWaiting}
+          </span>
+          <span className={`badge ${reviewSummary.receiveWaiting > 0 ? "info" : "success"}`}>
+            入荷確定待ち {reviewSummary.receiveWaiting}
+          </span>
+          <span className={`badge ${reviewSummary.overdueArrival > 0 ? "danger" : "success"}`}>
+            入荷予定超過 {reviewSummary.overdueArrival}
+          </span>
+          <span className={`badge ${reviewSummary.missingDate > 0 ? "warn" : "success"}`}>
+            日付未設定 {reviewSummary.missingDate}
+          </span>
+        </div>
+      </div>
       <div className="purchase-order-queue" aria-label="発注作業キュー">
         <button
           type="button"
@@ -350,6 +421,10 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
             <option value="raw_material">原料</option>
             <option value="packaging">資材</option>
           </select>
+          <label className="filter-check">
+            <input type="checkbox" checked={attentionOnly} onChange={(e) => setAttentionOnly(e.target.checked)} />
+            要対応のみ
+          </label>
           <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
             条件クリア
           </button>
@@ -400,11 +475,14 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
             <tbody>
           {filteredRows.map((row) => {
             const editing = editingId === row.id && draft;
+            const review = rowReviews.get(row.id);
             const rowClass = [
               "purchase-order-row",
               editing ? "is-editing" : "",
-              row.urgency === "CRITICAL" ? "is-critical" : "",
-              row.status === "candidate" || row.status === "draft" ? "is-unplaced" : "",
+              review?.needsAction ? "row-needs-action" : "",
+              review?.isCritical ? "is-critical" : "",
+              review?.isUnplaced ? "is-unplaced" : "",
+              review?.isOverdueArrival ? "is-overdue" : "",
             ].filter(Boolean).join(" ");
             return (
               <tr key={row.id} className={rowClass}>
@@ -428,6 +506,7 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
                     <td data-label="区分">{row.itemType === "raw_material" ? "原料" : "資材"}</td>
                     <td className="wrap-cell product-name-cell" data-label="品目">
                       {row.itemCode} · {row.itemName}
+                      <PurchaseOrderRowBadges review={review} />
                     </td>
                     <td data-label="仕入先">{row.supplierName}</td>
                     <td data-label="数量">
@@ -504,6 +583,7 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
                     <td data-label="区分">{row.itemType === "raw_material" ? "原料" : "資材"}</td>
                     <td className="wrap-cell product-name-cell" data-label="品目">
                       {row.itemCode} · {row.itemName}
+                      <PurchaseOrderRowBadges review={review} />
                     </td>
                     <td data-label="仕入先">{row.supplierName}</td>
                     <td className="right" data-label="数量">{qtyLabel(row, row.orderedQuantity)}</td>
@@ -602,10 +682,71 @@ export default function PurchaseOrderTable({ rows }: { rows: PurchaseOrderTableR
   );
 }
 
+function PurchaseOrderRowBadges({ review }: { review: PurchaseOrderReview | undefined }) {
+  if (!review?.needsAction) return null;
+  return (
+    <div className="purchase-order-row-badges">
+      {review.isUnplaced && <span className="badge warn">未発注</span>}
+      {review.isCritical && <span className="badge danger">緊急</span>}
+      {review.needsConfirm && <span className="badge warn">確定待ち</span>}
+      {review.canReceive && <span className="badge info">入荷確定待ち</span>}
+      {review.isOverdueArrival && <span className="badge danger">入荷予定超過</span>}
+      {review.missingRecommendedDate && <span className="badge warn">推奨発注日なし</span>}
+      {review.missingExpectedArrivalDate && <span className="badge warn">入荷予定なし</span>}
+    </div>
+  );
+}
+
 function qtyLabel(row: PurchaseOrderTableRow, value: number | null) {
   if (value == null) return "—";
   // 資材(casePackQtyあり)は基本単位とケース数を併記、原料は基本単位
   return formatCases(value, { casePackQty: row.casePackQty, baseUnit: row.unit });
+}
+
+function buildPurchaseOrderReviews(rows: PurchaseOrderTableRow[], today: string) {
+  const reviews = new Map<string, PurchaseOrderReview>();
+  for (const row of rows) {
+    const isClosed = row.status === "received" || row.status === "cancelled";
+    const isUnplaced = row.status === "candidate" || row.status === "draft";
+    const isCritical = row.urgency === "CRITICAL";
+    const needsConfirm = row.status === "ordered_unconfirmed";
+    const canReceive = row.status === "confirmed";
+    const missingRecommendedDate = isUnplaced && !row.recommendedOrderDate;
+    const missingExpectedArrivalDate = !isClosed && !isUnplaced && !row.expectedArrivalDate;
+    const isOverdueArrival = !isClosed && !!row.expectedArrivalDate && row.expectedArrivalDate < today;
+    const needsAction =
+      isUnplaced ||
+      isCritical ||
+      needsConfirm ||
+      canReceive ||
+      missingRecommendedDate ||
+      missingExpectedArrivalDate ||
+      isOverdueArrival;
+
+    reviews.set(row.id, {
+      needsAction,
+      isUnplaced,
+      isCritical,
+      needsConfirm,
+      canReceive,
+      missingRecommendedDate,
+      missingExpectedArrivalDate,
+      isOverdueArrival,
+    });
+  }
+  return reviews;
+}
+
+function reviewKeywords(review: PurchaseOrderReview) {
+  const keywords: string[] = [];
+  if (review.needsAction) keywords.push("要対応");
+  if (review.isUnplaced) keywords.push("未発注");
+  if (review.isCritical) keywords.push("緊急");
+  if (review.needsConfirm) keywords.push("確定待ち");
+  if (review.canReceive) keywords.push("入荷確定待ち");
+  if (review.isOverdueArrival) keywords.push("入荷予定超過");
+  if (review.missingRecommendedDate || review.missingExpectedArrivalDate) keywords.push("日付未設定");
+  return keywords;
 }
 
 export type ShortageForecastRow = {

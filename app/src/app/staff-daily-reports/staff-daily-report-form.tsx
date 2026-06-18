@@ -113,6 +113,8 @@ export default function StaffDailyReportForm({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [planSearch, setPlanSearch] = useState("");
+  const [planWorkArea, setPlanWorkArea] = useState("");
   const preview = usePreview(form, products, materialOptions, laborRates);
   const requiredProgress = useMemo(
     () => [
@@ -139,6 +141,42 @@ export default function StaffDailyReportForm({
       preview.operatingMinutes,
     ],
   );
+  const completedRequiredCount = requiredProgress.filter((item) => item.done).length;
+  const planAreaOptions = useMemo(
+    () => Array.from(new Set(plans.map((plan) => plan.workAreaName).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ja")),
+    [plans],
+  );
+  const filteredPlans = useMemo(() => {
+    const query = planSearch.trim();
+    return plans.filter((plan) => {
+      const matchesArea = !planWorkArea || plan.workAreaName === planWorkArea;
+      const matchesText =
+        !query ||
+        matchesQuery(query, [
+          plan.productCode,
+          plan.productName,
+          plan.workAreaName,
+          plan.plannedStartTime,
+          plan.plannedEndTime ?? "",
+          String(plan.plannedQuantity),
+          plan.unit,
+        ]);
+      return matchesArea && matchesText;
+    });
+  }, [planSearch, planWorkArea, plans]);
+  const selectedPlanId = useMemo(() => {
+    const selected = plans.find((plan) => {
+      const endTimeMatches = plan.plannedEndTime ? form.endTime === plan.plannedEndTime : true;
+      return (
+        form.productId === plan.productId &&
+        form.productionQty === String(plan.plannedQuantity) &&
+        form.startTime === plan.plannedStartTime &&
+        endTimeMatches
+      );
+    });
+    return selected?.id ?? "";
+  }, [form.endTime, form.productId, form.productionQty, form.startTime, plans]);
+  const hasPlanFilters = Boolean(planSearch.trim() || planWorkArea);
   const staffComboboxOptions = useMemo(
     () =>
       staffOptions.map((staff) => ({
@@ -248,6 +286,12 @@ export default function StaffDailyReportForm({
           <span className={`badge ${preview.warnings.length > 0 ? "warn" : "success"}`}>
             {preview.warnings.length > 0 ? `確認 ${preview.warnings.length}` : "計算OK"}
           </span>
+          <span className="badge info">
+            入力 {completedRequiredCount}/{requiredProgress.length}
+          </span>
+          <span className="badge muted">
+            予定 {filteredPlans.length}/{plans.length}
+          </span>
           <span className="badge info">写真 {photos.length}/4</span>
         </div>
         <div className="staff-entry-status-list">
@@ -264,10 +308,59 @@ export default function StaffDailyReportForm({
           <span>1</span>
           <h2>今日の予定</h2>
         </div>
+        {plans.length > 0 && (
+          <div className="staff-plan-filter">
+            <label className="staff-plan-search-field">
+              <span>予定検索</span>
+              <div className="staff-plan-search-input">
+                <Search className="h-5 w-5" />
+                <input
+                  type="search"
+                  value={planSearch}
+                  placeholder="商品名・コード・場所で検索"
+                  onChange={(event) => setPlanSearch(event.target.value)}
+                />
+              </div>
+            </label>
+            <label>
+              <span>作業場所</span>
+              <select value={planWorkArea} onChange={(event) => setPlanWorkArea(event.target.value)}>
+                <option value="">すべて</option>
+                {planAreaOptions.map((area) => (
+                  <option key={area} value={area}>
+                    {area}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="secondary staff-plan-reset"
+              disabled={!hasPlanFilters}
+              onClick={() => {
+                setPlanSearch("");
+                setPlanWorkArea("");
+              }}
+            >
+              <X className="h-4 w-4" />
+              条件解除
+            </button>
+          </div>
+        )}
         <div className="staff-plan-grid">
-          {plans.map((plan) => (
-            <button key={plan.id} type="button" className="staff-plan-button" onClick={() => applyPlan(plan)}>
-              <span className="staff-plan-product">{plan.productName}</span>
+          {filteredPlans.map((plan) => (
+            <button
+              key={plan.id}
+              type="button"
+              className={`staff-plan-button ${selectedPlanId === plan.id ? "is-selected" : ""}`}
+              onClick={() => applyPlan(plan)}
+            >
+              <span className="staff-plan-button-head">
+                <span className="staff-plan-product">
+                  {plan.productCode} {plan.productName}
+                </span>
+                {selectedPlanId === plan.id && <span className="badge success">選択中</span>}
+              </span>
               <span className="staff-plan-meta">
                 {plan.workAreaName} / {plan.plannedStartTime}〜{plan.plannedEndTime ?? "--:--"} /{" "}
                 {formatNumber(plan.plannedQuantity)}
@@ -276,6 +369,9 @@ export default function StaffDailyReportForm({
             </button>
           ))}
           {plans.length === 0 && <div className="empty-state">この日の予定はありません。商品を選んで入力してください。</div>}
+          {plans.length > 0 && filteredPlans.length === 0 && (
+            <div className="empty-state">条件に合う予定がありません。検索条件を外してください。</div>
+          )}
         </div>
       </section>
 

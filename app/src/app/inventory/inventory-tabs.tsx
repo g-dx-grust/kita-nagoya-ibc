@@ -16,6 +16,13 @@ type InventoryRowLabel = (typeof rowLabels)[number];
 
 export type InventoryTabKey = "product" | "raw" | "packaging";
 
+type InventoryRowReview = {
+  needsReview: boolean;
+  hasMovement: boolean;
+  negativeDays: number;
+  missingDeadlineDays: number;
+};
+
 export type InventoryTabMeta = {
   key: InventoryTabKey;
   label: string;
@@ -58,6 +65,7 @@ export function InventoryTabs({
   const [supplier, setSupplier] = useState("");
   const [inStockOnly, setInStockOnly] = useState(false);
   const [negativeOnly, setNegativeOnly] = useState(false);
+  const [attentionOnly, setAttentionOnly] = useState(false);
   const [showDeadlineRows, setShowDeadlineRows] = useState(true);
   // 商品タブは既定で北名古屋使用のみ表示(暫定スコープ)。
   const kitagoyaOnly = productScope !== "all";
@@ -75,6 +83,28 @@ export function InventoryTabs({
     return [...set].sort((a, b) => a.localeCompare(b, "ja"));
   }, [hasSupplier, sheet.rows]);
 
+  const rowReviews = useMemo(() => buildInventoryRowReviews(sheet.rows, itemType), [sheet.rows, itemType]);
+  const reviewSummary = useMemo(() => {
+    return [...rowReviews.values()].reduce(
+      (summary, review) => ({
+        needsReviewCount: summary.needsReviewCount + (review.needsReview ? 1 : 0),
+        movementRowCount: summary.movementRowCount + (review.hasMovement ? 1 : 0),
+        negativeItemCount: summary.negativeItemCount + (review.negativeDays > 0 ? 1 : 0),
+        negativeDayCount: summary.negativeDayCount + review.negativeDays,
+        missingDeadlineItemCount: summary.missingDeadlineItemCount + (review.missingDeadlineDays > 0 ? 1 : 0),
+        missingDeadlineDayCount: summary.missingDeadlineDayCount + review.missingDeadlineDays,
+      }),
+      {
+        needsReviewCount: 0,
+        movementRowCount: 0,
+        negativeItemCount: 0,
+        negativeDayCount: 0,
+        missingDeadlineItemCount: 0,
+        missingDeadlineDayCount: 0,
+      },
+    );
+  }, [rowReviews]);
+
   // 検索・仕入先・在庫トグルを AND で適用。
   const filteredRows = useMemo(() => {
     return sheet.rows.filter((row) => {
@@ -82,9 +112,10 @@ export function InventoryTabs({
       if (hasSupplier && supplier && row.supplierName !== supplier) return false;
       if (inStockOnly && row.monthEndQuantity === 0) return false;
       if (negativeOnly && !(row.monthEndQuantity < 0)) return false;
+      if (attentionOnly && !rowReviews.get(row.itemId)?.needsReview) return false;
       return true;
     });
-  }, [sheet.rows, query, hasSupplier, supplier, inStockOnly, negativeOnly]);
+  }, [sheet.rows, query, hasSupplier, supplier, inStockOnly, negativeOnly, attentionOnly, rowReviews]);
   const activeTabLabel = tabs.find((tab) => tab.key === active)?.label ?? title.replace("在庫表", "");
   const totalInStockCount = sheet.rows.filter((row) => row.monthEndQuantity !== 0).length;
   const totalNegativeCount = sheet.rows.filter((row) => row.monthEndQuantity < 0).length;
@@ -98,7 +129,8 @@ export function InventoryTabs({
     query ||
     supplier ||
     inStockOnly ||
-    negativeOnly
+    negativeOnly ||
+    attentionOnly
   );
 
   function resetFilters() {
@@ -106,6 +138,7 @@ export function InventoryTabs({
     setSupplier("");
     setInStockOnly(false);
     setNegativeOnly(false);
+    setAttentionOnly(false);
   }
 
   return (
@@ -125,6 +158,28 @@ export function InventoryTabs({
               <span className="inv-tab-count">{tab.count}</span>
             </Link>
           ))}
+        </div>
+      </div>
+      <div className="inventory-review-command">
+        <div className="inventory-review-command-title">
+          <strong>在庫確認</strong>
+          <span className={`badge ${reviewSummary.needsReviewCount > 0 ? "warn" : "success"}`}>
+            {reviewSummary.needsReviewCount > 0 ? `要確認 ${reviewSummary.needsReviewCount}品目` : "整備済み"}
+          </span>
+        </div>
+        <div className="inventory-review-checks">
+          <span className="badge info">
+            表示 {filteredRows.length} / {sheet.rows.length} 件
+          </span>
+          <span className="badge muted">入出庫あり {reviewSummary.movementRowCount}品目</span>
+          <span className={`badge ${reviewSummary.negativeItemCount > 0 ? "danger" : "success"}`}>
+            マイナス {reviewSummary.negativeItemCount}品目 / {reviewSummary.negativeDayCount}日
+          </span>
+          {itemType !== "product" && (
+            <span className={`badge ${reviewSummary.missingDeadlineItemCount > 0 ? "warn" : "success"}`}>
+              期限未入力 {reviewSummary.missingDeadlineItemCount}品目 / {reviewSummary.missingDeadlineDayCount}日
+            </span>
+          )}
         </div>
       </div>
       <div className="inventory-control-panel">
@@ -232,6 +287,10 @@ export function InventoryTabs({
             <input type="checkbox" checked={negativeOnly} onChange={(e) => setNegativeOnly(e.target.checked)} />
             マイナス在庫のみ
           </label>
+          <label className="filter-check">
+            <input type="checkbox" checked={attentionOnly} onChange={(e) => setAttentionOnly(e.target.checked)} />
+            要確認のみ
+          </label>
           <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
             <RotateCcw size={15} aria-hidden="true" />
             条件クリア
@@ -261,6 +320,7 @@ export function InventoryTabs({
           secondaryHeader={secondaryHeader}
           caseByItemId={caseByItemId}
           showShelfLifeRows={itemType !== "product" && showDeadlineRows}
+          rowReviews={rowReviews}
         />
       )}
     </section>
@@ -273,12 +333,14 @@ function InventoryExcelTable({
   secondaryHeader,
   caseByItemId,
   showShelfLifeRows,
+  rowReviews,
 }: {
   sheet: MonthlyInventorySheet;
   rows: MonthlyInventorySheetRow[];
   secondaryHeader: string;
   caseByItemId?: Record<string, number | null>;
   showShelfLifeRows: boolean;
+  rowReviews: Map<string, InventoryRowReview>;
 }) {
   const hasCaseRows =
     caseByItemId != null && rows.some((row) => (caseByItemId[row.itemId] ?? 0) > 0);
@@ -336,6 +398,7 @@ function InventoryExcelTable({
                   row={row}
                   casePackQty={caseByItemId?.[row.itemId] ?? null}
                   rowLabels={visibleRowLabels}
+                  review={rowReviews.get(row.itemId)}
                 />
               ))}
             </tbody>
@@ -350,10 +413,12 @@ function InventoryItemRows({
   row,
   casePackQty,
   rowLabels,
+  review,
 }: {
   row: MonthlyInventorySheetRow;
   casePackQty?: number | null;
   rowLabels: InventoryRowLabel[];
+  review?: InventoryRowReview;
 }) {
   const inCases = casePackQty != null && casePackQty > 0;
   // ケース入数があれば基本単位とケース数を併記。小数の数量は表示時に切り上げる。
@@ -364,7 +429,10 @@ function InventoryItemRows({
   return (
     <>
       {rowLabels.map((label, index) => (
-        <tr key={`${row.itemId}:${label}`} className={`excel-row-${labelClass(label)}`}>
+        <tr
+          key={`${row.itemId}:${label}`}
+          className={`excel-row-${labelClass(label)} ${review?.needsReview ? "inventory-review-row" : ""}`}
+        >
           {index === 0 && (
             <>
               <td className="sticky-x sticky-no excel-rowspan-cell right" rowSpan={rowLabels.length}>
@@ -376,6 +444,14 @@ function InventoryItemRows({
                   {row.code}
                   {inCases && " ・ケース"}
                 </div>
+                {review?.needsReview && (
+                  <div className="inventory-row-badges">
+                    {review.negativeDays > 0 && <span className="badge danger">マイナス {review.negativeDays}日</span>}
+                    {review.missingDeadlineDays > 0 && (
+                      <span className="badge warn">期限未入力 {review.missingDeadlineDays}日</span>
+                    )}
+                  </div>
+                )}
               </td>
               <td className="sticky-x sticky-supplier excel-rowspan-cell" rowSpan={rowLabels.length}>
                 {row.supplierName || "—"}
@@ -419,6 +495,26 @@ function cellClass(label: InventoryRowLabel, value: number) {
   const classes = ["right"];
   if (label === "残" && value < 0) classes.push("negative-stock");
   return classes.join(" ");
+}
+
+function buildInventoryRowReviews(rows: MonthlyInventorySheetRow[], itemType: EditableGridItemType) {
+  const map = new Map<string, InventoryRowReview>();
+  for (const row of rows) {
+    const negativeDays = row.days.filter((day) => day.balanceQuantity < 0).length;
+    const missingDeadlineDays =
+      itemType === "product"
+        ? 0
+        : row.days.filter((day) => day.inboundQuantity > 0 && (!day.expiryDate || !day.shippingDeadline)).length;
+    const hasMovement = row.usageTotalQuantity !== 0 || row.inboundTotalQuantity !== 0;
+    const needsReview = row.monthEndQuantity < 0 || negativeDays > 0 || missingDeadlineDays > 0;
+    map.set(row.itemId, {
+      needsReview,
+      hasMovement,
+      negativeDays,
+      missingDeadlineDays,
+    });
+  }
+  return map;
 }
 
 function labelClass(label: InventoryRowLabel) {

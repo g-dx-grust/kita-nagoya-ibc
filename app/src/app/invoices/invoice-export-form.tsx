@@ -4,7 +4,12 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { kitagoyaApiPath } from "@/lib/paths";
 
-export default function InvoiceExportForm() {
+type LatestPeriod = {
+  from: string;
+  to: string;
+};
+
+export default function InvoiceExportForm({ latestPeriod }: { latestPeriod: LatestPeriod | null }) {
   const router = useRouter();
   const [from, setFrom] = useState(currentMonthStart());
   const [to, setTo] = useState(todayString());
@@ -19,14 +24,21 @@ export default function InvoiceExportForm() {
   const validRange = from <= to;
   const periodDays = useMemo(() => diffDaysInclusive(from, to), [from, to]);
   const periodLabel = validRange ? `${periodDays} 日分` : "期間確認";
+  const matchesLatestPeriod = !!latestPeriod && latestPeriod.from === from && latestPeriod.to === to;
+  const longPeriod = validRange && periodDays > 31;
 
   function resetExportState() {
     setFeedback(null);
     setLastExport(null);
   }
 
-  function applyPreset(preset: "thisMonth" | "previousMonth" | "today") {
+  function applyPreset(preset: "thisMonth" | "previousMonth" | "today" | "latest") {
     resetExportState();
+    if (preset === "latest" && latestPeriod) {
+      setFrom(latestPeriod.from);
+      setTo(latestPeriod.to);
+      return;
+    }
     if (preset === "today") {
       const today = todayString();
       setFrom(today);
@@ -92,11 +104,14 @@ export default function InvoiceExportForm() {
         <div className="invoice-export-badges">
           <span className="badge">承認済み日報</span>
           <span className={validRange ? "badge info" : "badge danger"}>{periodLabel}</span>
+          {matchesLatestPeriod && <span className="badge warn">前回と同期間</span>}
         </div>
       </div>
       <div className="invoice-export-command">
         <div className="invoice-export-command-title">
-          <span className={`badge ${validRange ? "info" : "danger"}`}>{validRange ? "出力可能" : "期間確認"}</span>
+          <span className={`badge ${validRange ? (matchesLatestPeriod ? "warn" : "info") : "danger"}`}>
+            {validRange ? (matchesLatestPeriod ? "再出力確認" : "出力可能") : "期間確認"}
+          </span>
           <strong>出力準備</strong>
           <span className="subtext">
             {from} 〜 {to}
@@ -108,6 +123,8 @@ export default function InvoiceExportForm() {
             {billingOnly ? "請求対象のみ" : "外注/AX含む"}
           </span>
           <span className={`badge ${validRange ? "info" : "danger"}`}>{periodLabel}</span>
+          {longPeriod && <span className="badge warn">月跨ぎ</span>}
+          {matchesLatestPeriod && <span className="badge warn">前回と同期間</span>}
         </div>
       </div>
       <div className="invoice-export-presets" role="group" aria-label="出力期間プリセット">
@@ -120,6 +137,11 @@ export default function InvoiceExportForm() {
         <button type="button" className="secondary" onClick={() => applyPreset("today")}>
           今日
         </button>
+        {latestPeriod && (
+          <button type="button" className="secondary" onClick={() => applyPreset("latest")}>
+            前回期間
+          </button>
+        )}
       </div>
       <div className="invoice-export-grid">
         <label>

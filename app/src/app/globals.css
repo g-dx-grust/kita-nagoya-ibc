@@ -512,6 +512,38 @@ table {
   min-width: 108px;
 }
 
+.purchase-order-review-command {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.7fr);
+  gap: 10px 12px;
+  align-items: center;
+  margin: 0 0 12px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.purchase-order-review-title,
+.purchase-order-review-checks,
+.purchase-order-row-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.purchase-order-review-title strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.purchase-order-row-badges {
+  margin-top: 6px;
+}
+
 .purchase-command {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.4fr) auto;
@@ -559,9 +591,19 @@ table {
   background: #fff1f2;
 }
 
+.purchase-order-list-table .purchase-order-row.is-overdue > td {
+  background: #fff1f2;
+}
+
 .purchase-order-list-table .purchase-order-row.is-unplaced > td,
+.purchase-order-list-table .purchase-order-row.row-needs-action > td,
 .shortage-forecast-list-table .shortage-forecast-row.row-needs-action > td {
   background: #fffaf0;
+}
+
+.purchase-order-list-table .purchase-order-row.is-critical > td,
+.purchase-order-list-table .purchase-order-row.is-overdue > td {
+  background: #fff1f2;
 }
 
 .purchase-summary-grid {
@@ -658,8 +700,14 @@ table {
 }
 
 @media (max-width: 760px) {
-  .purchase-command {
+  .purchase-command,
+  .purchase-order-review-command {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .purchase-order-review-title,
+  .purchase-order-review-checks {
+    width: 100%;
   }
 
   .purchase-command-actions,
@@ -745,10 +793,22 @@ table {
     border-color: var(--danger-border);
   }
 
+  .purchase-order-list-table .purchase-order-row.is-overdue {
+    background: #fff1f2;
+    border-color: var(--danger-border);
+  }
+
   .purchase-order-list-table .purchase-order-row.is-unplaced,
+  .purchase-order-list-table .purchase-order-row.row-needs-action,
   .shortage-forecast-list-table .shortage-forecast-row.row-needs-action {
     background: #fffaf0;
     border-color: var(--warn-border);
+  }
+
+  .purchase-order-list-table .purchase-order-row.is-critical,
+  .purchase-order-list-table .purchase-order-row.is-overdue {
+    background: #fff1f2;
+    border-color: var(--danger-border);
   }
 
   .purchase-order-list-table .purchase-order-row > td,
@@ -847,11 +907,27 @@ table {
   border-radius: 8px;
 }
 
+.invoice-history-command {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.7fr);
+  gap: 10px 12px;
+  align-items: center;
+  margin: 0 0 12px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
 .invoice-export-badges,
 .invoice-export-presets,
 .invoice-export-command-title,
 .invoice-export-checks,
-.invoice-export-result-summary {
+.invoice-export-result-summary,
+.invoice-history-command-title,
+.invoice-history-checks,
+.invoice-history-row-badges {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -860,6 +936,7 @@ table {
 }
 
 .invoice-export-command-title strong,
+.invoice-history-command-title strong,
 .invoice-export-file-name {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -933,6 +1010,19 @@ table {
   font-weight: 600;
 }
 
+.invoice-file-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.invoice-history-row-badges {
+  margin-top: 6px;
+}
+
+.invoice-history-table .invoice-history-row.row-needs-action > td {
+  background: #fffaf0;
+}
+
 @media (max-width: 760px) {
   .invoice-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -952,8 +1042,14 @@ table {
     padding: 14px;
   }
 
-  .invoice-export-command {
+  .invoice-export-command,
+  .invoice-history-command {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .invoice-history-command-title,
+  .invoice-history-checks {
+    width: 100%;
   }
 
   .invoice-export-grid {
@@ -961,8 +1057,7 @@ table {
   }
 
   .invoice-export-presets {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
   }
 
   .invoice-export-presets button {
@@ -1007,6 +1102,11 @@ table {
     border: 1px solid var(--border);
     border-radius: 8px;
     box-shadow: var(--shadow);
+  }
+
+  .invoice-history-table .invoice-history-row.row-needs-action {
+    background: #fffaf0;
+    border-color: var(--warn-border);
   }
 
   .invoice-history-table .invoice-history-row > td {
@@ -5634,6 +5734,58 @@ form.toolbar {
   grid-column: span 2;
 }
 
+.staff-plan-filter {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.4fr) minmax(180px, 0.7fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.staff-plan-filter label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.staff-plan-search-input {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 6px;
+  align-items: center;
+  padding: 0 10px;
+  background: #fff;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+}
+
+.staff-plan-search-input svg {
+  color: var(--muted);
+}
+
+.staff-plan-search-input input {
+  min-height: 46px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.staff-plan-search-input input:focus {
+  border-color: transparent;
+  outline: none;
+}
+
+.staff-plan-reset {
+  min-height: 48px;
+  white-space: nowrap;
+}
+
 .staff-plan-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -5659,6 +5811,24 @@ form.toolbar {
   color: var(--text);
 }
 
+.staff-plan-button.is-selected {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.staff-plan-button-head {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.staff-plan-button-head .badge {
+  flex: 0 0 auto;
+}
+
 .staff-plan-product,
 .staff-plan-meta {
   display: block;
@@ -5666,11 +5836,17 @@ form.toolbar {
 }
 
 .staff-plan-product {
+  min-width: 0;
   overflow: hidden;
   font-size: 16px;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.staff-plan-button-head .staff-plan-product {
+  width: auto;
+  flex: 1 1 auto;
 }
 
 .staff-plan-meta {
@@ -5985,6 +6161,14 @@ form.toolbar {
 
   .staff-product-field {
     grid-column: 1 / -1;
+  }
+
+  .staff-plan-filter {
+    grid-template-columns: 1fr;
+  }
+
+  .staff-plan-reset {
+    width: 100%;
   }
 
   .staff-material-row {
@@ -9558,6 +9742,64 @@ button.mini {
   box-shadow: var(--shadow);
 }
 
+.inventory-review-command,
+.manual-grid-command {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.7fr);
+  gap: 10px 12px;
+  align-items: center;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.inventory-review-command-title,
+.inventory-review-checks,
+.manual-grid-command-title,
+.manual-grid-checks,
+.inventory-row-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.inventory-review-command-title strong,
+.manual-grid-command-title strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inventory-row-badges {
+  margin-top: 6px;
+}
+
+.manual-grid-review-toggle {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.manual-grid-review-toggle input {
+  margin: 0;
+}
+
 .inventory-control-main,
 .inventory-control-actions {
   display: flex;
@@ -9684,6 +9926,19 @@ mark.search-hit {
   .inventory-control-panel {
     grid-template-columns: minmax(0, 1fr);
     padding: 12px;
+  }
+
+  .inventory-review-command,
+  .manual-grid-command {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px;
+  }
+
+  .inventory-review-command-title,
+  .inventory-review-checks,
+  .manual-grid-command-title,
+  .manual-grid-checks {
+    width: 100%;
   }
 
   .inventory-control-actions {
@@ -9931,6 +10186,16 @@ mark.search-hit {
 .excel-row-deadline td,
 .excel-row-deadline th {
   border-bottom: 2px solid #737f79;
+}
+
+.excel-inventory-table .inventory-review-row td,
+.excel-inventory-table .inventory-review-row th {
+  background: #fffaf0;
+}
+
+.excel-inventory-table .inventory-review-row .sticky-x,
+.excel-inventory-table .inventory-review-row .excel-line-label {
+  background: #fff4d8;
 }
 
 .excel-row-usage .sticky-x,
@@ -10295,6 +10560,11 @@ td .combobox {
   color: var(--primary);
 }
 
+.manual-grid-command {
+  margin: 12px 0;
+  background: var(--surface-subtle);
+}
+
 /* 編集セル: 入力欄＋自動値ヒント */
 .excel-inventory-editable .excel-cell-input {
   width: 100%;
@@ -10415,6 +10685,56 @@ td .combobox {
   gap: 6px;
 }
 
+.daily-report-day-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.daily-report-day-filter .filter-search {
+  flex: 1 1 280px;
+  max-width: 460px;
+}
+
+.daily-report-day-filter-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.daily-report-day-filter-buttons button {
+  min-height: 34px;
+  padding: 6px 10px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.daily-report-day-filter-buttons button.is-active {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.daily-report-day-filter-buttons button.danger {
+  color: var(--danger);
+}
+
+.daily-report-day-filter-buttons button.is-active.danger {
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
+
 .dr-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -10474,6 +10794,29 @@ tr.row-muted > td {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
+  }
+
+  .daily-report-day-filter {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px;
+  }
+
+  .daily-report-day-filter .filter-search,
+  .daily-report-day-filter > button {
+    width: 100%;
+    max-width: none;
+  }
+
+  .daily-report-day-filter-buttons {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .daily-report-day-filter-buttons button {
+    width: 100%;
+    min-width: 0;
+    white-space: normal;
   }
 
   .daily-report-day-command-actions button {

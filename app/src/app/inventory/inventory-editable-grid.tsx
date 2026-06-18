@@ -11,11 +11,18 @@ import { kitagoyaApiPath } from "@/lib/paths";
 export type EditableGridItemType = "product" | "raw_material" | "packaging";
 
 const rowLabels = ["使用量", "入荷", "残", "賞味期限", "出荷期限"] as const;
+type EditableGridRowLabel = (typeof rowLabels)[number];
 
 // 1セルの編集値(4項目)。数値は入力中の文字列で保持し、保存時に数値化する。
 type CellEdit = { inbound: string; usage: string; expiry: string; shipping: string };
 type ItemEdits = { opening?: string; days: Record<string, CellEdit> };
 type EditMap = Record<string, ItemEdits>;
+type ManualGridRowReview = {
+  needsReview: boolean;
+  dirtyCount: number;
+  negativeDays: number;
+  missingDeadlineDays: number;
+};
 
 function initialCell(row: EditableGridRow, date: string): CellEdit {
   const d = row.days.find((x) => x.date === date);
@@ -63,13 +70,20 @@ export function InventoryEditableGrid({
   const [edits, setEdits] = useState<EditMap>({});
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [reviewOnly, setReviewOnly] = useState(false);
 
   const rowById = useMemo(() => new Map(rows.map((r) => [r.itemId, r])), [rows]);
+  const editableRowLabels = useMemo(
+    (): readonly EditableGridRowLabel[] => (itemType === "product" ? ["使用量", "入荷", "残"] : rowLabels),
+    [itemType],
+  );
+  const rowReviews = useMemo(() => buildManualGridRowReviews(rows, edits, itemType), [rows, edits, itemType]);
   const renderRows = useMemo(() => {
-    if (!visibleItemIds) return rows;
-    const set = new Set(visibleItemIds);
-    return rows.filter((r) => set.has(r.itemId));
-  }, [rows, visibleItemIds]);
+    const visibleSet = visibleItemIds ? new Set(visibleItemIds) : null;
+    const baseRows = visibleSet ? rows.filter((row) => visibleSet.has(row.itemId)) : rows;
+    if (!reviewOnly) return baseRows;
+    return baseRows.filter((row) => rowReviews.get(row.itemId)?.needsReview);
+  }, [rows, visibleItemIds, reviewOnly, rowReviews]);
 
   // setter は安定参照にする(各行の useMemo/再描画が編集のたびに無駄に走らないように)。
   const setCellField = useCallback(
@@ -114,6 +128,26 @@ export function InventoryEditableGrid({
   }, [edits, rowById]);
 
   const hasChanges = dirtyCells.size > 0;
+  const reviewSummary = useMemo(() => {
+    return [...rowReviews.values()].reduce(
+      (summary, review) => ({
+        dirtyRowCount: summary.dirtyRowCount + (review.dirtyCount > 0 ? 1 : 0),
+        negativeRowCount: summary.negativeRowCount + (review.negativeDays > 0 ? 1 : 0),
+        negativeDayCount: summary.negativeDayCount + review.negativeDays,
+        missingDeadlineRowCount: summary.missingDeadlineRowCount + (review.missingDeadlineDays > 0 ? 1 : 0),
+        missingDeadlineDayCount: summary.missingDeadlineDayCount + review.missingDeadlineDays,
+        needsReviewCount: summary.needsReviewCount + (review.needsReview ? 1 : 0),
+      }),
+      {
+        dirtyRowCount: 0,
+        negativeRowCount: 0,
+        negativeDayCount: 0,
+        missingDeadlineRowCount: 0,
+        missingDeadlineDayCount: 0,
+        needsReviewCount: 0,
+      },
+    );
+  }, [rowReviews]);
 
   function reset() {
     setEdits({});
@@ -190,6 +224,35 @@ export function InventoryEditableGrid({
         </span>
       </div>
 
+      <div className="manual-grid-command">
+        <div className="manual-grid-command-title">
+          <strong>手入力確認</strong>
+          <span className={`badge ${reviewSummary.needsReviewCount > 0 ? "warn" : "success"}`}>
+            {reviewSummary.needsReviewCount > 0 ? `要確認 ${reviewSummary.needsReviewCount}品目` : "整備済み"}
+          </span>
+        </div>
+        <div className="manual-grid-checks">
+          <span className="badge info">
+            表示 {renderRows.length} / {rows.length} 件
+          </span>
+          <span className={`badge ${hasChanges ? "warn" : "success"}`}>
+            未保存 {reviewSummary.dirtyRowCount}品目 / {dirtyCells.size}セル
+          </span>
+          <span className={`badge ${reviewSummary.negativeRowCount > 0 ? "danger" : "success"}`}>
+            マイナス {reviewSummary.negativeRowCount}品目 / {reviewSummary.negativeDayCount}日
+          </span>
+          {itemType !== "product" && (
+            <span className={`badge ${reviewSummary.missingDeadlineRowCount > 0 ? "warn" : "success"}`}>
+              期限未入力 {reviewSummary.missingDeadlineRowCount}品目 / {reviewSummary.missingDeadlineDayCount}日
+            </span>
+          )}
+          <label className="manual-grid-review-toggle">
+            <input type="checkbox" checked={reviewOnly} onChange={(event) => setReviewOnly(event.target.checked)} />
+            要確認のみ
+          </label>
+        </div>
+      </div>
+
       <div className="inventory-sheet-meta">
         <span className="badge info">{monthLabel}</span>
         <span className="muted">
@@ -234,6 +297,8 @@ export function InventoryEditableGrid({
                   key={row.itemId}
                   row={row}
                   itemEdit={edits[row.itemId]}
+                  rowLabels={editableRowLabels}
+                  rowReview={rowReviews.get(row.itemId)}
                   setCellField={setCellField}
                   setOpening={setOpening}
                 />
@@ -249,11 +314,15 @@ export function InventoryEditableGrid({
 function EditableItemRows({
   row,
   itemEdit,
+  rowLabels,
+  rowReview,
   setCellField,
   setOpening,
 }: {
   row: EditableGridRow;
   itemEdit: ItemEdits | undefined;
+  rowLabels: readonly EditableGridRowLabel[];
+  rowReview: ManualGridRowReview | undefined;
   setCellField: (row: EditableGridRow, date: string, field: keyof CellEdit, value: string) => void;
   setOpening: (row: EditableGridRow, value: string) => void;
 }) {
@@ -303,7 +372,10 @@ function EditableItemRows({
   return (
     <>
       {rowLabels.map((label, index) => (
-        <tr key={`${row.itemId}:${label}`} className={`excel-row-${labelClass(label)}`}>
+        <tr
+          key={`${row.itemId}:${label}`}
+          className={`excel-row-${labelClass(label)} ${rowReview?.needsReview ? "inventory-review-row" : ""}`}
+        >
           {index === 0 && (
             <>
               <td className="sticky-x sticky-no excel-rowspan-cell right" rowSpan={rowLabels.length}>
@@ -312,6 +384,17 @@ function EditableItemRows({
               <td className="sticky-x sticky-name excel-rowspan-cell" rowSpan={rowLabels.length}>
                 <div className="excel-item-name">{row.name}</div>
                 <div className="subtext">{row.code}</div>
+                {rowReview?.needsReview && (
+                  <div className="inventory-row-badges">
+                    {rowReview.dirtyCount > 0 && <span className="badge warn">未保存 {rowReview.dirtyCount}セル</span>}
+                    {rowReview.negativeDays > 0 && (
+                      <span className="badge danger">マイナス {rowReview.negativeDays}日</span>
+                    )}
+                    {rowReview.missingDeadlineDays > 0 && (
+                      <span className="badge warn">期限未入力 {rowReview.missingDeadlineDays}日</span>
+                    )}
+                  </div>
+                )}
               </td>
               <td className="sticky-x sticky-supplier excel-rowspan-cell" rowSpan={rowLabels.length}>
                 {row.supplierName || "—"}
@@ -431,6 +514,66 @@ function labelClass(label: (typeof rowLabels)[number]) {
     case "出荷期限":
       return "deadline";
   }
+}
+
+function buildManualGridRowReviews(rows: EditableGridRow[], edits: EditMap, itemType: EditableGridItemType) {
+  const reviews = new Map<string, ManualGridRowReview>();
+  for (const row of rows) {
+    const itemEdit = edits[row.itemId];
+    const balances = computeEditableRowBalances(row, itemEdit);
+    const negativeDays =
+      (balances.opening < 0 ? 1 : 0) + balances.balances.filter((balance) => balance < 0).length;
+    const dirtyCount = countDirtyCells(row, itemEdit);
+    const missingDeadlineDays = countMissingDeadlineDays(row, itemEdit, itemType);
+    reviews.set(row.itemId, {
+      needsReview: dirtyCount > 0 || negativeDays > 0 || missingDeadlineDays > 0,
+      dirtyCount,
+      negativeDays,
+      missingDeadlineDays,
+    });
+  }
+  return reviews;
+}
+
+function computeEditableRowBalances(row: EditableGridRow, itemEdit: ItemEdits | undefined) {
+  return computeGridBalances({
+    openingAuto: row.openingAuto,
+    gridOpening: toNum(itemEdit?.opening ?? initialOpening(row)),
+    days: row.days.map((day) => {
+      const cell = itemEdit?.days[day.date] ?? initialCell(row, day.date);
+      return {
+        autoInbound: day.autoInbound,
+        autoUsage: day.autoUsage,
+        gridInbound: toNum(cell.inbound),
+        gridUsage: toNum(cell.usage),
+      };
+    }),
+  });
+}
+
+function countDirtyCells(row: EditableGridRow, itemEdit: ItemEdits | undefined) {
+  if (!itemEdit) return 0;
+  let count = 0;
+  if (itemEdit.opening !== undefined && itemEdit.opening !== initialOpening(row)) count += 1;
+  for (const [date, cell] of Object.entries(itemEdit.days)) {
+    const init = initialCell(row, date);
+    (["inbound", "usage", "expiry", "shipping"] as const).forEach((field) => {
+      if (cell[field] !== init[field]) count += 1;
+    });
+  }
+  return count;
+}
+
+function countMissingDeadlineDays(
+  row: EditableGridRow,
+  itemEdit: ItemEdits | undefined,
+  itemType: EditableGridItemType,
+) {
+  if (itemType === "product") return 0;
+  return row.days.filter((day) => {
+    const cell = itemEdit?.days[day.date] ?? initialCell(row, day.date);
+    return toNum(cell.inbound) > 0 && (!cell.expiry || !cell.shipping);
+  }).length;
 }
 
 function formatDateHeader(date: string) {
