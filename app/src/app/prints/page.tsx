@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ChevronLeft, ChevronRight, Printer, Users } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { kitagoyaPath } from "@/lib/paths";
 
@@ -10,8 +11,11 @@ export default async function PrintsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const sp = await searchParams;
-  const date = sp.date ?? new Date().toISOString().slice(0, 10);
+  const date = sp.date ?? toDateInputValue(new Date());
   const [start, end] = dayRange(date);
+  const previousDate = shiftDate(date, -1);
+  const nextDate = shiftDate(date, 1);
+  const today = toDateInputValue(new Date());
 
   const plans = await prisma.productionPlan.findMany({
     where: { date: { gte: start, lt: end }, status: { not: "cancelled" } },
@@ -29,15 +33,30 @@ export default async function PrintsPage({
       <div className="page-title-row">
         <h1>現場印刷</h1>
         <div className="page-title-actions">
-          <Link className="button-link" href={kitagoyaPath(`/prints/production-schedule?date=${date}`)}>
+          <Link className="button-link gap-2" href={kitagoyaPath(`/prints/production-schedule?date=${date}`)}>
+            <Printer className="h-4 w-4" />
             生産スケジュール印刷
           </Link>
-          <Link className="button-link" href={kitagoyaPath(`/prints/staff-assignments?date=${date}`)}>
+          <Link className="button-link gap-2" href={kitagoyaPath(`/prints/staff-assignments?date=${date}`)}>
+            <Printer className="h-4 w-4" />
             スタッフ配置印刷
           </Link>
         </div>
       </div>
       <form className="panel prints-control-panel" method="GET">
+        <div className="prints-date-nav">
+          <Link className="button-link secondary-link gap-2" href={kitagoyaPath(`/prints?date=${previousDate}`)}>
+            <ChevronLeft className="h-4 w-4" />
+            前日
+          </Link>
+          <Link className="button-link secondary-link" href={kitagoyaPath(`/prints?date=${today}`)}>
+            今日
+          </Link>
+          <Link className="button-link secondary-link gap-2" href={kitagoyaPath(`/prints?date=${nextDate}`)}>
+            翌日
+            <ChevronRight className="h-4 w-4" />
+          </Link>
+        </div>
         <div className="prints-control-fields">
           <label>
             <span>対象日</span>
@@ -74,6 +93,17 @@ export default async function PrintsPage({
           <div className="metric-label">未配置</div>
           <div className={`metric-value${unassignedCount > 0 ? " danger-value" : ""}`}>{unassignedCount} 人</div>
         </div>
+      </div>
+
+      <div className={`prints-readiness-panel ${unassignedCount > 0 ? "warn" : "success"}`}>
+        <div>
+          <span className="badge">印刷準備</span>
+          <strong>{unassignedCount > 0 ? `未配置 ${unassignedCount} 人` : "配置確認済み"}</strong>
+        </div>
+        <Link className="button-link secondary-link gap-2" href={kitagoyaPath(`/production-plans/allocate?date=${date}`)}>
+          <Users className="h-4 w-4" />
+          当日割り当て
+        </Link>
       </div>
 
       <section className="prints-output-section">
@@ -128,4 +158,17 @@ function dayRange(date: string): [Date, Date] {
   const end = new Date(date);
   end.setDate(end.getDate() + 1);
   return [start, end];
+}
+
+function shiftDate(date: string, days: number) {
+  const target = new Date(`${date}T00:00:00`);
+  target.setDate(target.getDate() + days);
+  return toDateInputValue(target);
+}
+
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }

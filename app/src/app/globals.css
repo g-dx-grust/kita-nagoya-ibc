@@ -920,6 +920,13 @@ table {
   margin-bottom: 14px;
 }
 
+.prints-date-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 .prints-control-fields {
   display: flex;
   flex: 1 1 180px;
@@ -956,6 +963,46 @@ table {
 
 .prints-summary-grid .danger-value {
   color: var(--danger);
+}
+
+.prints-readiness-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 8px;
+}
+
+.prints-readiness-panel.warn {
+  background: var(--warn-soft);
+  border-color: var(--warn-border);
+  border-left-color: var(--warn);
+}
+
+.prints-readiness-panel.success {
+  background: var(--success-soft);
+  border-color: var(--success-border);
+  border-left-color: var(--success);
+}
+
+.prints-readiness-panel > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.prints-readiness-panel strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 16px;
+  overflow-wrap: anywhere;
 }
 
 .prints-output-section {
@@ -1030,11 +1077,33 @@ table {
 
 @media (max-width: 760px) {
   .prints-control-panel,
+  .prints-date-nav,
   .prints-control-fields,
   .prints-control-fields label,
   .prints-control-panel button {
     width: 100%;
     max-width: none;
+  }
+
+  .prints-date-nav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .prints-date-nav .button-link {
+    justify-content: center;
+    min-width: 0;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .prints-readiness-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .prints-readiness-panel .button-link {
+    justify-content: center;
+    width: 100%;
   }
 
   .prints-summary-grid,
