@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useState, type KeyboardEvent, type ReactNode } from "react";
 
 export type SectionTabItem = {
   id: string;
@@ -18,6 +18,7 @@ export default function SectionTabs({
   onActiveTabChange,
   className,
   inlineHeader = false,
+  hashPrefix,
 }: {
   ariaLabel: string;
   items: SectionTabItem[];
@@ -26,6 +27,7 @@ export default function SectionTabs({
   onActiveTabChange?: (tabId: string) => void;
   className?: string;
   inlineHeader?: boolean;
+  hashPrefix?: string;
 }) {
   const baseId = useId();
   const firstId = items[0]?.id ?? "";
@@ -41,6 +43,26 @@ export default function SectionTabs({
     if (!isControlled) setInternalActiveId(tabId);
     onActiveTabChange?.(tabId);
   }
+
+  useEffect(() => {
+    if (!hashPrefix) return;
+
+    function syncFromHash() {
+      const hash = window.location.hash.replace(/^#/, "");
+      const prefix = `${hashPrefix}-`;
+      if (!hash.startsWith(prefix)) return;
+      const tabId = hash.slice(prefix.length);
+      if (!items.some((item) => item.id === tabId)) return;
+      setActiveId(tabId);
+      requestAnimationFrame(() => {
+        document.getElementById(panelDomId(baseId, tabId, hashPrefix))?.scrollIntoView({ block: "start" });
+      });
+    }
+
+    syncFromHash();
+    window.addEventListener("hashchange", syncFromHash);
+    return () => window.removeEventListener("hashchange", syncFromHash);
+  }, [hashPrefix, items]);
 
   function focusTab(index: number) {
     const next = items[index];
@@ -78,7 +100,7 @@ export default function SectionTabs({
             type="button"
             role="tab"
             aria-selected={active}
-            aria-controls={panelDomId(baseId, item.id)}
+            aria-controls={panelDomId(baseId, item.id, hashPrefix)}
             className={`section-tab${active ? " is-active" : ""}`}
             tabIndex={active ? 0 : -1}
             onClick={() => setActiveId(item.id)}
@@ -105,7 +127,7 @@ export default function SectionTabs({
       {items.map((item) => (
         <div
           key={item.id}
-          id={panelDomId(baseId, item.id)}
+          id={panelDomId(baseId, item.id, hashPrefix)}
           role="tabpanel"
           aria-labelledby={tabDomId(baseId, item.id)}
           className="section-tab-panel"
@@ -122,6 +144,6 @@ function tabDomId(baseId: string, tabId: string) {
   return `${baseId}-tab-${tabId}`;
 }
 
-function panelDomId(baseId: string, tabId: string) {
-  return `${baseId}-panel-${tabId}`;
+function panelDomId(baseId: string, tabId: string, hashPrefix?: string) {
+  return hashPrefix ? `${hashPrefix}-${tabId}` : `${baseId}-panel-${tabId}`;
 }

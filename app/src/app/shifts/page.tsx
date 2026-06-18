@@ -263,6 +263,14 @@ export default async function ShiftsPage({
       tone: monthReviewCount === 0 ? "success" : "info",
       Icon: ClipboardCheck,
     },
+    {
+      label: "CSV取込",
+      count: "取込",
+      detail: "出勤表CSV",
+      href: "#shift-csv-import",
+      tone: presentShiftCount > 0 ? "info" : "warn",
+      Icon: Upload,
+    },
   ];
 
   const cellMap: Record<

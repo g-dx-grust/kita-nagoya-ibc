@@ -1,5 +1,5 @@
 import CollapsiblePanel from "@/components/ui/collapsible-panel";
-import { AlertTriangle, ClipboardList, PackageCheck, Truck, Warehouse } from "lucide-react";
+import { AlertTriangle, CalendarDays, ClipboardList, PackageCheck, Search, Truck, Warehouse } from "lucide-react";
 import GeneratePurchaseCandidatesButton from "./generate-button";
 import PurchaseOrderTable, {
   ShortageForecastTable,
@@ -108,17 +108,25 @@ export default async function PurchasesPage({
   const criticalOrderCount = purchaseOrderRows.filter((row) => row.urgency === "CRITICAL").length;
   const purchaseNextAction =
     hardShortageCount > 0
-      ? "実不足を確認"
+      ? { label: "実不足を確認", href: "#purchase-shortages" }
       : criticalOrderCount > 0
-        ? "緊急発注を確認"
+        ? { label: "緊急発注を確認", href: "#purchase-orders" }
         : pendingOrderCount > 0
-          ? "未発注を処理"
+          ? { label: "未発注を処理", href: "#purchase-orders" }
           : confirmWaitingCount > 0
-            ? "発注確定を確認"
+            ? { label: "発注確定を確認", href: "#purchase-orders" }
             : receiveWaitingCount > 0
-              ? "入荷を確定"
-              : "不足条件を再確認";
+              ? { label: "入荷を確定", href: "#purchase-orders" }
+              : { label: "不足条件を再確認", href: "#purchase-conditions" };
   const purchaseFlowCards = [
+    {
+      label: "表示条件",
+      count: dateFrom,
+      detail: `期限 ${dateTo}`,
+      href: "#purchase-conditions",
+      tone: "info",
+      Icon: CalendarDays,
+    },
     {
       label: "不足見込み",
       count: forecastShortages.length,
@@ -175,7 +183,9 @@ export default async function PurchasesPage({
           <span className="subtext">
             {dateFrom} 〜 {dateTo}
           </span>
-          <span className="purchase-command-next">次: {purchaseNextAction}</span>
+          <a className="purchase-command-next" href={purchaseNextAction.href}>
+            次: {purchaseNextAction.label}
+          </a>
         </div>
         <div className="purchase-command-checks">
           <span className={`badge ${hardShortageCount > 0 ? "danger" : "success"}`}>実不足 {hardShortageCount}</span>
@@ -230,21 +240,30 @@ export default async function PurchasesPage({
           <div className="metric-note">推奨発注日ベース</div>
         </div>
       </div>
+      <div id="purchase-conditions" className="anchor-offset">
       <CollapsiblePanel title="表示・再計算条件" summary={`${dateFrom} 〜 ${dateTo}`}>
-        <form className="toolbar compact-controls" method="GET">
+        <form className="toolbar compact-controls purchase-conditions-form" method="GET">
           <label>
-            <span>基準日</span>
+            <span>
+              <CalendarDays size={14} aria-hidden="true" />
+              基準日
+            </span>
             <input name="dateFrom" type="date" defaultValue={dateFrom} />
           </label>
           <label>
-            <span>不足確認期限</span>
+            <span>
+              <CalendarDays size={14} aria-hidden="true" />
+              不足確認期限
+            </span>
             <input name="dateTo" type="date" defaultValue={dateTo} />
           </label>
           <button type="submit" className="secondary">
+            <Search size={15} aria-hidden="true" />
             再計算
           </button>
         </form>
       </CollapsiblePanel>
+      </div>
 
       <section id="purchase-shortages" className="anchor-offset">
         <h2>累積不足見込み</h2>

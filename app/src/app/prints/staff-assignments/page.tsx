@@ -5,6 +5,7 @@ import { employmentTypeLabel, manualNote } from "@/lib/labels";
 import { kitagoyaPath } from "@/lib/paths";
 import { formatCases } from "@/lib/units";
 import PrintButton from "../print-button";
+import PrintDateNav from "../print-date-nav";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,7 @@ export default async function StaffAssignmentsPrintPage({
         <div className="spacer" />
         <PrintButton label="スタッフ配置を印刷" />
       </div>
+      <PrintDateNav basePath="/prints/staff-assignments" date={date} label="スタッフ配置表の日付切替" />
 
       <div className={`no-print print-readiness-command ${isReady ? "success" : "warn"}`}>
         <div className="print-readiness-title">

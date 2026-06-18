@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   BarChart3,
+  CalendarDays,
   ClipboardList,
   Database,
   ListFilter,
@@ -181,6 +182,14 @@ export default function ProductPlanningClient({
             ? { label: "未処理予定を確認", sectionId: "product-planning-demands" }
             : { label: "月間予定へ進む", href: kitagoyaPath(`/production-plans/monthly?dateFrom=${initialDateFrom}&dateTo=${initialDateTo}`) };
   const planningFlowCards = [
+    {
+      label: "表示条件",
+      count: initialDateFrom,
+      detail: `期限 ${initialDateTo}`,
+      action: () => scrollToSection("product-planning-period"),
+      tone: "info",
+      Icon: CalendarDays,
+    },
     {
       label: "登録",
       count: showInputPanel ? "開" : "閉",

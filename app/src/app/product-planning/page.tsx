@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CalendarDays, ClipboardList, PackageCheck, Search } from "lucide-react";
 import ProductPlanningClient from "./product-planning-client";
 import { loadProductPlanningSuggestions } from "@/lib/product-planning-service";
 import {
@@ -56,23 +57,32 @@ export default async function ProductPlanningPage({
         <h1>製品在庫・自動生産提案</h1>
         <div className="page-title-actions">
           <Link className="button-link secondary-link" href={kitagoyaPath(`/production-plans/monthly?dateFrom=${dateFrom}&dateTo=${dateTo}`)}>
+            <ClipboardList size={16} aria-hidden="true" />
             月間生産予定を生成
           </Link>
           <Link className="button-link" href={kitagoyaPath(`/production-plans/auto?date=${dateFrom}&loadSuggestions=1`)}>
+            <PackageCheck size={16} aria-hidden="true" />
             候補を読込んでシフト自動作成へ
           </Link>
         </div>
       </div>
-      <form className="panel toolbar" method="GET">
+      <form id="product-planning-period" className="panel toolbar anchor-offset product-planning-period-form" method="GET">
         <label>
-          <span>基準日</span>
+          <span>
+            <CalendarDays size={14} aria-hidden="true" />
+            基準日
+          </span>
           <input name="dateFrom" type="date" defaultValue={dateFrom} />
         </label>
         <label>
-          <span>不足確認期限</span>
+          <span>
+            <CalendarDays size={14} aria-hidden="true" />
+            不足確認期限
+          </span>
           <input name="dateTo" type="date" defaultValue={dateTo} />
         </label>
         <button type="submit" className="secondary">
+          <Search size={15} aria-hidden="true" />
           再計算
         </button>
       </form>

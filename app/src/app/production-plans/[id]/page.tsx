@@ -87,7 +87,7 @@ export default async function ProductionPlanDetail({
   const needsAssignmentReview = assignmentShortage > 0;
   const planReviewItems = [
     ...(plan.status === "draft"
-      ? [{ label: "予定確定", detail: "ステータスが下書きです", tone: "warn" as const }]
+      ? [{ label: "予定確定", detail: "ステータスが下書きです", tone: "warn" as const, tabId: "detail" }]
       : []),
     ...(needsRequirementReview
       ? [
@@ -100,20 +100,22 @@ export default async function ProductionPlanDetail({
                   ? `未確定依存 ${shortageDep.length}件`
                   : "BOM未登録",
             tone: shortageHard.length > 0 || plan.requirements.length === 0 ? ("danger" as const) : ("warn" as const),
+            tabId: "requirements",
           },
         ]
       : []),
     ...(needsAssignmentReview
-      ? [{ label: "スタッフ配置", detail: `${assignmentShortage}人不足`, tone: "warn" as const }]
+      ? [{ label: "スタッフ配置", detail: `${assignmentShortage}人不足`, tone: "warn" as const, tabId: "assignments" }]
       : []),
     ...(!dailyReport
-      ? [{ label: "日報", detail: "実績未入力", tone: "muted" as const }]
+      ? [{ label: "日報", detail: "実績未入力", tone: "muted" as const, tabId: "daily-report" }]
       : dailyReport.status !== "confirmed"
-        ? [{ label: "日報", detail: "下書き確認", tone: "warn" as const }]
+        ? [{ label: "日報", detail: "下書き確認", tone: "warn" as const, tabId: "daily-report" }]
         : []),
   ];
   const nextActionLabel =
     planReviewItems[0]?.label ?? (dailyReport?.status === "confirmed" ? "完了内容確認" : "日報入力");
+  const nextActionHref = tabHref(planReviewItems[0]?.tabId ?? "daily-report");
 
   return (
     <>
@@ -140,15 +142,15 @@ export default async function ProductionPlanDetail({
       </div>
 
       <div className="production-plan-detail-overview">
-        <div className="production-plan-detail-card primary">
+        <a className="production-plan-detail-card primary" href={tabHref("detail")}>
           <span>
             <CalendarDays size={16} aria-hidden="true" />
             予定
           </span>
           <strong>{formatCases(plan.plannedQuantity, { casePackQty: plan.product.casePackQty, baseUnit: plan.unit })}</strong>
           <small>{plannedTime}</small>
-        </div>
-        <div className="production-plan-detail-card">
+        </a>
+        <a className="production-plan-detail-card" href={tabHref("assignments")}>
           <span>
             <Users size={16} aria-hidden="true" />
             スタッフ配置
@@ -157,8 +159,8 @@ export default async function ProductionPlanDetail({
             {plan.assignments.length} / {plan.plannedPeopleCount}人
           </strong>
           <small>{plan.assignments.length > 0 ? "配置あり" : "未配置"}</small>
-        </div>
-        <div className={`production-plan-detail-card ${requirementsBadgeClass}`}>
+        </a>
+        <a className={`production-plan-detail-card ${requirementsBadgeClass}`} href={tabHref("requirements")}>
           <span>
             {requirementAlertCount > 0 ? (
               <AlertTriangle size={16} aria-hidden="true" />
@@ -169,8 +171,8 @@ export default async function ProductionPlanDetail({
           </span>
           <strong>{requirementsLabel}</strong>
           <small>{plan.requirements.length}行</small>
-        </div>
-        <div className={`production-plan-detail-card ${dailyReportBadgeClass}`}>
+        </a>
+        <a className={`production-plan-detail-card ${dailyReportBadgeClass}`} href={tabHref("daily-report")}>
           <span>
             {dailyReport?.status === "confirmed" ? (
               <ClipboardCheck size={16} aria-hidden="true" />
@@ -181,7 +183,7 @@ export default async function ProductionPlanDetail({
           </span>
           <strong>{dailyReportLabel}</strong>
           <small>{dailyReport ? "実績データあり" : "実績未登録"}</small>
-        </div>
+        </a>
       </div>
 
       <div className="panel production-plan-detail-command">
@@ -206,15 +208,17 @@ export default async function ProductionPlanDetail({
           <span className={`badge ${dailyReportBadgeClass}`}>{dailyReportLabel}</span>
         </div>
         <div className="production-plan-detail-queue">
+          <a className="production-plan-detail-next-link" href={nextActionHref}>
+            次: {nextActionLabel}
+          </a>
           <span className={`badge ${planReviewItems.length > 0 ? planReviewItems[0].tone : "success"}`}>
             次
           </span>
-          <strong>{nextActionLabel}</strong>
           {planReviewItems.length > 0 ? (
             planReviewItems.slice(0, 4).map((item) => (
-              <span key={`${item.label}:${item.detail}`} className={`badge ${item.tone}`}>
+              <a key={`${item.label}:${item.detail}`} className={`badge ${item.tone}`} href={tabHref(item.tabId)}>
                 {item.label}: {item.detail}
-              </span>
+              </a>
             ))
           ) : (
             <span className="badge success">主要確認OK</span>
@@ -227,6 +231,7 @@ export default async function ProductionPlanDetail({
         ariaLabel="生産予定詳細の表示切り替え"
         initialTabId="detail"
         inlineHeader
+        hashPrefix="plan-tab"
         items={[
           {
             id: "detail",
@@ -420,6 +425,10 @@ export default async function ProductionPlanDetail({
       />
     </>
   );
+}
+
+function tabHref(tabId: string) {
+  return `#plan-tab-${tabId}`;
 }
 
 function Stat({ label, value, suffix }: { label: string; value: number | null; suffix?: string }) {

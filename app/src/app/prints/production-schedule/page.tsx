@@ -4,6 +4,7 @@ import { manualNote } from "@/lib/labels";
 import { kitagoyaPath } from "@/lib/paths";
 import { formatCases } from "@/lib/units";
 import PrintButton from "../print-button";
+import PrintDateNav from "../print-date-nav";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,7 @@ export default async function ProductionSchedulePrintPage({
         <div className="spacer" />
         <PrintButton label="作業日報を印刷" />
       </div>
+      <PrintDateNav basePath="/prints/production-schedule" date={date} label="作業日報の日付切替" />
 
       <div className={`no-print print-readiness-command ${isReady ? "success" : "warn"}`}>
         <div className="print-readiness-title">

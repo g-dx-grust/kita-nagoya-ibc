@@ -180,6 +180,48 @@ export default function ProductEditor({
     packCount,
     usedAtKitagoya,
   ]);
+  const setupActions = useMemo(() => {
+    const actions: Array<{ label: string; detail: string; href: string; tone: "warn" | "success" }> = [];
+    if (setupSummary.missingDefaultWorkArea || setupSummary.missingCasePack) {
+      actions.push({
+        label: "基本情報",
+        detail: [
+          setupSummary.missingDefaultWorkArea ? "標準場所" : null,
+          setupSummary.missingCasePack ? "ケース入数" : null,
+        ].filter(Boolean).join("・"),
+        href: "#product-basic",
+        tone: "warn",
+      });
+    }
+    if (setupSummary.missingBom || setupSummary.invalidBomCount > 0) {
+      actions.push({
+        label: "BOM",
+        detail: setupSummary.missingBom ? "未設定" : `要確認 ${setupSummary.invalidBomCount}`,
+        href: "#product-bom",
+        tone: "warn",
+      });
+    }
+    if (setupSummary.missingCapacity || setupSummary.invalidCapacityCount > 0) {
+      actions.push({
+        label: "生産能力",
+        detail: setupSummary.missingCapacity ? "未設定" : `要確認 ${setupSummary.invalidCapacityCount}`,
+        href: "#product-capacity",
+        tone: "warn",
+      });
+    }
+    if (setupSummary.missingBilling) {
+      actions.push({
+        label: "手間賃単価",
+        detail: "請求対象の単価なし",
+        href: "#product-billing",
+        tone: "warn",
+      });
+    }
+    return actions.length > 0
+      ? actions
+      : [{ label: "内容確認", detail: "主要設定OK", href: "#product-basic", tone: "success" as const }];
+  }, [setupSummary]);
+  const nextSetupAction = setupActions[0];
 
   async function saveMeta() {
     setSavingMeta(true);
@@ -364,6 +406,9 @@ export default function ProductEditor({
             </span>
             <strong>商品セットアップ</strong>
             <span className="subtext">{setupSummary.needsActionCount}項目</span>
+            <a className="product-editor-next" href={nextSetupAction.href}>
+              次: {nextSetupAction.label}
+            </a>
           </div>
           <div className="product-editor-checks">
             <a
@@ -392,6 +437,13 @@ export default function ProductEditor({
             <a className={`badge ${setupSummary.missingBilling ? "warn" : "success"}`} href="#product-billing">
               手間賃 {billingEnabled ? `${setupSummary.validBillingCount}件` : "対象外"}
             </a>
+          </div>
+          <div className="product-editor-next-row" aria-label="商品セットアップの次アクション">
+            {setupActions.slice(0, 4).map((action) => (
+              <a key={`${action.label}:${action.detail}`} className={`badge ${action.tone}`} href={action.href}>
+                {action.label}: {action.detail}
+              </a>
+            ))}
           </div>
         </div>
         <nav className="product-editor-nav" aria-label="商品編集セクション">
