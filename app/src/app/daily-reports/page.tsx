@@ -1,5 +1,8 @@
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import Link from "next/link";
+import { CalendarDays, ChevronLeft, ChevronRight, ClipboardCheck } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { kitagoyaPath } from "@/lib/paths";
 import DailyReportDayEntry, { type DayPlanRow } from "./daily-report-day-entry";
 
 export const dynamic = "force-dynamic";
@@ -62,6 +65,10 @@ export default async function DailyReportsPage({
   const confirmedCount = rows.filter((r) => r.reportStatus === "confirmed").length;
   const draftCount = rows.filter((r) => r.reportStatus === "draft").length;
   const pendingCount = rows.filter((r) => r.reportStatus !== "confirmed").length;
+  const previousDate = shiftDate(date, -1);
+  const nextDate = shiftDate(date, 1);
+  const today = new Date().toISOString().slice(0, 10);
+  const hasRows = rows.length > 0;
 
   return (
     <>
@@ -69,6 +76,38 @@ export default async function DailyReportsPage({
         <h1>日報</h1>
         <div className="page-title-actions">
           <HelpTooltip text="当日の生産予定に実数量と必要な実使用量を入力し、当日分をまとめて確定すると実績を在庫・原価に反映します。時間・人数は予定値を自動採用します。" />
+        </div>
+      </div>
+
+      <div className={`daily-report-overview-command panel ${pendingCount > 0 ? "warn" : "success"}`}>
+        <div className="daily-report-overview-main">
+          <span className={`badge ${pendingCount > 0 ? "warn" : "success"}`}>
+            <ClipboardCheck size={14} aria-hidden="true" />
+            {pendingCount > 0 ? `未確定 ${pendingCount}件` : hasRows ? "当日分確定済み" : "予定なし"}
+          </span>
+          <strong>
+            <CalendarDays size={16} aria-hidden="true" />
+            {date} の日報確認
+          </strong>
+        </div>
+        <div className="daily-report-overview-checks">
+          <span className="badge info">予定 {rows.length}件</span>
+          <span className="badge success">確定 {confirmedCount}件</span>
+          <span className="badge info">下書き {draftCount}件</span>
+          <span className={`badge ${pendingCount > 0 ? "warn" : "success"}`}>未確定 {pendingCount}件</span>
+        </div>
+        <div className="daily-report-overview-actions" aria-label="日報日付移動">
+          <Link className="button-link secondary-link" href={kitagoyaPath(`/daily-reports?date=${previousDate}`)}>
+            <ChevronLeft size={15} aria-hidden="true" />
+            前日
+          </Link>
+          <Link className="button-link secondary-link" href={kitagoyaPath(`/daily-reports?date=${today}`)}>
+            今日
+          </Link>
+          <Link className="button-link secondary-link" href={kitagoyaPath(`/daily-reports?date=${nextDate}`)}>
+            翌日
+            <ChevronRight size={15} aria-hidden="true" />
+          </Link>
         </div>
       </div>
 
@@ -107,4 +146,13 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 function normalizeDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : new Date().toISOString().slice(0, 10);
+}
+
+function shiftDate(date: string, days: number) {
+  const target = new Date(`${date}T00:00:00`);
+  target.setDate(target.getDate() + days);
+  const year = target.getFullYear();
+  const month = String(target.getMonth() + 1).padStart(2, "0");
+  const day = String(target.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }

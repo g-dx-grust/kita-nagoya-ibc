@@ -143,6 +143,7 @@ export default function PlanForm({
     { label: "人数", ok: people > 0 },
     { label: "単位", ok: unit.trim().length > 0 },
   ];
+  const missingInputChecks = inputChecks.filter((check) => !check.ok);
   const readyCount = inputChecks.filter((check) => check.ok).length;
   const canSubmit = !!productId && !!workAreaId && plannedQuantity > 0 && people > 0 && unit.trim().length > 0;
 
@@ -190,10 +191,21 @@ export default function PlanForm({
   const capacityMissing = !!product && !!workAreaId && !capacity;
   const previewEndTime = durationResult?.endTime ?? "未計算";
   const overtimeMinutes = durationResult?.overtimeMinutes ?? 0;
+  const modeWarnings =
+    mode === "duration"
+      ? durationResult?.warnings ?? []
+      : mode === "max_quantity"
+        ? maxQtyResult?.warnings ?? []
+        : peopleResult?.warnings ?? [];
   const hasPreviewWarning =
     capacityMissing ||
-    (durationResult?.warnings.length ?? 0) > 0 ||
+    modeWarnings.length > 0 ||
     !canSubmit;
+  const modeInfo = calculationModeInfo(mode);
+  const activeWarnings = [
+    ...(capacityMissing ? ["capacity_missing"] : []),
+    ...modeWarnings,
+  ];
 
   function adjustQuantity(delta: number) {
     setQuantity((current) => Math.max(0, Math.round((Number(current) || 0) + delta)));
@@ -269,6 +281,33 @@ export default function PlanForm({
               能力未登録
             </span>
           )}
+        </div>
+        <div className="production-plan-command-next">
+          {!canSubmit ? (
+            <>
+              <span className="badge warn">次</span>
+              {missingInputChecks.slice(0, 3).map((check) => (
+                <span key={check.label}>{check.label}</span>
+              ))}
+            </>
+          ) : hasPreviewWarning ? (
+            <>
+              <span className="badge warn">確認</span>
+              {activeWarnings.slice(0, 3).map((warning) => (
+                <span key={warning}>{planWarningShortLabel(warning)}</span>
+              ))}
+            </>
+          ) : (
+            <>
+              <span className="badge success">次</span>
+              <span>{planId ? "更新する" : "登録する"}</span>
+            </>
+          )}
+        </div>
+        <div className="production-plan-command-mode">
+          <span className="badge info">計算</span>
+          <strong>{modeInfo.label}</strong>
+          <span>{modeInfo.description}</span>
         </div>
       </div>
       <div className="production-plan-form-layout">
@@ -591,6 +630,43 @@ function warnLabel(w: string) {
       return "人数が0です。";
     default:
       return w;
+  }
+}
+
+function planWarningShortLabel(w: string) {
+  switch (w) {
+    case "capacity_missing":
+    case "non_positive_capacity":
+      return "能力";
+    case "exceeds_baseline_end":
+      return "基準終了";
+    case "exceeds_desired_end":
+      return "終了希望";
+    case "non_positive_people":
+      return "人数";
+    default:
+      return "確認";
+  }
+}
+
+function calculationModeInfo(mode: Mode) {
+  switch (mode) {
+    case "max_quantity":
+      return {
+        label: "時間枠固定",
+        description: "開始・終了希望・人数から最大数量を見ます。",
+      };
+    case "required_people":
+      return {
+        label: "必要人数",
+        description: "数量と時間枠から必要人数を見ます。",
+      };
+    case "duration":
+    default:
+      return {
+        label: "終了時刻",
+        description: "数量・人数・開始時刻から終了予定を見ます。",
+      };
   }
 }
 

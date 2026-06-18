@@ -9,6 +9,7 @@ import SearchableCombobox from "@/components/ui/searchable-combobox";
 import {
   DEFAULT_DAILY_REPORT_LABOR_HOURLY_RATE,
   computeProductDailyReportMetrics,
+  type ProductDailyReportWarning,
 } from "@/lib/product-daily-report-calculations";
 import { kitagoyaApiPath } from "@/lib/paths";
 import { matchesQuery } from "@/lib/search";
@@ -142,6 +143,8 @@ export default function StaffDailyReportForm({
     ],
   );
   const completedRequiredCount = requiredProgress.filter((item) => item.done).length;
+  const missingRequiredItems = requiredProgress.filter((item) => !item.done);
+  const canSubmit = missingRequiredItems.length === 0;
   const planAreaOptions = useMemo(
     () => Array.from(new Set(plans.map((plan) => plan.workAreaName).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ja")),
     [plans],
@@ -176,6 +179,10 @@ export default function StaffDailyReportForm({
     });
     return selected?.id ?? "";
   }, [form.endTime, form.productId, form.productionQty, form.startTime, plans]);
+  const selectedPlan = useMemo(
+    () => plans.find((plan) => plan.id === selectedPlanId) ?? null,
+    [plans, selectedPlanId],
+  );
   const hasPlanFilters = Boolean(planSearch.trim() || planWorkArea);
   const staffComboboxOptions = useMemo(
     () =>
@@ -250,8 +257,32 @@ export default function StaffDailyReportForm({
       setError("商品を選択してください。");
       return;
     }
+    if (!form.submittedBy.trim()) {
+      setError("入力者を選択してください。");
+      return;
+    }
+    if (!form.startTime || !form.endTime || preview.operatingMinutes <= 0) {
+      setError("開始時間と終了時間を確認してください。");
+      return;
+    }
+    if (toNumber(form.workerCount) <= 0) {
+      setError("作業人数を入力してください。");
+      return;
+    }
+    if (toNumber(form.productionQty) <= 0) {
+      setError("生産数を入力してください。");
+      return;
+    }
     if (form.materials.some((row) => amountToKg(row) > 0 && !row.materialId)) {
       setError("使用量を入力した原料を選択してください。");
+      return;
+    }
+    if (!form.materials.some((row) => Boolean(row.materialId) && amountToKg(row) > 0)) {
+      setError("使用した原料と使用量を入力してください。");
+      return;
+    }
+    if (photos.length === 0) {
+      setError("ラベル写真を1枚以上追加してください。");
       return;
     }
     setBusy(true);
@@ -280,27 +311,56 @@ export default function StaffDailyReportForm({
       {message && <div className="alert success">{message}</div>}
       {error && <div className="alert danger">{error}</div>}
 
-      <div className="staff-entry-status panel">
-        <div className="staff-entry-status-head">
-          <strong>入力状況</strong>
-          <span className={`badge ${preview.warnings.length > 0 ? "warn" : "success"}`}>
-            {preview.warnings.length > 0 ? `確認 ${preview.warnings.length}` : "計算OK"}
+      <div className={`staff-entry-command panel ${canSubmit ? "success" : "warn"}`}>
+        <div className="staff-entry-command-main">
+          <span className={`badge ${canSubmit ? "success" : "warn"}`}>
+            {canSubmit ? "提出準備OK" : `未入力 ${missingRequiredItems.length}`}
           </span>
+          <strong>スタッフ日報入力</strong>
+          {selectedPlan ? (
+            <span className="subtext">
+              {selectedPlan.workAreaName} / {selectedPlan.plannedStartTime}〜{selectedPlan.plannedEndTime ?? "--:--"}
+            </span>
+          ) : (
+            <span className="subtext">予定未選択</span>
+          )}
+        </div>
+        <div className="staff-entry-command-checks">
           <span className="badge info">
             入力 {completedRequiredCount}/{requiredProgress.length}
+          </span>
+          <span className={`badge ${preview.warnings.length > 0 ? "warn" : "success"}`}>
+            {preview.warnings.length > 0 ? `計算確認 ${preview.warnings.length}` : "計算OK"}
           </span>
           <span className="badge muted">
             予定 {filteredPlans.length}/{plans.length}
           </span>
-          <span className="badge info">写真 {photos.length}/4</span>
+          <span className={`badge ${photos.length > 0 ? "success" : "warn"}`}>写真 {photos.length}/4</span>
         </div>
-        <div className="staff-entry-status-list">
+        <div className="staff-entry-command-progress" aria-label="必須入力状況">
           {requiredProgress.map((item) => (
             <span key={item.label} className={`badge ${item.done ? "success" : "muted"}`}>
               {item.label}
             </span>
           ))}
         </div>
+        {missingRequiredItems.length > 0 && (
+          <div className="staff-entry-command-next">
+            <span className="badge warn">次</span>
+            {missingRequiredItems.slice(0, 3).map((item) => (
+              <span key={item.label}>{item.label}</span>
+            ))}
+          </div>
+        )}
+        {preview.warnings.length > 0 && (
+          <div className="staff-entry-command-warnings">
+            {preview.warnings.slice(0, 4).map((warning) => (
+              <span key={warning} className="badge warn">
+                {dailyReportWarningLabel(warning)}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <section className="panel staff-panel">
@@ -608,7 +668,7 @@ export default function StaffDailyReportForm({
           <textarea value={form.note} onChange={(e) => setFormValue(setForm, "note", e.target.value)} />
         </label>
         <div className="staff-submit-row">
-          <button type="submit" className="staff-submit-button" disabled={busy}>
+          <button type="submit" className="staff-submit-button" disabled={busy || !canSubmit}>
             {busy ? (
               "提出中..."
             ) : (
@@ -882,4 +942,25 @@ function formatPercent(value: number) {
   return `${((Number.isFinite(value) ? value : 0) * 100).toLocaleString("ja-JP", {
     maximumFractionDigits: 1,
   })}%`;
+}
+
+function dailyReportWarningLabel(warning: ProductDailyReportWarning) {
+  switch (warning) {
+    case "invalid_time_range":
+      return "時間";
+    case "non_positive_worker_count":
+      return "人数";
+    case "non_positive_production_qty":
+      return "生産数";
+    case "missing_capacity_g":
+      return "内容量";
+    case "missing_unit_price":
+      return "売価";
+    case "missing_material_unit_cost":
+      return "原料単価";
+    case "missing_package_cost":
+      return "包材単価";
+    default:
+      return "確認";
+  }
 }

@@ -761,35 +761,140 @@ export type ShortageForecastRow = {
   shortageQuantityLabel: string;
 };
 
+type ShortageForecastFilter = "" | "hard_shortage" | "below_safety" | "unconfirmed_dependency" | "raw_material" | "packaging";
+
 export function ShortageForecastTable({ rows }: { rows: ShortageForecastRow[] }) {
   const [search, setSearch] = useState("");
+  const [quickFilter, setQuickFilter] = useState<ShortageForecastFilter>("");
+  const summary = useMemo(
+    () =>
+      rows.reduce(
+        (acc, row) => ({
+          hardShortage: acc.hardShortage + (row.shortageType === "hard_shortage" ? 1 : 0),
+          belowSafety: acc.belowSafety + (row.shortageType === "below_safety" ? 1 : 0),
+          unconfirmedDependency: acc.unconfirmedDependency + (row.shortageType === "unconfirmed_dependency" ? 1 : 0),
+          rawMaterial: acc.rawMaterial + (row.itemType === "raw_material" ? 1 : 0),
+          packaging: acc.packaging + (row.itemType === "packaging" ? 1 : 0),
+        }),
+        {
+          hardShortage: 0,
+          belowSafety: 0,
+          unconfirmedDependency: 0,
+          rawMaterial: 0,
+          packaging: 0,
+        },
+      ),
+    [rows],
+  );
   const filtered = useMemo(
     () =>
-      rows.filter((row) =>
-        matchesQuery(search, [
+      rows.filter((row) => {
+        if (
+          (quickFilter === "hard_shortage" ||
+            quickFilter === "below_safety" ||
+            quickFilter === "unconfirmed_dependency") &&
+          row.shortageType !== quickFilter
+        ) {
+          return false;
+        }
+        if ((quickFilter === "raw_material" || quickFilter === "packaging") && row.itemType !== quickFilter) {
+          return false;
+        }
+        return matchesQuery(search, [
+          row.date,
           row.itemCode,
           row.itemName,
-          row.itemType === "raw_material" ? "原料" : "資材",
-          row.shortageType === "hard_shortage"
-            ? "不足"
-            : row.shortageType === "below_safety"
-              ? "安全在庫割れ"
-              : "未確定依存",
-        ]),
-      ),
-    [rows, search],
+          itemTypeLabel(row.itemType),
+          shortageTypeLabel(row.shortageType),
+        ]);
+      }),
+    [rows, search, quickFilter],
   );
+  const hasActiveFilters = !!(search || quickFilter);
+  const filterSummary = [
+    `${filtered.length} / ${rows.length} 件`,
+    quickFilter ? shortageQuickFilterLabel(quickFilter) : "",
+    search,
+  ].filter(Boolean).join(" / ");
 
   function resetFilters() {
     setSearch("");
+    setQuickFilter("");
+  }
+
+  function applyQuickFilter(next: ShortageForecastFilter) {
+    setQuickFilter((current) => (current === next ? "" : next));
   }
 
   return (
     <>
+      <div className={`shortage-forecast-command ${summary.hardShortage > 0 ? "warn" : "success"}`}>
+        <div className="shortage-forecast-command-title">
+          <strong>不足見込み確認</strong>
+          <span className={`badge ${summary.hardShortage > 0 ? "danger" : "success"}`}>
+            {summary.hardShortage > 0 ? `実不足 ${summary.hardShortage}件` : "実不足なし"}
+          </span>
+        </div>
+        <div className="shortage-forecast-checks">
+          <span className={`badge ${summary.belowSafety > 0 ? "warn" : "success"}`}>
+            安全在庫割れ {summary.belowSafety}
+          </span>
+          <span className={`badge ${summary.unconfirmedDependency > 0 ? "warn" : "success"}`}>
+            未確定依存 {summary.unconfirmedDependency}
+          </span>
+          <span className="badge info">原料 {summary.rawMaterial}</span>
+          <span className="badge info">資材 {summary.packaging}</span>
+          <span className="badge info">
+            表示 {filtered.length} / {rows.length}
+          </span>
+        </div>
+      </div>
+      <div className="shortage-forecast-queue" aria-label="不足見込みキュー">
+        <button
+          type="button"
+          className={quickFilter === "hard_shortage" ? "is-active danger" : "danger"}
+          onClick={() => applyQuickFilter("hard_shortage")}
+        >
+          <span>実不足</span>
+          <strong>{summary.hardShortage}</strong>
+        </button>
+        <button
+          type="button"
+          className={quickFilter === "below_safety" ? "is-active" : ""}
+          onClick={() => applyQuickFilter("below_safety")}
+        >
+          <span>安全在庫割れ</span>
+          <strong>{summary.belowSafety}</strong>
+        </button>
+        <button
+          type="button"
+          className={quickFilter === "unconfirmed_dependency" ? "is-active" : ""}
+          onClick={() => applyQuickFilter("unconfirmed_dependency")}
+        >
+          <span>未確定依存</span>
+          <strong>{summary.unconfirmedDependency}</strong>
+        </button>
+        <button
+          type="button"
+          className={quickFilter === "raw_material" ? "is-active" : ""}
+          onClick={() => applyQuickFilter("raw_material")}
+        >
+          <span>原料</span>
+          <strong>{summary.rawMaterial}</strong>
+        </button>
+        <button
+          type="button"
+          className={quickFilter === "packaging" ? "is-active" : ""}
+          onClick={() => applyQuickFilter("packaging")}
+        >
+          <span>資材</span>
+          <strong>{summary.packaging}</strong>
+        </button>
+      </div>
       <CollapsiblePanel
-        title="表内検索"
-        summary={`${filtered.length} / ${rows.length} 件${search ? ` / ${search}` : ""}`}
-        open={!!search}
+        title="不足見込みの検索・絞り込み"
+        summary={filterSummary}
+        open={hasActiveFilters}
       >
         <div className="filter-bar compact-controls">
           <input
@@ -837,22 +942,26 @@ export function ShortageForecastTable({ rows }: { rows: ShortageForecastRow[] })
               {filtered.map((row) => (
                 <tr
                   key={row.requirementId}
-                  className={`shortage-forecast-row${row.shortageType === "hard_shortage" ? " row-needs-action" : ""}`}
+                  className={[
+                    "shortage-forecast-row",
+                    row.shortageType === "hard_shortage" ? "row-needs-action" : "",
+                    row.shortageType === "below_safety" ? "is-safety-warning" : "",
+                    row.shortageType === "unconfirmed_dependency" ? "is-unconfirmed" : "",
+                  ].filter(Boolean).join(" ")}
                 >
                   <td data-label="不足日">{row.date}</td>
-                  <td data-label="区分">{row.itemType === "raw_material" ? "原料" : "資材"}</td>
-                  <td className="wrap-cell product-name-cell" data-label="品目">{row.itemName}</td>
+                  <td data-label="区分">{itemTypeLabel(row.itemType)}</td>
+                  <td className="wrap-cell product-name-cell" data-label="品目">
+                    <strong>{row.itemName}</strong>
+                    {row.itemCode && <div className="subtext">{row.itemCode}</div>}
+                  </td>
                   <td className="right" data-label="予定使用量">{row.plannedQuantityLabel}</td>
                   <td className="right" data-label="使用前見込み">{row.onHandBeforeLabel}</td>
                   <td className="right" data-label="不足">{row.shortageQuantityLabel}</td>
                   <td data-label="状態">
-                    {row.shortageType === "hard_shortage" ? (
-                      <span className="badge danger">不足</span>
-                    ) : row.shortageType === "below_safety" ? (
-                      <span className="badge warn">安全在庫割れ</span>
-                    ) : (
-                      <span className="badge warn">未確定依存</span>
-                    )}
+                    <span className={`badge ${shortageTypeBadgeClass(row.shortageType)}`}>
+                      {shortageTypeLabel(row.shortageType)}
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -862,6 +971,49 @@ export function ShortageForecastTable({ rows }: { rows: ShortageForecastRow[] })
       )}
     </>
   );
+}
+
+function itemTypeLabel(value: string) {
+  return value === "raw_material" ? "原料" : "資材";
+}
+
+function shortageTypeLabel(value: string) {
+  switch (value) {
+    case "hard_shortage":
+      return "実不足";
+    case "below_safety":
+      return "安全在庫割れ";
+    case "unconfirmed_dependency":
+      return "未確定依存";
+    default:
+      return "確認";
+  }
+}
+
+function shortageTypeBadgeClass(value: string) {
+  switch (value) {
+    case "hard_shortage":
+      return "danger";
+    case "below_safety":
+    case "unconfirmed_dependency":
+      return "warn";
+    default:
+      return "info";
+  }
+}
+
+function shortageQuickFilterLabel(value: ShortageForecastFilter) {
+  switch (value) {
+    case "hard_shortage":
+    case "below_safety":
+    case "unconfirmed_dependency":
+      return shortageTypeLabel(value);
+    case "raw_material":
+    case "packaging":
+      return itemTypeLabel(value);
+    default:
+      return "";
+  }
 }
 
 function canDownload(status: string) {

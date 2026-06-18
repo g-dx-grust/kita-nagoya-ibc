@@ -512,7 +512,8 @@ table {
   min-width: 108px;
 }
 
-.purchase-order-review-command {
+.purchase-order-review-command,
+.shortage-forecast-command {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.7fr);
   gap: 10px 12px;
@@ -527,6 +528,8 @@ table {
 
 .purchase-order-review-title,
 .purchase-order-review-checks,
+.shortage-forecast-command-title,
+.shortage-forecast-checks,
 .purchase-order-row-badges {
   display: flex;
   flex-wrap: wrap;
@@ -535,9 +538,20 @@ table {
   min-width: 0;
 }
 
-.purchase-order-review-title strong {
+.purchase-order-review-title strong,
+.shortage-forecast-command-title strong {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.shortage-forecast-command.warn {
+  border-color: var(--warn-border);
+  border-left: 4px solid var(--warn);
+}
+
+.shortage-forecast-command.success {
+  border-color: var(--success-border);
+  border-left: 4px solid var(--success);
 }
 
 .purchase-order-row-badges {
@@ -597,7 +611,9 @@ table {
 
 .purchase-order-list-table .purchase-order-row.is-unplaced > td,
 .purchase-order-list-table .purchase-order-row.row-needs-action > td,
-.shortage-forecast-list-table .shortage-forecast-row.row-needs-action > td {
+.shortage-forecast-list-table .shortage-forecast-row.row-needs-action > td,
+.shortage-forecast-list-table .shortage-forecast-row.is-safety-warning > td,
+.shortage-forecast-list-table .shortage-forecast-row.is-unconfirmed > td {
   background: #fffaf0;
 }
 
@@ -634,14 +650,23 @@ table {
   color: #9a5b00;
 }
 
-.purchase-order-queue {
+.purchase-order-queue,
+.shortage-forecast-queue {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin: 0 0 12px;
 }
 
-.purchase-order-queue button {
+.purchase-order-queue {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.shortage-forecast-queue {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.purchase-order-queue button,
+.shortage-forecast-queue button {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -655,38 +680,46 @@ table {
   font-weight: 800;
 }
 
-.purchase-order-queue button:hover:not(:disabled) {
+.purchase-order-queue button:hover:not(:disabled),
+.shortage-forecast-queue button:hover:not(:disabled) {
   border-color: var(--border-strong);
   background: var(--surface-subtle);
 }
 
-.purchase-order-queue button.is-active {
+.purchase-order-queue button.is-active,
+.shortage-forecast-queue button.is-active {
   border-color: var(--primary);
   background: var(--primary-soft);
   color: var(--primary);
 }
 
-.purchase-order-queue button.danger strong {
+.purchase-order-queue button.danger strong,
+.shortage-forecast-queue button.danger strong {
   color: var(--danger);
 }
 
-.purchase-order-queue button.is-active.danger {
+.purchase-order-queue button.is-active.danger,
+.shortage-forecast-queue button.is-active.danger {
   border-color: var(--danger-border);
   background: var(--danger-soft);
   color: var(--danger);
 }
 
 .purchase-order-queue span,
-.purchase-order-queue strong {
+.purchase-order-queue strong,
+.shortage-forecast-queue span,
+.shortage-forecast-queue strong {
   min-width: 0;
 }
 
-.purchase-order-queue span {
+.purchase-order-queue span,
+.shortage-forecast-queue span {
   overflow-wrap: anywhere;
   font-size: 13px;
 }
 
-.purchase-order-queue strong {
+.purchase-order-queue strong,
+.shortage-forecast-queue strong {
   font-size: 18px;
   line-height: 1;
 }
@@ -701,12 +734,15 @@ table {
 
 @media (max-width: 760px) {
   .purchase-command,
-  .purchase-order-review-command {
+  .purchase-order-review-command,
+  .shortage-forecast-command {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .purchase-order-review-title,
-  .purchase-order-review-checks {
+  .purchase-order-review-checks,
+  .shortage-forecast-command-title,
+  .shortage-forecast-checks {
     width: 100%;
   }
 
@@ -738,7 +774,8 @@ table {
     font-size: 14px;
   }
 
-  .purchase-order-queue {
+  .purchase-order-queue,
+  .shortage-forecast-queue {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -800,7 +837,9 @@ table {
 
   .purchase-order-list-table .purchase-order-row.is-unplaced,
   .purchase-order-list-table .purchase-order-row.row-needs-action,
-  .shortage-forecast-list-table .shortage-forecast-row.row-needs-action {
+  .shortage-forecast-list-table .shortage-forecast-row.row-needs-action,
+  .shortage-forecast-list-table .shortage-forecast-row.is-safety-warning,
+  .shortage-forecast-list-table .shortage-forecast-row.is-unconfirmed {
     background: #fffaf0;
     border-color: var(--warn-border);
   }
@@ -920,6 +959,53 @@ table {
   box-shadow: var(--shadow);
 }
 
+.invoice-history-queue {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.invoice-history-queue button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.invoice-history-queue button:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface-subtle);
+}
+
+.invoice-history-queue button.is-active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.invoice-history-queue span,
+.invoice-history-queue strong {
+  min-width: 0;
+}
+
+.invoice-history-queue span {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.invoice-history-queue strong {
+  font-size: 18px;
+  line-height: 1;
+}
+
 .invoice-export-badges,
 .invoice-export-presets,
 .invoice-export-command-title,
@@ -1023,6 +1109,10 @@ table {
   background: #fffaf0;
 }
 
+.invoice-history-table .invoice-history-row.is-latest > td {
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
 @media (max-width: 760px) {
   .invoice-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1044,6 +1134,10 @@ table {
 
   .invoice-export-command,
   .invoice-history-command {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .invoice-history-queue {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -1107,6 +1201,10 @@ table {
   .invoice-history-table .invoice-history-row.row-needs-action {
     background: #fffaf0;
     border-color: var(--warn-border);
+  }
+
+  .invoice-history-table .invoice-history-row.is-latest {
+    box-shadow: inset 3px 0 0 var(--primary), var(--shadow);
   }
 
   .invoice-history-table .invoice-history-row > td {
@@ -5882,26 +5980,61 @@ form.toolbar {
   width: min(100%, 1080px);
 }
 
-.staff-entry-status {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 14px;
+.staff-entry-command {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(260px, 1.5fr);
+  gap: 10px 12px;
   align-items: center;
-  justify-content: space-between;
   margin-bottom: 14px;
   padding: 12px;
+  border-left: 4px solid var(--border-strong);
 }
 
-.staff-entry-status-head,
-.staff-entry-status-list {
+.staff-entry-command.warn {
+  border-color: var(--warn-border);
+  border-left-color: var(--warn);
+}
+
+.staff-entry-command.success {
+  border-color: var(--success-border);
+  border-left-color: var(--success);
+}
+
+.staff-entry-command-main,
+.staff-entry-command-checks,
+.staff-entry-command-progress,
+.staff-entry-command-next,
+.staff-entry-command-warnings {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
+  min-width: 0;
 }
 
-.staff-entry-status-head strong {
+.staff-entry-command-main strong {
+  min-width: 0;
   font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.staff-entry-command-main .subtext {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.staff-entry-command-progress,
+.staff-entry-command-next,
+.staff-entry-command-warnings {
+  grid-column: 1 / -1;
+}
+
+.staff-entry-command-next {
+  padding-top: 8px;
+  border-top: 1px solid var(--warn-border);
+  color: var(--warn);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .staff-panel {
@@ -6383,13 +6516,17 @@ form.toolbar {
     font-size: 15px;
   }
 
-  .staff-entry-status {
+  .staff-entry-command {
+    grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
   }
 
-  .staff-entry-status-head {
+  .staff-entry-command-main,
+  .staff-entry-command-checks,
+  .staff-entry-command-progress,
+  .staff-entry-command-next,
+  .staff-entry-command-warnings {
     width: 100%;
-    justify-content: space-between;
   }
 
   .staff-product-field {
@@ -6528,10 +6665,15 @@ form.toolbar {
   align-items: center;
 }
 
+.production-plan-detail-command-text,
+.production-plan-detail-command-checks,
+.production-plan-detail-queue {
+  min-width: 0;
+}
+
 .production-plan-detail-command-text {
   display: grid;
   gap: 3px;
-  min-width: 0;
 }
 
 .production-plan-detail-command-text strong,
@@ -6544,6 +6686,31 @@ form.toolbar {
   color: var(--muted);
   font-size: 13px;
   font-weight: 700;
+}
+
+.production-plan-detail-command-checks,
+.production-plan-detail-queue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.production-plan-detail-command-checks {
+  grid-column: 1 / -1;
+}
+
+.production-plan-detail-queue {
+  grid-column: 1 / -1;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.production-plan-detail-queue strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 14px;
+  overflow-wrap: anywhere;
 }
 
 .production-plan-actions {
@@ -6895,6 +7062,8 @@ form.toolbar {
 
 .production-plan-command-main,
 .production-plan-command-checks,
+.production-plan-command-next,
+.production-plan-command-mode,
 .production-plan-inline-actions {
   display: flex;
   flex-wrap: wrap;
@@ -6906,6 +7075,33 @@ form.toolbar {
 .production-plan-command-main strong {
   min-width: 0;
   font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.production-plan-command-next,
+.production-plan-command-mode {
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.production-plan-command-next {
+  color: var(--warn);
+}
+
+.production-plan-command-next .badge.success + span {
+  color: var(--success);
+}
+
+.production-plan-command-mode {
+  color: var(--muted);
+}
+
+.production-plan-command-mode strong,
+.production-plan-command-mode span:not(.badge),
+.production-plan-command-next span:not(.badge) {
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
@@ -7251,6 +7447,55 @@ form.toolbar {
   justify-content: center;
 }
 
+.self-shift-command {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(260px, 1.5fr);
+  gap: 10px 12px;
+  align-items: center;
+  margin-bottom: 12px;
+  border-left: 4px solid var(--border-strong);
+}
+
+.self-shift-command.warn {
+  border-color: var(--warn-border);
+  border-left-color: var(--warn);
+}
+
+.self-shift-command.danger {
+  border-color: var(--danger-border);
+  border-left-color: var(--danger);
+}
+
+.self-shift-command.success {
+  border-color: var(--success-border);
+  border-left-color: var(--success);
+}
+
+.self-shift-command-main,
+.self-shift-command-checks,
+.self-shift-command-next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.self-shift-command-main strong,
+.self-shift-command-main .subtext,
+.self-shift-command-next span:not(.badge) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.self-shift-command-next {
+  grid-column: 1 / -1;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .self-shift-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -7460,6 +7705,17 @@ form.toolbar {
   .self-shift-month-label {
     justify-content: center;
     padding: 0;
+  }
+
+  .self-shift-command {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px;
+  }
+
+  .self-shift-command-main,
+  .self-shift-command-checks,
+  .self-shift-command-next {
+    width: 100%;
   }
 
   .self-shift-summary-grid {
@@ -8070,6 +8326,11 @@ form.toolbar {
     padding: 14px;
   }
 
+  .production-plan-detail-command-checks,
+  .production-plan-detail-queue {
+    width: 100%;
+  }
+
   .production-plan-actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -8283,6 +8544,11 @@ form.toolbar {
 
   .production-plan-command-checks .badge {
     flex: 1 1 96px;
+  }
+
+  .production-plan-command-next,
+  .production-plan-command-mode {
+    width: 100%;
   }
 
   .production-plan-form-section {
@@ -11016,6 +11282,50 @@ td .combobox {
 .dr-usage-table td {
   background: transparent;
 }
+.daily-report-overview-command {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(240px, 1fr) auto;
+  gap: 10px 12px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 12px;
+  border-left: 4px solid var(--border-strong);
+}
+.daily-report-overview-command.warn {
+  border-color: var(--warn-border);
+  border-left-color: var(--warn);
+}
+.daily-report-overview-command.success {
+  border-color: var(--success-border);
+  border-left-color: var(--success);
+}
+.daily-report-overview-main,
+.daily-report-overview-checks,
+.daily-report-overview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.daily-report-overview-main strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.daily-report-overview-command .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.daily-report-overview-actions {
+  justify-content: flex-end;
+}
+.daily-report-overview-actions .button-link {
+  min-height: 34px;
+}
 .daily-report-day-command {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -11173,9 +11483,28 @@ tr.row-muted > td {
 }
 
 @media (max-width: 760px) {
+  .daily-report-overview-command,
   .daily-report-day-command,
   .dr-actions {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .daily-report-overview-main,
+  .daily-report-overview-checks,
+  .daily-report-overview-actions {
+    width: 100%;
+  }
+
+  .daily-report-overview-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .daily-report-overview-actions .button-link {
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    padding-inline: 8px;
   }
 
   .daily-report-day-command-actions {

@@ -83,6 +83,7 @@ export default function StaffShiftEntryForm({
     () => days.filter((date) => date.isWeekend && settingByDay.has(date.day)).length,
     [days, settingByDay],
   );
+  const selectedWeekdayDays = daySettings.length - selectedWeekendDays;
   const customTimeDays = useMemo(
     () => daySettings.filter((setting) => setting.usesCustomTime).length,
     [daySettings],
@@ -101,6 +102,8 @@ export default function StaffShiftEntryForm({
   );
   const hasUnsavedChanges = serializeSavedDays(currentSavedDays) !== savedSnapshot;
   const hasInvalidTime = invalidDays.length > 0;
+  const defaultTimeLabel = `${defaultStartTime}-${defaultEndTime} / 休憩 ${defaultBreakMinutes}分`;
+  const commandTone = hasInvalidTime ? "danger" : hasUnsavedChanges ? "warn" : "success";
 
   function clearFeedback() {
     setMessage(null);
@@ -227,6 +230,48 @@ export default function StaffShiftEntryForm({
             <span>次月</span>
             <ChevronRight size={16} aria-hidden="true" />
           </button>
+        </div>
+      </div>
+
+      <div className={`self-shift-command panel ${commandTone}`}>
+        <div className="self-shift-command-main">
+          <span className={`badge ${commandTone}`}>
+            {hasInvalidTime ? "時間確認" : hasUnsavedChanges ? "未保存" : "保存済み"}
+          </span>
+          <strong>登録前確認</strong>
+          <span className="subtext">{defaultTimeLabel}</span>
+        </div>
+        <div className="self-shift-command-checks">
+          <span className="badge info">出勤 {daySettings.length}日</span>
+          <span className="badge muted">平日 {selectedWeekdayDays}日</span>
+          <span className={`badge ${selectedWeekendDays > 0 ? "warn" : "muted"}`}>土日 {selectedWeekendDays}日</span>
+          <span className={`badge ${customTimeDays > 0 ? "info" : "muted"}`}>時間変更 {customTimeDays}日</span>
+          <span className="badge info">予定 {formatHours(totalWorkMinutes)}</span>
+        </div>
+        <div className="self-shift-command-next">
+          {hasInvalidTime ? (
+            <>
+              <span className="badge danger">直す</span>
+              {invalidDays.slice(0, 3).map((setting) => (
+                <span key={setting.day}>{month}/{setting.day}</span>
+              ))}
+            </>
+          ) : hasUnsavedChanges ? (
+            <>
+              <span className="badge warn">次</span>
+              <span>登録する</span>
+            </>
+          ) : daySettings.length === 0 ? (
+            <>
+              <span className="badge muted">状態</span>
+              <span>全休みで保存済み</span>
+            </>
+          ) : (
+            <>
+              <span className="badge success">OK</span>
+              <span>この月は保存済み</span>
+            </>
+          )}
         </div>
       </div>
 

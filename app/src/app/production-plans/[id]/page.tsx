@@ -83,6 +83,37 @@ export default async function ProductionPlanDetail({
     dailyReport?.status === "confirmed" ? "日報確定" : dailyReport ? "日報下書き" : "日報未入力";
   const dailyReportBadgeClass = dailyReport?.status === "confirmed" ? "success" : dailyReport ? "warn" : "muted";
   const plannedTime = `${plan.plannedStartTime} - ${plan.plannedEndTime ?? plan.desiredEndTime ?? plan.baselineEndTime}`;
+  const assignmentShortage = Math.max(0, plan.plannedPeopleCount - plan.assignments.length);
+  const needsAssignmentReview = assignmentShortage > 0;
+  const planReviewItems = [
+    ...(plan.status === "draft"
+      ? [{ label: "予定確定", detail: "ステータスが下書きです", tone: "warn" as const }]
+      : []),
+    ...(needsRequirementReview
+      ? [
+          {
+            label: "原料・資材",
+            detail:
+              shortageHard.length > 0
+                ? `実不足 ${shortageHard.length}件`
+                : shortageDep.length > 0
+                  ? `未確定依存 ${shortageDep.length}件`
+                  : "BOM未登録",
+            tone: shortageHard.length > 0 || plan.requirements.length === 0 ? ("danger" as const) : ("warn" as const),
+          },
+        ]
+      : []),
+    ...(needsAssignmentReview
+      ? [{ label: "スタッフ配置", detail: `${assignmentShortage}人不足`, tone: "warn" as const }]
+      : []),
+    ...(!dailyReport
+      ? [{ label: "日報", detail: "実績未入力", tone: "muted" as const }]
+      : dailyReport.status !== "confirmed"
+        ? [{ label: "日報", detail: "下書き確認", tone: "warn" as const }]
+        : []),
+  ];
+  const nextActionLabel =
+    planReviewItems[0]?.label ?? (dailyReport?.status === "confirmed" ? "完了内容確認" : "日報入力");
 
   return (
     <>
@@ -155,14 +186,39 @@ export default async function ProductionPlanDetail({
 
       <div className="panel production-plan-detail-command">
         <div className="production-plan-detail-command-text">
-          <strong>{needsRequirementReview || plan.assignments.length === 0 ? "確認が必要です" : "次の処理へ進めます"}</strong>
+          <strong>{planReviewItems.length > 0 ? "確認が必要です" : "次の処理へ進めます"}</strong>
           <span>
             {needsRequirementReview
               ? "原料・資材タブで不足またはBOM登録状況を確認してください。"
-              : plan.assignments.length === 0
+              : needsAssignmentReview
                 ? "スタッフ配置タブで担当者を登録してください。"
                 : "登録内容、配置、日報をこの画面で続けて確認できます。"}
           </span>
+        </div>
+        <div className="production-plan-detail-command-checks">
+          <span className={`badge ${plan.status === "draft" ? "warn" : planStatusClass(plan.status)}`}>
+            予定 {planStatusLabel(plan.status)}
+          </span>
+          <span className={`badge ${needsAssignmentReview ? "warn" : "success"}`}>
+            配置 {plan.assignments.length}/{plan.plannedPeopleCount}人
+          </span>
+          <span className={`badge ${requirementsBadgeClass}`}>{requirementsLabel}</span>
+          <span className={`badge ${dailyReportBadgeClass}`}>{dailyReportLabel}</span>
+        </div>
+        <div className="production-plan-detail-queue">
+          <span className={`badge ${planReviewItems.length > 0 ? planReviewItems[0].tone : "success"}`}>
+            次
+          </span>
+          <strong>{nextActionLabel}</strong>
+          {planReviewItems.length > 0 ? (
+            planReviewItems.slice(0, 4).map((item) => (
+              <span key={`${item.label}:${item.detail}`} className={`badge ${item.tone}`}>
+                {item.label}: {item.detail}
+              </span>
+            ))
+          ) : (
+            <span className="badge success">主要確認OK</span>
+          )}
         </div>
         <PlanActions planId={plan.id} status={plan.status} />
       </div>
