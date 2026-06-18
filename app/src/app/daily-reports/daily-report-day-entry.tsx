@@ -3,6 +3,17 @@
 import Link from "next/link";
 import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  ClipboardCheck,
+  ListTree,
+  PackageCheck,
+  RotateCcw,
+  Save,
+} from "lucide-react";
 
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 import { ceilDisplayQuantity, formatCases } from "@/lib/units";
@@ -74,6 +85,33 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
   const [error, setError] = useState<string | null>(null);
 
   const pending = useMemo(() => rows.filter((r) => r.reportStatus !== "confirmed"), [rows]);
+  const confirmedCount = useMemo(() => rows.filter((r) => r.reportStatus === "confirmed").length, [rows]);
+  const draftCount = useMemo(() => rows.filter((r) => r.reportStatus === "draft").length, [rows]);
+  const rowsWithVariance = useMemo(
+    () => rows.filter((row) => rowHasVariance(row, qty, cons)).length,
+    [cons, qty, rows],
+  );
+  const issueRows = useMemo(
+    () => pending.filter((row) => rowNeedsReview(row, qty, cons)),
+    [cons, pending, qty],
+  );
+  const expandedCount = useMemo(() => Object.values(expanded).filter(Boolean).length, [expanded]);
+  const requirementRowCount = useMemo(() => rows.filter((row) => row.requirements.length > 0).length, [rows]);
+  const allRequirementRowsOpen = requirementRowCount > 0 && expandedCount >= requirementRowCount;
+  const canDraft = !busy && pending.length > 0 && pending.every((row) => rowHasNonNegativeValues(row, qty, cons));
+  const canConfirm = canDraft && issueRows.length === 0;
+  const saveStatus =
+    pending.length === 0
+      ? "当日分は確定済みです"
+      : issueRows.length > 0
+        ? `${issueRows.length}件を確認してください`
+        : "当日分を確定できます";
+  const saveHelp =
+    pending.length === 0
+      ? "在庫・原価へ反映済みです。"
+      : issueRows.length > 0
+        ? "実数量または実使用量が0以下の未確定行があります。"
+        : "確定すると実使用量で在庫・原価へ反映します。";
 
   function toggle(planId: string) {
     setExpanded((prev) => ({ ...prev, [planId]: !prev[planId] }));
@@ -97,6 +135,14 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
   }
 
   async function submit(confirm: boolean) {
+    if (confirm && !canConfirm) {
+      setError("確定前に未確定行の実数量・実使用量を確認してください。");
+      return;
+    }
+    if (!confirm && !canDraft) {
+      setError("下書き保存前にマイナス値を確認してください。");
+      return;
+    }
     const entries = buildEntries();
     if (entries.length === 0) return;
     if (confirm && !window.confirm(`当日分 ${entries.length} 件を確定し、実績を在庫・原価に反映します。よろしいですか？`))
@@ -125,6 +171,32 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
     router.refresh();
   }
 
+  function toggleAllUsage() {
+    if (allRequirementRowsOpen) {
+      setExpanded({});
+      return;
+    }
+    setExpanded(Object.fromEntries(rows.filter((row) => row.requirements.length > 0).map((row) => [row.planId, true])));
+  }
+
+  function resetPendingToPlan() {
+    setQty((prev) => ({
+      ...prev,
+      ...Object.fromEntries(pending.map((row) => [row.planId, String(row.plannedQuantity)])),
+    }));
+    setCons((prev) => ({
+      ...prev,
+      ...Object.fromEntries(
+        pending.map((row) => [
+          row.planId,
+          Object.fromEntries(row.requirements.map((req) => [`${req.itemType}:${req.itemId}`, String(req.plannedQuantity)])),
+        ]),
+      ),
+    }));
+    setMessage(null);
+    setError(null);
+  }
+
   if (rows.length === 0) {
     return <div className="empty-state">この日の生産予定はありません。生産予定を登録してください。</div>;
   }
@@ -133,6 +205,42 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
     <section>
       {message && <div className="alert success">{message}</div>}
       {error && <div className="alert danger">{error}</div>}
+
+      <div className="daily-report-day-command">
+        <div className="daily-report-day-command-title">
+          <span className={`badge ${pending.length === 0 ? "success" : issueRows.length > 0 ? "warn" : "info"}`}>
+            {pending.length === 0 ? (
+              <CheckCircle2 size={14} aria-hidden="true" />
+            ) : issueRows.length > 0 ? (
+              <AlertTriangle size={14} aria-hidden="true" />
+            ) : (
+              <ClipboardCheck size={14} aria-hidden="true" />
+            )}
+            {saveStatus}
+          </span>
+          <strong>{date} の日報入力</strong>
+        </div>
+        <div className="daily-report-day-checks" aria-label="当日日報の状態">
+          <span className="badge muted">予定 {rows.length}件</span>
+          <span className="badge success">確定 {confirmedCount}件</span>
+          <span className="badge info">下書き {draftCount}件</span>
+          <span className={`badge ${rowsWithVariance > 0 ? "warn" : "muted"}`}>差異 {rowsWithVariance}件</span>
+          <span className={`badge ${issueRows.length > 0 ? "danger" : "success"}`}>
+            {issueRows.length > 0 ? <AlertTriangle size={13} aria-hidden="true" /> : <CheckCircle2 size={13} aria-hidden="true" />}
+            確認 {issueRows.length}件
+          </span>
+        </div>
+        <div className="daily-report-day-command-actions">
+          <button type="button" className="secondary" onClick={toggleAllUsage} disabled={requirementRowCount === 0}>
+            <ListTree size={15} aria-hidden="true" />
+            {allRequirementRowsOpen ? "使用量を閉じる" : "使用量を開く"}
+          </button>
+          <button type="button" className="secondary" onClick={resetPendingToPlan} disabled={busy || pending.length === 0}>
+            <RotateCcw size={15} aria-hidden="true" />
+            未確定を予定値へ
+          </button>
+        </div>
+      </div>
 
       <div className="table-frame daily-report-day-frame">
         <table className="daily-report-day-table">
@@ -155,14 +263,22 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
               const actual = ceilDisplayQuantity(toNum(qty[r.planId])) ?? 0;
               const diff = actual - (ceilDisplayQuantity(r.plannedQuantity) ?? 0);
               const isOpen = !!expanded[r.planId];
+              const rowIssueCount = rowIssueMessages(r, qty, cons).length;
+              const rowVariance = rowHasVariance(r, qty, cons);
               return (
                 <Fragment key={r.planId}>
-                  <tr className={`dr-plan-row${confirmed ? " row-muted" : ""}`}>
+                  <tr className={`dr-plan-row${confirmed ? " row-muted" : ""}${rowIssueCount > 0 ? " row-needs-action" : ""}`}>
                     <td className="dr-product-cell" data-label="商品">
                       <div>{r.productName}</div>
-                      <div className="subtext">{r.productCode}</div>
+                      <div className="subtext">
+                        {r.productCode} · {r.plannedStartTime}
+                        {r.plannedEndTime ? `-${r.plannedEndTime}` : ""}
+                      </div>
                     </td>
-                    <td data-label="場所">{r.workAreaName}</td>
+                    <td data-label="場所">
+                      <div>{r.workAreaName}</div>
+                      <div className="subtext">{r.plannedPeopleCount}人</div>
+                    </td>
                     <td className="right" data-label="予定数量">
                       {formatCases(r.plannedQuantity, { casePackQty: r.casePackQty, baseUnit: r.unit })}
                     </td>
@@ -189,15 +305,24 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
                     </td>
                     <td data-label="使用量">
                       {r.requirements.length === 0 ? (
-                        <span className="muted">—</span>
+                        <span className="badge warn">
+                          <AlertTriangle size={13} aria-hidden="true" />
+                          BOMなし
+                        </span>
                       ) : (
                         <button type="button" className="secondary dr-expand" onClick={() => toggle(r.planId)}>
-                          {isOpen ? "▾ 閉じる" : `▸ 実使用量 (${r.requirements.length})`}
+                          {isOpen ? <ChevronDown size={15} aria-hidden="true" /> : <ChevronRight size={15} aria-hidden="true" />}
+                          実使用量 {r.requirements.length}
                         </button>
                       )}
                     </td>
                     <td data-label="状態">
-                      <span className={`badge ${badge.cls}`}>{badge.label}</span>
+                      <div className="dr-status-stack">
+                        <span className={`badge ${badge.cls}`}>{badge.label}</span>
+                        {rowIssueCount > 0 && <span className="badge danger">確認 {rowIssueCount}</span>}
+                        {rowIssueCount === 0 && rowVariance && !confirmed && <span className="badge warn">差異あり</span>}
+                        {rowIssueCount === 0 && !rowVariance && !confirmed && <span className="badge success">OK</span>}
+                      </div>
                       {confirmed && r.confirmedAt && <div className="subtext">{r.confirmedAt}</div>}
                     </td>
                     <td className="right dr-action-cell" data-label="詳細">
@@ -216,13 +341,16 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
                               <th>名称</th>
                               <th className="right">予定使用量</th>
                               <th className="right">実使用量</th>
+                              <th className="right">差異</th>
                             </tr>
                           </thead>
                           <tbody>
                             {r.requirements.map((req) => {
                               const key = `${req.itemType}:${req.itemId}`;
+                              const actualUsage = toNum(cons[r.planId]?.[key] ?? "0");
+                              const usageDiff = actualUsage - req.plannedQuantity;
                               return (
-                                <tr key={key}>
+                                <tr key={key} className={!confirmed && req.plannedQuantity > 0 && actualUsage <= 0 ? "row-needs-action" : undefined}>
                                   <td>{req.itemType === "raw_material" ? "原料" : "資材"}</td>
                                   <td>{req.itemName}</td>
                                   <td className="right">
@@ -243,6 +371,12 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
                                       />
                                     )}
                                   </td>
+                                  <td className="right">
+                                    <span className={`badge ${Math.abs(usageDiff) <= 0.0001 ? "muted" : usageDiff > 0 ? "success" : "danger"}`}>
+                                      {usageDiff > 0 ? "+" : ""}
+                                      {formatDecimal(usageDiff)} {req.unit}
+                                    </span>
+                                  </td>
                                 </tr>
                               );
                             })}
@@ -258,16 +392,64 @@ export default function DailyReportDayEntry({ date, rows }: { date: string; rows
         </table>
       </div>
 
-      <div className="row form-actions dr-actions">
-        <span className="muted dr-pending-count">未確定 {pending.length} 件</span>
-        <div className="spacer" />
-        <button type="button" className="secondary" onClick={() => submit(false)} disabled={busy || pending.length === 0}>
-          {busy ? "処理中..." : "下書き保存"}
-        </button>
-        <button type="button" onClick={() => submit(true)} disabled={busy || pending.length === 0}>
-          当日分をまとめて確定（在庫へ反映）
-        </button>
+      <div className="dr-actions">
+        <div className="dr-save-status">
+          <strong>{saveStatus}</strong>
+          <span>{saveHelp}</span>
+        </div>
+        <div className="dr-save-buttons">
+          <button type="button" className="secondary" onClick={() => submit(false)} disabled={!canDraft}>
+            <Save size={15} aria-hidden="true" />
+            {busy ? "処理中..." : "下書き保存"}
+          </button>
+          <button type="button" onClick={() => submit(true)} disabled={!canConfirm}>
+            <PackageCheck size={15} aria-hidden="true" />
+            当日分を確定
+          </button>
+        </div>
       </div>
     </section>
   );
+}
+
+function rowActualQuantity(row: DayPlanRow, qty: QtyMap) {
+  return ceilDisplayQuantity(toNum(qty[row.planId])) ?? 0;
+}
+
+function rowConsumptionValue(row: DayPlanRow, req: DayRequirementRow, cons: ConsMap) {
+  return toNum(cons[row.planId]?.[`${req.itemType}:${req.itemId}`] ?? "0");
+}
+
+function rowHasVariance(row: DayPlanRow, qty: QtyMap, cons: ConsMap) {
+  const actual = rowActualQuantity(row, qty);
+  const planned = ceilDisplayQuantity(row.plannedQuantity) ?? 0;
+  if (actual !== planned) return true;
+  return row.requirements.some((req) => Math.abs(rowConsumptionValue(row, req, cons) - req.plannedQuantity) > 0.0001);
+}
+
+function rowIssueMessages(row: DayPlanRow, qty: QtyMap, cons: ConsMap) {
+  if (row.reportStatus === "confirmed") return [];
+  const issues: string[] = [];
+  if (rowActualQuantity(row, qty) <= 0) issues.push("実数量");
+  for (const req of row.requirements) {
+    if (req.plannedQuantity > 0 && rowConsumptionValue(row, req, cons) <= 0) {
+      issues.push(req.itemType === "raw_material" ? "原料" : "資材");
+      break;
+    }
+  }
+  return issues;
+}
+
+function rowNeedsReview(row: DayPlanRow, qty: QtyMap, cons: ConsMap) {
+  return rowIssueMessages(row, qty, cons).length > 0;
+}
+
+function rowHasNonNegativeValues(row: DayPlanRow, qty: QtyMap, cons: ConsMap) {
+  if (rowActualQuantity(row, qty) < 0) return false;
+  return row.requirements.every((req) => rowConsumptionValue(row, req, cons) >= 0);
+}
+
+function formatDecimal(value: number) {
+  if (!Number.isFinite(value)) return "0";
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
 }

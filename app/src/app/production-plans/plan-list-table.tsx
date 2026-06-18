@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AlertTriangle, CheckCircle2, ClipboardCheck, RotateCcw, Search, Trash2 } from "lucide-react";
 import { planStatusClass, planStatusLabel } from "@/lib/labels";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 import { formatCases } from "@/lib/units";
@@ -61,6 +62,17 @@ export default function PlanListTable({
     () => !!(filter.dateFrom && filter.dateTo),
     [filter.dateFrom, filter.dateTo],
   );
+  const visibleDraftCount = visiblePlans.filter((plan) => plan.status === "draft").length;
+  const visibleConfirmedCount = visiblePlans.filter((plan) => plan.status === "confirmed").length;
+  const visibleCompletedCount = visiblePlans.filter((plan) => plan.status === "completed").length;
+  const visibleAlertCount = visiblePlans.filter(hasPlanAlert).length;
+  const selectedPlans = useMemo(
+    () => plans.filter((plan) => selected.has(plan.id)),
+    [plans, selected],
+  );
+  const selectedDraftIds = selectedPlans.filter((plan) => plan.status === "draft").map((plan) => plan.id);
+  const selectedAlertCount = selectedPlans.filter(hasPlanAlert).length;
+  const hasQuery = query.trim().length > 0;
 
   function toggle(id: string) {
     const next = new Set(selected);
@@ -91,15 +103,18 @@ export default function PlanListTable({
   }
 
   async function confirmSelected() {
-    if (selected.size === 0) return;
-    if (!confirm(`選択中の下書き ${selected.size} 件を確定します。よろしいですか？`)) return;
+    if (selectedDraftIds.length === 0) {
+      setError("確定できる下書き予定が選択されていません。");
+      return;
+    }
+    if (!confirm(`選択中の下書き ${selectedDraftIds.length} 件を確定します。よろしいですか？`)) return;
     setBusy(true);
     setMessage(null);
     setError(null);
     const res = await fetch(kitagoyaApiPath("/production-plans/bulk-confirm"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: [...selected] }),
+      body: JSON.stringify({ ids: selectedDraftIds }),
     });
     const json = await res.json().catch(() => ({}));
     setBusy(false);
@@ -158,10 +173,36 @@ export default function PlanListTable({
     <>
       <div className="panel list-control-panel">
         <div className="list-control-head">
-          <span className="muted">
-            表示中 {visiblePlans.length} / {plans.length} 件 ・ 選択 {selected.size} 件
-          </span>
-          {query && <span className="badge info">表内検索あり</span>}
+          <strong>一覧操作</strong>
+          <span className="muted">表示中 {visiblePlans.length} / {plans.length} 件</span>
+          {hasQuery && <span className="badge info">表内検索あり</span>}
+          {visibleAlertCount > 0 && (
+            <span className="badge warn">
+              <AlertTriangle size={13} aria-hidden="true" />
+              確認 {visibleAlertCount} 件
+            </span>
+          )}
+        </div>
+        <div className="plan-list-summary-grid">
+          <div className="metric">
+            <span className="metric-label">下書き</span>
+            <strong className="metric-value">{visibleDraftCount}件</strong>
+          </div>
+          <div className="metric">
+            <span className="metric-label">確定</span>
+            <strong className="metric-value">{visibleConfirmedCount}件</strong>
+          </div>
+          <div className="metric">
+            <span className="metric-label">完了</span>
+            <strong className="metric-value">{visibleCompletedCount}件</strong>
+          </div>
+          <div className="metric">
+            <span className="metric-label">選択中</span>
+            <strong className="metric-value">{selected.size}件</strong>
+            <span className="metric-note">
+              下書き {selectedDraftIds.length}件 / 確認 {selectedAlertCount}件
+            </span>
+          </div>
         </div>
         <div className="list-control-body">
           <div className="list-control-search">
@@ -174,6 +215,7 @@ export default function PlanListTable({
               aria-label="生産予定を検索"
             />
             <button type="button" className="secondary" onClick={resetSearch} disabled={!query}>
+              <RotateCcw size={15} aria-hidden="true" />
               条件クリア
             </button>
           </div>
@@ -181,9 +223,10 @@ export default function PlanListTable({
             <button
               type="button"
               onClick={confirmSelected}
-              disabled={busy || selected.size === 0}
+              disabled={busy || selectedDraftIds.length === 0}
             >
-              {busy ? "処理中..." : `選択確定 (${selected.size})`}
+              <ClipboardCheck size={16} aria-hidden="true" />
+              {busy ? "処理中..." : `下書きを確定 (${selectedDraftIds.length})`}
             </button>
             <button
               type="button"
@@ -191,6 +234,7 @@ export default function PlanListTable({
               onClick={deleteSelected}
               disabled={busy || selected.size === 0}
             >
+              <Trash2 size={16} aria-hidden="true" />
               {busy ? "処理中..." : `選択削除 (${selected.size})`}
             </button>
             <button
@@ -200,10 +244,19 @@ export default function PlanListTable({
               disabled={busy || !filterActive}
               title={filterActive ? "" : "期間 (開始日〜終了日) を指定すると有効化されます"}
             >
+              <Trash2 size={16} aria-hidden="true" />
               絞り込み結果を全削除
             </button>
           </div>
         </div>
+        {selected.size > 0 && (
+          <div className="plan-list-selection-bar">
+            <CheckCircle2 size={16} aria-hidden="true" />
+            <span>
+              {selected.size}件を選択中。確定対象は下書き {selectedDraftIds.length}件です。
+            </span>
+          </div>
+        )}
       </div>
 
       {error && <div className="alert danger">{error}</div>}
@@ -211,6 +264,7 @@ export default function PlanListTable({
 
       {visiblePlans.length === 0 ? (
         <div className="empty-state">
+          <Search size={18} aria-hidden="true" />
           {plans.length === 0 ? "該当する予定はありません。" : "検索条件に一致する予定はありません。"}
         </div>
       ) : (
@@ -296,4 +350,8 @@ export default function PlanListTable({
       )}
     </>
   );
+}
+
+function hasPlanAlert(plan: Plan) {
+  return plan.overtimeMinutes > 0 || plan.hardShortage || plan.unconfirmedDep;
 }

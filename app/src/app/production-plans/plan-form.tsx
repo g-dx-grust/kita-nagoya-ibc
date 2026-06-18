@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AlertTriangle, CheckCircle2, Clock, Minus, Package, Plus, Users } from "lucide-react";
 import {
   DAILY_BREAK_LABEL,
   computeMaxQuantityInTimeWindow,
@@ -60,7 +61,7 @@ export default function PlanForm({
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("duration");
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toDateInputValue(new Date());
 
   const [date, setDate] = useState(initial?.date ?? today);
   const [productId, setProductId] = useState(initial?.productId ?? products[0]?.id ?? "");
@@ -83,13 +84,14 @@ export default function PlanForm({
     () => workAreas.map((workArea) => ({ value: workArea.id, label: workArea.name })),
     [workAreas],
   );
+  const plannedQuantity = ceilDisplayQuantity(Number(quantity)) ?? 0;
   const quantityPreview = formatCases(quantity, { casePackQty: product?.casePackQty ?? null, baseUnit: unit });
 
   // Default work area + unit when product changes (only for create).
   useEffect(() => {
     if (initial) return;
     if (!product) return;
-    if (!workAreaId && product.defaultWorkAreaId) setWorkAreaId(product.defaultWorkAreaId);
+    setWorkAreaId(product.defaultWorkAreaId ?? "");
     setUnit(product.unit);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId]);
@@ -134,6 +136,16 @@ export default function PlanForm({
     });
   }, [upph, quantity, startTime, desiredEndTime, baselineEndTime, people]);
 
+  const inputChecks = [
+    { label: "商品", ok: !!productId },
+    { label: "作業場所", ok: !!workAreaId },
+    { label: "数量", ok: plannedQuantity > 0 },
+    { label: "人数", ok: people > 0 },
+    { label: "単位", ok: unit.trim().length > 0 },
+  ];
+  const readyCount = inputChecks.filter((check) => check.ok).length;
+  const canSubmit = !!productId && !!workAreaId && plannedQuantity > 0 && people > 0 && unit.trim().length > 0;
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
@@ -142,7 +154,7 @@ export default function PlanForm({
       date,
       productId,
       productionType,
-      plannedQuantity: ceilDisplayQuantity(Number(quantity)) ?? 0,
+      plannedQuantity,
       unit,
       workAreaId,
       plannedStartTime: startTime,
@@ -176,9 +188,89 @@ export default function PlanForm({
   }
 
   const capacityMissing = !!product && !!workAreaId && !capacity;
+  const previewEndTime = durationResult?.endTime ?? "未計算";
+  const overtimeMinutes = durationResult?.overtimeMinutes ?? 0;
+  const hasPreviewWarning =
+    capacityMissing ||
+    (durationResult?.warnings.length ?? 0) > 0 ||
+    !canSubmit;
+
+  function adjustQuantity(delta: number) {
+    setQuantity((current) => Math.max(0, Math.round((Number(current) || 0) + delta)));
+  }
+
+  function adjustPeople(delta: number) {
+    setPeople((current) => Math.max(0.5, roundToHalf((Number(current) || 0) + delta)));
+  }
+
+  function adjustStartTime(deltaMinutes: number) {
+    setStartTime((current) => addMinutesToTime(current, deltaMinutes));
+  }
+
+  function adjustDesiredEndTime(deltaMinutes: number) {
+    setDesiredEndTime((current) => addMinutesToTime(current || baselineEndTime, deltaMinutes));
+  }
 
   return (
     <form className="production-plan-form" onSubmit={submit}>
+      <div className="production-plan-command-panel">
+        <div className="production-plan-command-main">
+          <span className={hasPreviewWarning ? "badge warn" : "badge success"}>
+            {hasPreviewWarning ? (
+              <>
+                <AlertTriangle size={14} aria-hidden="true" />
+                確認あり
+              </>
+            ) : (
+              <>
+                <CheckCircle2 size={14} aria-hidden="true" />
+                登録準備OK
+              </>
+            )}
+          </span>
+          <strong>{formatDateLabel(date)} の生産予定</strong>
+          <span className="muted">
+            入力 {readyCount} / {inputChecks.length}
+          </span>
+        </div>
+        <div className="production-plan-command-metrics">
+          <div>
+            <span>
+              <Package size={15} aria-hidden="true" />
+              数量
+            </span>
+            <strong>{quantityPreview}</strong>
+          </div>
+          <div>
+            <span>
+              <Users size={15} aria-hidden="true" />
+              人数
+            </span>
+            <strong>{people}人</strong>
+          </div>
+          <div>
+            <span>
+              <Clock size={15} aria-hidden="true" />
+              終了見込み
+            </span>
+            <strong className={overtimeMinutes > 0 ? "warn-value" : undefined}>{previewEndTime}</strong>
+          </div>
+        </div>
+        <div className="production-plan-command-checks">
+          {inputChecks.map((check) => (
+            <span key={check.label} className={check.ok ? "badge success" : "badge danger"}>
+              {check.ok ? <CheckCircle2 size={13} aria-hidden="true" /> : <AlertTriangle size={13} aria-hidden="true" />}
+              {check.label}
+            </span>
+          ))}
+          {capacityMissing && (
+            <span className="badge warn">
+              <AlertTriangle size={13} aria-hidden="true" />
+              能力未登録
+            </span>
+          )}
+        </div>
+      </div>
       <div className="production-plan-form-layout">
         <div className="panel production-plan-input-panel">
           <section className="production-plan-form-section" aria-labelledby="production-plan-basic-heading">
@@ -233,6 +325,20 @@ export default function PlanForm({
                   onChange={(e) => setQuantity(Number(e.target.value))}
                   required
                 />
+                <span className="production-plan-inline-actions" aria-label="数量を調整">
+                  <button type="button" className="secondary mini" onClick={() => adjustQuantity(-100)}>
+                    <Minus size={13} aria-hidden="true" />
+                    100
+                  </button>
+                  <button type="button" className="secondary mini" onClick={() => adjustQuantity(100)}>
+                    <Plus size={13} aria-hidden="true" />
+                    100
+                  </button>
+                  <button type="button" className="secondary mini" onClick={() => adjustQuantity(500)}>
+                    <Plus size={13} aria-hidden="true" />
+                    500
+                  </button>
+                </span>
                 <span className="subtext">{quantityPreview}</span>
               </label>
               <label className="production-plan-unit-field">
@@ -249,10 +355,30 @@ export default function PlanForm({
                   onChange={(e) => setPeople(Number(e.target.value))}
                   required
                 />
+                <span className="production-plan-inline-actions" aria-label="人数を調整">
+                  <button type="button" className="secondary mini" onClick={() => adjustPeople(-1)}>
+                    <Minus size={13} aria-hidden="true" />
+                    1
+                  </button>
+                  <button type="button" className="secondary mini" onClick={() => adjustPeople(1)}>
+                    <Plus size={13} aria-hidden="true" />
+                    1
+                  </button>
+                </span>
               </label>
               <label>
                 <span>開始時刻</span>
                 <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+                <span className="production-plan-inline-actions" aria-label="開始時刻を調整">
+                  <button type="button" className="secondary mini" onClick={() => adjustStartTime(-30)}>
+                    <Minus size={13} aria-hidden="true" />
+                    30分
+                  </button>
+                  <button type="button" className="secondary mini" onClick={() => adjustStartTime(30)}>
+                    <Plus size={13} aria-hidden="true" />
+                    30分
+                  </button>
+                </span>
               </label>
               <label>
                 <span>終了希望</span>
@@ -261,6 +387,16 @@ export default function PlanForm({
                   value={desiredEndTime ?? ""}
                   onChange={(e) => setDesiredEndTime(e.target.value)}
                 />
+                <span className="production-plan-inline-actions" aria-label="終了希望を調整">
+                  <button type="button" className="secondary mini" onClick={() => adjustDesiredEndTime(-30)}>
+                    <Minus size={13} aria-hidden="true" />
+                    30分
+                  </button>
+                  <button type="button" className="secondary mini" onClick={() => adjustDesiredEndTime(30)}>
+                    <Plus size={13} aria-hidden="true" />
+                    30分
+                  </button>
+                </span>
               </label>
               <label>
                 <span>基準終了</span>
@@ -407,7 +543,7 @@ export default function PlanForm({
           {serverError && <div className="alert danger">{serverError}</div>}
 
           <div className="production-plan-form-actions">
-            <button type="submit" disabled={submitting || !productId || !workAreaId}>
+            <button type="submit" disabled={submitting || !canSubmit}>
               {submitting ? "保存中..." : planId ? "更新する" : "登録する"}
             </button>
             <button
@@ -456,4 +592,31 @@ function warnLabel(w: string) {
     default:
       return w;
   }
+}
+
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatDateLabel(date: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return "日付未設定";
+  const [year, month, day] = date.split("-");
+  return `${year}年${Number(month)}月${Number(day)}日`;
+}
+
+function roundToHalf(value: number) {
+  return Math.round(value * 2) / 2;
+}
+
+function addMinutesToTime(time: string, deltaMinutes: number) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(time);
+  if (!match) return time;
+  const total = Number(match[1]) * 60 + Number(match[2]) + deltaMinutes;
+  const normalized = ((total % 1440) + 1440) % 1440;
+  const hour = Math.floor(normalized / 60);
+  const minute = normalized % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }

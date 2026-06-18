@@ -44,6 +44,7 @@ export default async function StaffShiftEntryPage({
     <div className="self-shift-page">
       <h1>シフト入力</h1>
       <StaffShiftEntryForm
+        key={`${employee.id}:${yearMonth}`}
         token={token}
         employeeName={employee.name}
         yearMonth={yearMonth}

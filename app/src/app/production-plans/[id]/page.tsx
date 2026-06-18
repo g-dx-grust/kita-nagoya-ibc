@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AlertTriangle, CalendarDays, ClipboardCheck, FileText, PackageCheck, Printer, Users } from "lucide-react";
 import SectionTabs from "@/components/ui/section-tabs";
 import { prisma } from "@/lib/prisma";
 import { kitagoyaPath } from "@/lib/paths";
+import { planStatusClass, planStatusLabel } from "@/lib/labels";
+import { formatCases } from "@/lib/units";
 import PlanForm from "../plan-form";
 import AssignmentEditor from "./assignment-editor";
 import PlanActions from "./plan-actions";
@@ -63,16 +66,104 @@ export default async function ProductionPlanDetail({
   const shortageDep = plan.requirements.filter(
     (r) => r.shortageType === "unconfirmed_dependency",
   );
+  const planDate = plan.date.toISOString().slice(0, 10);
+  const requirementAlertCount = shortageHard.length + shortageDep.length;
+  const needsRequirementReview = requirementAlertCount > 0 || plan.requirements.length === 0;
+  const requirementsBadgeClass =
+    shortageHard.length > 0 || plan.requirements.length === 0 ? "danger" : shortageDep.length > 0 ? "warn" : "success";
+  const requirementsLabel =
+    shortageHard.length > 0
+      ? `不足 ${shortageHard.length}件`
+      : shortageDep.length > 0
+        ? `未確定依存 ${shortageDep.length}件`
+        : plan.requirements.length > 0
+          ? "使用量OK"
+          : "BOM未登録";
+  const dailyReportLabel =
+    dailyReport?.status === "confirmed" ? "日報確定" : dailyReport ? "日報下書き" : "日報未入力";
+  const dailyReportBadgeClass = dailyReport?.status === "confirmed" ? "success" : dailyReport ? "warn" : "muted";
+  const plannedTime = `${plan.plannedStartTime} - ${plan.plannedEndTime ?? plan.desiredEndTime ?? plan.baselineEndTime}`;
 
   return (
     <>
-      <h1>
-        生産予定 ・ {plan.date.toISOString().slice(0, 10)} · {plan.product.officialName}
-      </h1>
-      <div className="toolbar">
-        <Link href={kitagoyaPath("/production-plans")}>← 一覧へ</Link>
-        <Link href={kitagoyaPath(`/prints?date=${plan.date.toISOString().slice(0, 10)}`)}>現場印刷</Link>
-        <div className="spacer" />
+      <div className="page-title-row production-plan-detail-title">
+        <div>
+          <h1>
+            生産予定 ・ {planDate} · {plan.product.officialName}
+          </h1>
+          <div className="production-plan-detail-title-meta">
+            <span className={`badge ${planStatusClass(plan.status)}`}>{planStatusLabel(plan.status)}</span>
+            <span>{plan.workArea.name}</span>
+            <span>{plannedTime}</span>
+          </div>
+        </div>
+        <div className="page-title-actions">
+          <Link className="button-link secondary-link" href={kitagoyaPath("/production-plans")}>
+            一覧へ
+          </Link>
+          <Link className="button-link secondary-link" href={kitagoyaPath(`/prints?date=${planDate}`)}>
+            <Printer size={16} aria-hidden="true" />
+            現場印刷
+          </Link>
+        </div>
+      </div>
+
+      <div className="production-plan-detail-overview">
+        <div className="production-plan-detail-card primary">
+          <span>
+            <CalendarDays size={16} aria-hidden="true" />
+            予定
+          </span>
+          <strong>{formatCases(plan.plannedQuantity, { casePackQty: plan.product.casePackQty, baseUnit: plan.unit })}</strong>
+          <small>{plannedTime}</small>
+        </div>
+        <div className="production-plan-detail-card">
+          <span>
+            <Users size={16} aria-hidden="true" />
+            スタッフ配置
+          </span>
+          <strong>
+            {plan.assignments.length} / {plan.plannedPeopleCount}人
+          </strong>
+          <small>{plan.assignments.length > 0 ? "配置あり" : "未配置"}</small>
+        </div>
+        <div className={`production-plan-detail-card ${requirementsBadgeClass}`}>
+          <span>
+            {requirementAlertCount > 0 ? (
+              <AlertTriangle size={16} aria-hidden="true" />
+            ) : (
+              <PackageCheck size={16} aria-hidden="true" />
+            )}
+            原料・資材
+          </span>
+          <strong>{requirementsLabel}</strong>
+          <small>{plan.requirements.length}行</small>
+        </div>
+        <div className={`production-plan-detail-card ${dailyReportBadgeClass}`}>
+          <span>
+            {dailyReport?.status === "confirmed" ? (
+              <ClipboardCheck size={16} aria-hidden="true" />
+            ) : (
+              <FileText size={16} aria-hidden="true" />
+            )}
+            日報
+          </span>
+          <strong>{dailyReportLabel}</strong>
+          <small>{dailyReport ? "実績データあり" : "実績未登録"}</small>
+        </div>
+      </div>
+
+      <div className="panel production-plan-detail-command">
+        <div className="production-plan-detail-command-text">
+          <strong>{needsRequirementReview || plan.assignments.length === 0 ? "確認が必要です" : "次の処理へ進めます"}</strong>
+          <span>
+            {needsRequirementReview
+              ? "原料・資材タブで不足またはBOM登録状況を確認してください。"
+              : plan.assignments.length === 0
+                ? "スタッフ配置タブで担当者を登録してください。"
+                : "登録内容、配置、日報をこの画面で続けて確認できます。"}
+          </span>
+        </div>
         <PlanActions planId={plan.id} status={plan.status} />
       </div>
 

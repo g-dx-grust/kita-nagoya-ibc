@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { AlertTriangle, Archive, CalendarClock, Eye, PencilLine, RotateCcw, Table2 } from "lucide-react";
 import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import SearchableCombobox from "@/components/ui/searchable-combobox";
 import type { MonthlyInventorySheet, MonthlyInventorySheetRow } from "@/lib/monthly-inventory-sheet";
@@ -57,6 +58,7 @@ export function InventoryTabs({
   const [supplier, setSupplier] = useState("");
   const [inStockOnly, setInStockOnly] = useState(false);
   const [negativeOnly, setNegativeOnly] = useState(false);
+  const [showDeadlineRows, setShowDeadlineRows] = useState(true);
   // 商品タブは既定で北名古屋使用のみ表示(暫定スコープ)。
   const kitagoyaOnly = productScope !== "all";
 
@@ -84,10 +86,13 @@ export function InventoryTabs({
     });
   }, [sheet.rows, query, hasSupplier, supplier, inStockOnly, negativeOnly]);
   const activeTabLabel = tabs.find((tab) => tab.key === active)?.label ?? title.replace("在庫表", "");
+  const totalInStockCount = sheet.rows.filter((row) => row.monthEndQuantity !== 0).length;
+  const totalNegativeCount = sheet.rows.filter((row) => row.monthEndQuantity < 0).length;
   const visibleInStockCount = filteredRows.filter((row) => row.monthEndQuantity !== 0).length;
   const visibleNegativeCount = filteredRows.filter((row) => row.monthEndQuantity < 0).length;
   const scopeLabel = hasKitagoyaFilter ? (kitagoyaOnly ? "北名古屋のみ" : "全商品") : "全品目";
   const modeLabel = adminMode && editableGrid ? "手入力" : "閲覧";
+  const canToggleDeadlineRows = itemType !== "product" && !adminMode;
 
   const hasActiveFilters = !!(
     query ||
@@ -122,6 +127,46 @@ export function InventoryTabs({
           ))}
         </div>
       </div>
+      <div className="inventory-control-panel">
+        <div className="inventory-control-main">
+          <span className="badge info">{sheet.monthLabel}</span>
+          <strong>
+            {activeTabLabel} / {scopeLabel}
+          </strong>
+          <span className={totalNegativeCount > 0 ? "badge danger" : "badge success"}>
+            {totalNegativeCount > 0 ? (
+              <>
+                <AlertTriangle size={14} aria-hidden="true" />
+                マイナス {totalNegativeCount} 件
+              </>
+            ) : (
+              "マイナスなし"
+            )}
+          </span>
+        </div>
+        <div className="inventory-control-actions">
+          {hasKitagoyaFilter && (
+            <Link className="button-link secondary-link" href={productScopeHref}>
+              <Archive size={16} aria-hidden="true" />
+              {kitagoyaOnly ? "全商品" : "北名古屋のみ"}
+            </Link>
+          )}
+          {canToggleDeadlineRows && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setShowDeadlineRows((current) => !current)}
+            >
+              <CalendarClock size={16} aria-hidden="true" />
+              {showDeadlineRows ? "期限行を隠す" : "期限行を表示"}
+            </button>
+          )}
+          <Link className={adminMode ? "button-link secondary-link" : "button-link"} href={adminModeHref}>
+            {adminMode ? <Eye size={16} aria-hidden="true" /> : <PencilLine size={16} aria-hidden="true" />}
+            {adminMode ? "閲覧モード" : "手入力"}
+          </Link>
+        </div>
+      </div>
       <div className="inventory-summary-grid">
         <div className="metric">
           <div className="metric-label">対象</div>
@@ -135,12 +180,14 @@ export function InventoryTabs({
         </div>
         <div className="metric">
           <div className="metric-label">月末在庫あり</div>
-          <div className="metric-value">{visibleInStockCount} 件</div>
+          <div className="metric-value">
+            {visibleInStockCount} / {totalInStockCount} 件
+          </div>
         </div>
         <div className="metric">
           <div className="metric-label">マイナス在庫</div>
           <div className={`metric-value${visibleNegativeCount > 0 ? " negative-stock" : ""}`}>
-            {visibleNegativeCount} 件
+            {visibleNegativeCount} / {totalNegativeCount} 件
           </div>
         </div>
         <div className="metric">
@@ -175,16 +222,7 @@ export function InventoryTabs({
             />
           )}
           {hasKitagoyaFilter && (
-            <label className="filter-check">
-              <input
-                type="checkbox"
-                checked={kitagoyaOnly}
-                onChange={() => {
-                  window.location.href = productScopeHref;
-                }}
-              />
-              北名古屋のみ
-            </label>
+            <span className="filter-status-chip">{scopeLabel}</span>
           )}
           <label className="filter-check">
             <input type="checkbox" checked={inStockOnly} onChange={(e) => setInStockOnly(e.target.checked)} />
@@ -194,17 +232,8 @@ export function InventoryTabs({
             <input type="checkbox" checked={negativeOnly} onChange={(e) => setNegativeOnly(e.target.checked)} />
             マイナス在庫のみ
           </label>
-          <label className="filter-check filter-admin">
-            <input
-              type="checkbox"
-              checked={adminMode}
-              onChange={() => {
-                window.location.href = adminModeHref;
-              }}
-            />
-            管理者モード（手入力）
-          </label>
           <button type="button" className="secondary" onClick={resetFilters} disabled={!hasActiveFilters}>
+            <RotateCcw size={15} aria-hidden="true" />
             条件クリア
           </button>
           <span className="filter-count">
@@ -231,7 +260,7 @@ export function InventoryTabs({
           rows={filteredRows}
           secondaryHeader={secondaryHeader}
           caseByItemId={caseByItemId}
-          showShelfLifeRows={itemType !== "product"}
+          showShelfLifeRows={itemType !== "product" && showDeadlineRows}
         />
       )}
     </section>
@@ -259,6 +288,10 @@ function InventoryExcelTable({
   return (
     <section className="inventory-sheet-section">
       <div className="inventory-sheet-meta">
+        <span className="badge muted">
+          <Table2 size={14} aria-hidden="true" />
+          {rows.length} 件
+        </span>
         <span className="badge info">{sheet.monthLabel}</span>
         <span className="muted">
           {sheet.dateFrom} 〜 {sheet.dateTo}
