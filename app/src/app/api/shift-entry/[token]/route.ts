@@ -3,6 +3,11 @@ import { badRequest, handleError, notFound, ok, parseJson } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { isValidTimeRange } from "@/lib/schedule";
 import { StaffShiftEntrySaveSchema } from "@/lib/schemas";
+import {
+  diffShiftChangeDays,
+  normalizeShiftChangeDays,
+  type ShiftChangeDay,
+} from "@/lib/shift-change-request";
 
 export async function PUT(req: Request, ctx: { params: Promise<{ token: string }> }) {
   try {
@@ -31,19 +36,78 @@ export async function PUT(req: Request, ctx: { params: Promise<{ token: string }
     const before = await prisma.shift.findMany({
       where: { employeeId: employee.id, date: { gte: start, lt: end } },
     });
+    const currentDays = normalizeShiftChangeDays(before.filter((shift) => shift.status !== "off").map(shiftToChangeDay));
+    const requestedDays = normalizeShiftChangeDays(
+      dayRows.map((row) => ({
+        day: row.day,
+        startTime: row.startTime,
+        endTime: row.endTime,
+        breakMinutes: row.breakMinutes ?? 60,
+      })),
+    );
+    const diff = diffShiftChangeDays(currentDays, requestedDays);
+
+    if (before.length > 0 && !diff.hasChanges) {
+      return ok({
+        yearMonth: body.yearMonth,
+        employeeId: employee.id,
+        count: currentDays.length,
+        status: "unchanged",
+      });
+    }
+
+    if (before.length > 0 && diff.hasChanges) {
+      const request = await prisma.$transaction(async (tx) => {
+        await tx.shiftChangeRequest.updateMany({
+          where: { employeeId: employee.id, yearMonth: body.yearMonth, status: "pending" },
+          data: {
+            status: "superseded",
+            reviewedAt: new Date(),
+            reviewNote: "新しい修正申請で置き換え",
+          },
+        });
+        return tx.shiftChangeRequest.create({
+          data: {
+            employeeId: employee.id,
+            yearMonth: body.yearMonth,
+            currentDaysJson: JSON.stringify(currentDays),
+            requestedDaysJson: JSON.stringify(requestedDays),
+            requestedByToken: token,
+          },
+        });
+      });
+
+      await audit({
+        action: "request_shift_change",
+        entityType: "ShiftChangeRequest",
+        entityId: request.id,
+        before: currentDays,
+        after: { requestedDays, diff },
+      });
+
+      return ok({
+        yearMonth: body.yearMonth,
+        employeeId: employee.id,
+        count: currentDays.length,
+        requestedCount: requestedDays.length,
+        status: "pending_approval",
+        requestId: request.id,
+        diff,
+      });
+    }
 
     const after = await prisma.$transaction(async (tx) => {
       await tx.shift.deleteMany({
         where: { employeeId: employee.id, date: { gte: start, lt: end } },
       });
-      if (dayRows.length > 0) {
+      if (requestedDays.length > 0) {
         await tx.shift.createMany({
-          data: dayRows.map((row) => ({
+          data: requestedDays.map((row) => ({
             employeeId: employee.id,
             date: new Date(Date.UTC(year, month - 1, row.day)),
             startTime: row.startTime,
             endTime: row.endTime,
-            breakMinutes: row.breakMinutes ?? 60,
+            breakMinutes: row.breakMinutes,
             status: "draft",
           })),
         });
@@ -62,10 +126,19 @@ export async function PUT(req: Request, ctx: { params: Promise<{ token: string }
       after: { count: after.length },
     });
 
-    return ok({ yearMonth: body.yearMonth, employeeId: employee.id, count: after.length });
+    return ok({ yearMonth: body.yearMonth, employeeId: employee.id, count: after.length, status: "saved" });
   } catch (e) {
     return handleError(e);
   }
+}
+
+function shiftToChangeDay(shift: { date: Date; startTime: string; endTime: string; breakMinutes: number }): ShiftChangeDay {
+  return {
+    day: shift.date.getUTCDate(),
+    startTime: shift.startTime,
+    endTime: shift.endTime,
+    breakMinutes: shift.breakMinutes,
+  };
 }
 
 function parseYearMonth(ym: string): { year: number; month: number } {

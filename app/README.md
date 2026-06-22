@@ -102,16 +102,16 @@ NEXT_PUBLIC_KITAGOYA_API_BASE_PATH="/api/kitanagoya"
 - `/production-plans` 生産予定一覧 (絞り込み)
 - `/production-plans/new` 新規登録 (3モードのリアルタイム計算)
 - `/production-plans/monthly` 前々月前年比の月次予測、または現在庫・未処理需要・既存予定から月間生産予定をシミュレーションし、仮予定として下書き生成
-- `/production-plans/auto` シフトに合わせた日別生産スケジュール自動作成 (社内部屋を並列割り振り)
+- `/production-plans/auto` シフトに合わせた日別生産スケジュール自動作成 (社内部屋を並列割り振り。プレビューから当日実施分を選択して確定)
 - `/product-planning` 製品在庫・受注/出荷予定から生産候補を提案し、月次実績を登録
 - `/production-plans/[id]` 詳細・編集・確定/取消/再計算・原料不足表示
 - `/production-daily-reports` Excel由来の製造日報蓄積・月次商品別集計・手間賃検証
-- `/masters/products` 商品マスター + BOM + 生産能力編集 + CSV取り込み
+- `/masters/products` 商品マスター + BOM + 生産能力編集 + CSV取り込み (受注生産は初回受注予定も同時登録可能)
 - `/masters/materials` 原料マスター + CSV取り込み
 - `/masters/packaging` 資材マスター
 - `/masters/work-areas` 作業場所マスター (部屋名・最大配置人数は自由に追加・変更可能)
 - `/masters/employees` 従業員マスター
-- `/shifts` 月別/日別シフト登録 (従業員ごとの基本勤務時間を保存し、休み/シフト未登録者は自動配置・印刷対象外)
+- `/shifts` 月別/日別シフト登録 (従業員ごとの基本勤務時間を保存し、休み/シフト未登録者は自動配置・印刷対象外。スタッフ再修正は管理者承認で反映)
 - `/prints` 現場印刷 (日別の生産スケジュール/スタッフ配置HTML)
 - `/prints/production-schedule?date=YYYY-MM-DD` 生産スケジュール印刷HTML
 - `/prints/staff-assignments?date=YYYY-MM-DD` スタッフ配置表印刷HTML
@@ -153,6 +153,7 @@ GET/POST    /api/employees
 GET/POST    /api/suppliers
 GET/POST    /api/capacities
 GET/PUT     /api/shifts?date=YYYY-MM-DD
+PATCH       /api/shift-change-requests/{id}          スタッフ修正申請の承認/却下
 PUT         /api/products/{id}/bom
 GET/POST    /api/product-demands
 GET/POST    /api/product-monthly-actuals

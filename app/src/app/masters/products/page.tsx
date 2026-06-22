@@ -9,7 +9,7 @@ import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 export const dynamic = "force-dynamic";
 
 export default async function ProductsPage() {
-  const [products, workAreas, bomGroups, capacityGroups, billingGroups] = await Promise.all([
+  const [products, workAreas, bomGroups, capacityGroups, billingGroups, openOrderDemandCount] = await Promise.all([
     prisma.product.findMany({
       where: { active: true },
       include: {
@@ -25,6 +25,13 @@ export default async function ProductsPage() {
     prisma.productBomItem.groupBy({ by: ["productId"] }),
     prisma.productionCapacity.groupBy({ by: ["productId"] }),
     prisma.billingPrice.groupBy({ by: ["productId"] }),
+    prisma.productDemand.count({
+      where: {
+        status: "open",
+        demandType: "order",
+        product: { active: true, productionType: { in: ["make_to_order", "both"] } },
+      },
+    }),
   ]);
 
   const bomSet = new Set(bomGroups.map((g) => g.productId));
@@ -110,6 +117,14 @@ export default async function ProductsPage() {
       href: "#product-master-list",
       tone: setupSummary.missingCapacity + setupSummary.missingBilling > 0 ? "warn" : "success",
       Icon: Settings,
+    },
+    {
+      label: "受注生産",
+      count: setupSummary.makeToOrderCount,
+      detail: `未処理受注 ${openOrderDemandCount}`,
+      href: kitagoyaPath("/product-planning"),
+      tone: setupSummary.makeToOrderCount > 0 ? "info" : "warn",
+      Icon: PackagePlus,
     },
     {
       label: "CSV取込",
@@ -207,6 +222,11 @@ export default async function ProductsPage() {
           <div className="metric-value">{setupSummary.billingEnabledCount} 件</div>
           <div className="metric-note">手間賃未設定 {setupSummary.missingBilling} 件</div>
         </div>
+        <div className="metric">
+          <div className="metric-label">受注生産</div>
+          <div className="metric-value">{setupSummary.makeToOrderCount} 件</div>
+          <div className="metric-note">未処理受注 {openOrderDemandCount} 件</div>
+        </div>
       </div>
 
       <section id="product-create" className="anchor-offset">
@@ -239,6 +259,9 @@ function buildProductSetupSummary(rows: ProductRow[]) {
     missingCapacity: kitagoyaRows.filter((row) => !row.hasCapacity).length,
     missingBilling: kitagoyaRows.filter((row) => !row.hasBilling).length,
     billingEnabledCount: kitagoyaRows.filter((row) => row.billingEnabled).length,
+    makeToOrderCount: kitagoyaRows.filter(
+      (row) => row.productionType === "make_to_order" || row.productionType === "both",
+    ).length,
   };
 }
 

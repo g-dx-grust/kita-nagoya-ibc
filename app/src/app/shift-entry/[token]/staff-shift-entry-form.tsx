@@ -29,6 +29,8 @@ export default function StaffShiftEntryForm({
   baseStartTime,
   baseEndTime,
   baseBreakMinutes,
+  pendingChangeRequestCount,
+  latestChangeRequestedAt,
 }: {
   token: string;
   employeeName: string;
@@ -40,6 +42,8 @@ export default function StaffShiftEntryForm({
   baseStartTime: string;
   baseEndTime: string;
   baseBreakMinutes: number;
+  pendingChangeRequestCount: number;
+  latestChangeRequestedAt: string | null;
 }) {
   const router = useRouter();
   const [defaultStartTime, setDefaultStartTime] = useState(baseStartTime);
@@ -59,6 +63,7 @@ export default function StaffShiftEntryForm({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pendingApproval, setPendingApproval] = useState(pendingChangeRequestCount > 0);
 
   const days = useMemo(() => {
     return Array.from({ length: lastDay }, (_, index) => {
@@ -101,9 +106,10 @@ export default function StaffShiftEntryForm({
     [currentSavedDays],
   );
   const hasUnsavedChanges = serializeSavedDays(currentSavedDays) !== savedSnapshot;
+  const hasPendingApproval = pendingApproval || pendingChangeRequestCount > 0;
   const hasInvalidTime = invalidDays.length > 0;
   const defaultTimeLabel = `${defaultStartTime}-${defaultEndTime} / 休憩 ${defaultBreakMinutes}分`;
-  const commandTone = hasInvalidTime ? "danger" : hasUnsavedChanges ? "warn" : "success";
+  const commandTone = hasInvalidTime ? "danger" : hasPendingApproval ? "warn" : hasUnsavedChanges ? "warn" : "success";
 
   function clearFeedback() {
     setMessage(null);
@@ -202,7 +208,20 @@ export default function StaffShiftEntryForm({
       );
       return;
     }
+    if (json.status === "pending_approval") {
+      setMessage("修正申請を送信しました。管理者が承認するまで現在のシフトは変わりません。");
+      setPendingApproval(true);
+      setSavedSnapshot(serializeSavedDays(payloadDays));
+      router.refresh();
+      return;
+    }
+    if (json.status === "unchanged") {
+      setMessage("変更はありません。現在の登録内容のままです。");
+      setSavedSnapshot(serializeSavedDays(payloadDays));
+      return;
+    }
     setMessage(`${json.count}日分を登録しました。`);
+    setPendingApproval(false);
     setSavedSnapshot(serializeSavedDays(payloadDays));
     router.refresh();
   }
@@ -213,8 +232,8 @@ export default function StaffShiftEntryForm({
         <div className="self-shift-person">
           <div className="muted">お名前</div>
           <strong>{employeeName}</strong>
-          <span className={hasUnsavedChanges ? "badge warn" : "badge success"}>
-            {hasUnsavedChanges ? "未保存" : "保存済み"}
+          <span className={hasPendingApproval ? "badge warn" : hasUnsavedChanges ? "badge warn" : "badge success"}>
+            {hasPendingApproval ? "承認待ち" : hasUnsavedChanges ? "未保存" : "保存済み"}
           </span>
         </div>
         <div className="self-shift-month">
@@ -236,10 +255,14 @@ export default function StaffShiftEntryForm({
       <div className={`self-shift-command panel ${commandTone}`}>
         <div className="self-shift-command-main">
           <span className={`badge ${commandTone}`}>
-            {hasInvalidTime ? "時間確認" : hasUnsavedChanges ? "未保存" : "保存済み"}
+            {hasInvalidTime ? "時間確認" : hasPendingApproval ? "承認待ち" : hasUnsavedChanges ? "未保存" : "保存済み"}
           </span>
           <strong>登録前確認</strong>
-          <span className="subtext">{defaultTimeLabel}</span>
+          <span className="subtext">
+            {hasPendingApproval && latestChangeRequestedAt
+              ? `修正申請 ${latestChangeRequestedAt}`
+              : defaultTimeLabel}
+          </span>
         </div>
         <div className="self-shift-command-checks">
           <span className="badge info">出勤 {daySettings.length}日</span>
@@ -255,6 +278,11 @@ export default function StaffShiftEntryForm({
               {invalidDays.slice(0, 3).map((setting) => (
                 <span key={setting.day}>{month}/{setting.day}</span>
               ))}
+            </>
+          ) : hasPendingApproval ? (
+            <>
+              <span className="badge warn">次</span>
+              <span>管理者確認待ち</span>
             </>
           ) : hasUnsavedChanges ? (
             <>
@@ -354,6 +382,9 @@ export default function StaffShiftEntryForm({
 
       {error && <div className="alert danger">{error}</div>}
       {message && <div className="alert success">{message}</div>}
+      {hasPendingApproval && (
+        <div className="alert info">修正申請は管理者確認待ちです。承認後にシフトへ反映されます。</div>
+      )}
 
       <div className="panel self-shift-calendar-panel">
         <div className="self-shift-section-head">
@@ -485,7 +516,13 @@ export default function StaffShiftEntryForm({
       <div className="self-shift-savebar">
         <div className="self-shift-savebar-status" aria-live="polite">
           <span>{daySettings.length}日 選択中</span>
-          <small>{hasUnsavedChanges ? "未保存の変更があります" : "この内容で保存済みです"}</small>
+          <small>
+            {hasPendingApproval
+              ? "修正申請を送信済みです"
+              : hasUnsavedChanges
+                ? "未保存の変更があります"
+                : "この内容で保存済みです"}
+          </small>
         </div>
         <button type="button" onClick={save} disabled={busy || hasInvalidTime}>
           <CheckCircle2 size={18} aria-hidden="true" />

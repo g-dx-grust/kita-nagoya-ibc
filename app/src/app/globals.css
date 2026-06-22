@@ -16066,3 +16066,18 @@ tr.row-muted > td {
   min-height: 30px;
   padding-block: 4px;
 }
+
+.auto-schedule-row-excluded > td {
+  opacity: 0.58;
+  background: #f4f6f8;
+}
+
+.shift-change-request-panel {
+  margin: 16px 0;
+}
+
+.shift-change-diff {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

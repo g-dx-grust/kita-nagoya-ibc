@@ -11,10 +11,12 @@ import {
 } from "lucide-react";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import ShiftEditor from "./shift-editor";
+import ShiftChangeRequestPanel, { type ShiftChangeRequestRow } from "./shift-change-request-panel";
 import ShiftMonthEditor from "./shift-month-editor";
 import CsvImport from "../masters/csv-import";
 import { prisma } from "@/lib/prisma";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
+import { normalizeShiftChangeDays, type ShiftChangeDay } from "@/lib/shift-change-request";
 
 export const dynamic = "force-dynamic";
 
@@ -42,12 +44,20 @@ export default async function ShiftsPage({
   if (sp.date) {
     const date = sp.date;
     const [start, end] = dayRange(date);
-    const rows = await prisma.employee.findMany({
-      where: { active: true },
-      include: { shifts: { where: { date: { gte: start, lt: end } } } },
-      orderBy: { name: "asc" },
-    });
     const ym = date.slice(0, 7);
+    const [rows, pendingRequests] = await Promise.all([
+      prisma.employee.findMany({
+        where: { active: true },
+        include: { shifts: { where: { date: { gte: start, lt: end } } } },
+        orderBy: { name: "asc" },
+      }),
+      prisma.shiftChangeRequest.findMany({
+        where: { status: "pending", yearMonth: ym },
+        include: { employee: true },
+        orderBy: { requestedAt: "asc" },
+      }),
+    ]);
+    const pendingRequestRows = pendingRequests.map(toShiftChangeRequestRow);
     const dayRows = rows.map((employee) => ({
       employee: {
         id: employee.id,
@@ -89,12 +99,18 @@ export default async function ShiftsPage({
       return sum + Math.max(0, diffMinutes(row.shift.startTime, row.shift.endTime) - row.shift.breakMinutes);
     }, 0);
     const dayNeedsReviewCount =
-      (dayPresentCount === 0 ? 1 : 0) + dayDraftCount + invalidShiftCount + invalidDefaultCount;
+      (dayPresentCount === 0 ? 1 : 0) +
+      dayDraftCount +
+      invalidShiftCount +
+      invalidDefaultCount +
+      (pendingRequestRows.length > 0 ? 1 : 0);
     const dayTone = dayNeedsReviewCount > 0 ? "warn" : "success";
     const monthHref = kitagoyaPath(`/shifts?yearMonth=${ym}`);
     const allocateHref = kitagoyaPath(`/production-plans/allocate?date=${date}`);
     const dayNextAction =
-      dayPresentCount === 0
+      pendingRequestRows.length > 0
+        ? { label: "修正申請を確認", href: "#shift-change-requests" }
+        : dayPresentCount === 0
         ? { label: "出勤者を登録", href: "#shift-day-editor" }
         : dayNeedsReviewCount > 0
           ? { label: "要確認を修正", href: "#shift-day-editor" }
@@ -119,10 +135,18 @@ export default async function ShiftsPage({
       {
         label: "要確認",
         count: dayNeedsReviewCount,
-        detail: `仮 ${dayDraftCount} / 時刻 ${invalidShiftCount + invalidDefaultCount}`,
+        detail: `仮 ${dayDraftCount} / 申請 ${pendingRequestRows.length}`,
         href: "#shift-day-editor",
         tone: dayNeedsReviewCount > 0 ? "warn" : "success",
         Icon: AlertTriangle,
+      },
+      {
+        label: "修正申請",
+        count: pendingRequestRows.length,
+        detail: "管理者確認",
+        href: "#shift-change-requests",
+        tone: pendingRequestRows.length > 0 ? "warn" : "success",
+        Icon: ClipboardCheck,
       },
       {
         label: "割り当て",
@@ -169,6 +193,7 @@ export default async function ShiftsPage({
           </Link>
         </div>
         <ShiftFlowGrid cards={dayFlowCards} />
+        <ShiftChangeRequestPanel requests={pendingRequestRows} />
         <form id="shift-day-date" className="panel toolbar anchor-offset" method="GET">
           <label>
             <span>対象日</span>
@@ -192,13 +217,19 @@ export default async function ShiftsPage({
   const start = new Date(Date.UTC(year, month - 1, 1));
   const end = new Date(Date.UTC(year, month, 1));
 
-  const [employees, shifts] = await Promise.all([
+  const [employees, shifts, pendingRequests] = await Promise.all([
     prisma.employee.findMany({
       where: { active: true },
       orderBy: { name: "asc" },
     }),
     prisma.shift.findMany({ where: { date: { gte: start, lt: end }, employee: { active: true } } }),
+    prisma.shiftChangeRequest.findMany({
+      where: { status: "pending", yearMonth },
+      include: { employee: true },
+      orderBy: { requestedAt: "asc" },
+    }),
   ]);
+  const pendingRequestRows = pendingRequests.map(toShiftChangeRequestRow);
   const presentShiftCount = shifts.filter((shift) => shift.status !== "off").length;
   const totalShiftCells = employees.length * lastDay;
   const registeredDayCount = new Set(
@@ -215,9 +246,15 @@ export default async function ShiftsPage({
   }, 0);
   const firstDay = `${year}-${String(month).padStart(2, "0")}-01`;
   const focusDay = yearMonth === todayString.slice(0, 7) ? todayString : firstDay;
-  const monthReviewCount = (presentShiftCount === 0 ? 1 : 0) + (daysWithoutStaff > 0 ? 1 : 0) + (employeesWithoutShift > 0 ? 1 : 0);
+  const monthReviewCount =
+    (presentShiftCount === 0 ? 1 : 0) +
+    (daysWithoutStaff > 0 ? 1 : 0) +
+    (employeesWithoutShift > 0 ? 1 : 0) +
+    (pendingRequestRows.length > 0 ? 1 : 0);
   const monthTone = monthReviewCount > 0 ? "warn" : "success";
-  const monthNextAction = presentShiftCount === 0
+  const monthNextAction = pendingRequestRows.length > 0
+    ? { label: "修正申請を確認", href: "#shift-change-requests" }
+    : presentShiftCount === 0
     ? { label: "月シフトを登録", href: "#shift-month-editor" }
     : monthReviewCount > 0
       ? { label: "要確認を確認", href: "#shift-month-editor" }
@@ -254,6 +291,14 @@ export default async function ShiftsPage({
       href: kitagoyaPath(`/shifts?date=${focusDay}`),
       tone: "info",
       Icon: Table2,
+    },
+    {
+      label: "修正申請",
+      count: pendingRequestRows.length,
+      detail: "管理者確認",
+      href: "#shift-change-requests",
+      tone: pendingRequestRows.length > 0 ? "warn" : "success",
+      Icon: ClipboardCheck,
     },
     {
       label: "割り当て",
@@ -322,6 +367,7 @@ export default async function ShiftsPage({
         </Link>
       </div>
       <ShiftFlowGrid cards={monthFlowCards} />
+      <ShiftChangeRequestPanel requests={pendingRequestRows} />
       <div className="shift-summary-grid">
         <div className="metric">
           <div className="metric-label">対象月</div>
@@ -427,4 +473,54 @@ function toDateInputValue(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function toShiftChangeRequestRow(request: {
+  id: string;
+  yearMonth: string;
+  requestedAt: Date;
+  currentDaysJson: unknown;
+  requestedDaysJson: unknown;
+  employee: { name: string };
+}): ShiftChangeRequestRow {
+  return {
+    id: request.id,
+    employeeName: request.employee.name,
+    yearMonth: request.yearMonth,
+    requestedAt: request.requestedAt.toISOString().slice(0, 16).replace("T", " "),
+    currentDays: parseShiftChangeDays(request.currentDaysJson),
+    requestedDays: parseShiftChangeDays(request.requestedDaysJson),
+  };
+}
+
+function parseShiftChangeDays(value: unknown): ShiftChangeDay[] {
+  let rows: unknown;
+  try {
+    rows = typeof value === "string" ? JSON.parse(value) : value;
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(rows)) return [];
+  return normalizeShiftChangeDays(
+    rows.flatMap((row) => {
+      if (!row || typeof row !== "object") return [];
+      const candidate = row as Partial<ShiftChangeDay>;
+      if (
+        typeof candidate.day !== "number" ||
+        typeof candidate.startTime !== "string" ||
+        typeof candidate.endTime !== "string" ||
+        typeof candidate.breakMinutes !== "number"
+      ) {
+        return [];
+      }
+      return [
+        {
+          day: candidate.day,
+          startTime: candidate.startTime,
+          endTime: candidate.endTime,
+          breakMinutes: candidate.breakMinutes,
+        },
+      ];
+    }),
+  );
 }

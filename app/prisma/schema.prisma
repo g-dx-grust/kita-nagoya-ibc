@@ -252,6 +252,7 @@ model Employee {
 
   shifts      Shift[]
   assignments ProductionPlanAssignment[]
+  shiftChangeRequests ShiftChangeRequest[]
 }
 
 model ShiftPattern {
@@ -304,6 +305,29 @@ model Shift {
   pattern        ShiftPattern? @relation(fields: [shiftPatternId], references: [id])
 
   @@unique([employeeId, date])
+}
+
+model ShiftChangeRequest {
+  id                String   @id @default(cuid())
+  employeeId        String
+  employee          Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  yearMonth         String // YYYY-MM
+  status            String   @default("pending") // pending | approved | rejected | superseded
+  requestType       String   @default("staff_month_replace")
+  currentDaysJson   String // JSON string: ShiftChangeDay[]
+  requestedDaysJson String // JSON string: ShiftChangeDay[]
+  requestedByToken  String?
+  requestedAt       DateTime @default(now())
+  reviewedAt        DateTime?
+  reviewedBy        String?
+  reviewNote        String?
+  appliedAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([status, yearMonth])
+  @@index([employeeId, yearMonth])
+  @@map("shift_change_requests")
 }
 
 // --- Production plan ---

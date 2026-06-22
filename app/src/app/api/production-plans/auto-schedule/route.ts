@@ -8,6 +8,7 @@ import {
   sortUsableCapacitiesForProductionType,
 } from "@/lib/auto-schedule-policy";
 import { loadActiveBreakWindows } from "@/lib/break-windows";
+import { filterSelectedSchedulePlans } from "@/lib/auto-schedule-selection";
 import {
   computeMaxQuantityInTimeWindow,
   computeProductionDuration,
@@ -285,6 +286,13 @@ export async function POST(req: Request) {
         persisted: false,
         plans: scheduledPlans.map((plan) => toResponsePlan(plan)),
         availableStaff: availableStaffResponse(staffStates),
+      });
+    }
+
+    scheduledPlans = filterSelectedSchedulePlans(scheduledPlans, body.selectedTempIds);
+    if (scheduledPlans.length === 0) {
+      return badRequest("no_selected_schedule_plan", {
+        message: "当日実施に選択された予定がありません。",
       });
     }
 

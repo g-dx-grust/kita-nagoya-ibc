@@ -43,10 +43,16 @@ export default async function StaffShiftEntryPage({
   const { year, month, lastDay } = monthInfo(yearMonth);
   const start = new Date(Date.UTC(year, month - 1, 1));
   const end = new Date(Date.UTC(year, month, 1));
-  const shifts = await prisma.shift.findMany({
-    where: { employeeId: employee.id, date: { gte: start, lt: end } },
-    orderBy: { date: "asc" },
-  });
+  const [shifts, pendingRequests] = await Promise.all([
+    prisma.shift.findMany({
+      where: { employeeId: employee.id, date: { gte: start, lt: end } },
+      orderBy: { date: "asc" },
+    }),
+    prisma.shiftChangeRequest.findMany({
+      where: { employeeId: employee.id, yearMonth, status: "pending" },
+      orderBy: { requestedAt: "desc" },
+    }),
+  ]);
   const activeShifts = shifts.filter((shift) => shift.status !== "off");
   const totalWorkMinutes = activeShifts.reduce(
     (sum, shift) => sum + workMinutes(shift.startTime, shift.endTime, shift.breakMinutes),
@@ -61,19 +67,21 @@ export default async function StaffShiftEntryPage({
         breakMinutes: employee.defaultBreakMinutes,
       }),
   ).length;
-  const readinessTone = activeShifts.length > 0 ? "success" : "warn";
+  const readinessTone = pendingRequests.length > 0 ? "warn" : activeShifts.length > 0 ? "success" : "warn";
 
   return (
     <div className="self-shift-page">
       <header className={`self-shift-page-head ${readinessTone}`}>
         <div className="self-shift-page-title">
           <span className={`badge ${readinessTone}`}>
-            {activeShifts.length > 0 ? (
+            {pendingRequests.length > 0 ? (
+              <AlertTriangle size={14} aria-hidden="true" />
+            ) : activeShifts.length > 0 ? (
               <CheckCircle2 size={14} aria-hidden="true" />
             ) : (
               <AlertTriangle size={14} aria-hidden="true" />
             )}
-            {activeShifts.length > 0 ? "登録あり" : "未登録"}
+            {pendingRequests.length > 0 ? "承認待ち" : activeShifts.length > 0 ? "登録あり" : "未登録"}
           </span>
           <h1>シフト入力</h1>
           <div className="self-shift-page-meta">
@@ -115,6 +123,8 @@ export default async function StaffShiftEntryPage({
         baseStartTime={employee.defaultStartTime}
         baseEndTime={employee.defaultEndTime}
         baseBreakMinutes={employee.defaultBreakMinutes}
+        pendingChangeRequestCount={pendingRequests.length}
+        latestChangeRequestedAt={pendingRequests[0]?.requestedAt.toISOString().slice(0, 16).replace("T", " ") ?? null}
       />
     </div>
   );

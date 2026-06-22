@@ -90,6 +90,7 @@ async function main() {
   await prisma.material.deleteMany();
   await prisma.supplier.deleteMany();
   await prisma.shiftBreak.deleteMany();
+  await prisma.shiftChangeRequest.deleteMany();
   await prisma.shift.deleteMany();
   await prisma.shiftPattern.deleteMany();
   await prisma.employee.deleteMany();
@@ -446,6 +447,35 @@ async function main() {
       });
     }
   }
+
+  await prisma.shiftChangeRequest.create({
+    data: {
+      employeeId: employees[0].id,
+      yearMonth: "2026-06",
+      status: "pending",
+      currentDaysJson: JSON.stringify(TARGET_MONTH_SHIFT_DATES.map((date) => ({
+        day: Number(date.slice(8, 10)),
+        startTime: employees[0].defaultStartTime,
+        endTime: employees[0].defaultEndTime,
+        breakMinutes: employees[0].defaultBreakMinutes,
+      }))),
+      requestedDaysJson: JSON.stringify([
+        ...TARGET_MONTH_SHIFT_DATES.slice(0, 4).map((date) => ({
+          day: Number(date.slice(8, 10)),
+          startTime: employees[0].defaultStartTime,
+          endTime: employees[0].defaultEndTime,
+          breakMinutes: employees[0].defaultBreakMinutes,
+        })),
+        {
+          day: 5,
+          startTime: "10:00",
+          endTime: "16:00",
+          breakMinutes: 45,
+        },
+      ]),
+      requestedByToken: employees[0].shiftEntryToken,
+    },
+  });
 
   // Sample production plan with staff assignments for print-output verification.
   const samplePlan = await prisma.productionPlan.create({

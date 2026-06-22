@@ -409,6 +409,12 @@ export const StaffShiftEntrySaveSchema = z.object({
   ),
 });
 
+export const ShiftChangeRequestReviewSchema = z.object({
+  action: z.enum(["approve", "reject"]),
+  reviewedBy: z.string().max(80).nullish(),
+  reviewNote: z.string().max(1000).nullish(),
+});
+
 const SupplierBaseSchema = z.object({
   name: z.string().min(1),
   contact: z.string().nullish(),
@@ -673,6 +679,7 @@ export const AutoScheduleCreateSchema = z.object({
       }),
     )
     .optional(),
+  selectedTempIds: z.array(z.string().min(1)).optional(),
   items: z
     .array(
       z.object({

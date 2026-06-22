@@ -67,6 +67,14 @@ export default function ProductCreateForm({
   const [billingUnitPrice, setBillingUnitPrice] = useState("");
   const [billingUnit, setBillingUnit] = useState("");
   const [billingEffectiveFrom, setBillingEffectiveFrom] = useState("");
+
+  // 受注生産の初回予定(任意)
+  const [createInitialDemand, setCreateInitialDemand] = useState(false);
+  const [initialDemandDate, setInitialDemandDate] = useState(today());
+  const [initialDemandQuantity, setInitialDemandQuantity] = useState("100");
+  const [initialDemandCustomerName, setInitialDemandCustomerName] = useState("");
+  const [initialDemandExternalRef, setInitialDemandExternalRef] = useState("");
+  const [initialDemandNote, setInitialDemandNote] = useState("");
   const workAreaOptions = useMemo(
     () => workAreas.map((workArea) => ({ value: workArea.id, label: workArea.name })),
     [workAreas],
@@ -90,6 +98,11 @@ export default function ProductCreateForm({
       (!capWorkAreaId || !(Number(unitsPerPersonHour) > 0) || !(Number(standardPeople || "0") > 0));
     const wantsBilling = Boolean(billingUnitPrice.trim());
     const invalidBilling = wantsBilling && !(Number(billingUnitPrice) > 0);
+    const isOrderProduction = productionType === "make_to_order" || productionType === "both";
+    const invalidInitialDemand =
+      isOrderProduction &&
+      createInitialDemand &&
+      (!initialDemandDate || !(Number(initialDemandQuantity) > 0));
     const needsActionCount = [
       missingCode,
       missingName,
@@ -97,6 +110,7 @@ export default function ProductCreateForm({
       missingDefaultWorkArea,
       invalidCapacity,
       invalidBilling,
+      invalidInitialDemand,
     ].filter(Boolean).length;
     return {
       missingCode,
@@ -107,20 +121,39 @@ export default function ProductCreateForm({
       invalidCapacity,
       wantsBilling,
       invalidBilling,
+      isOrderProduction,
+      invalidInitialDemand,
       needsActionCount,
     };
   }, [
     billingUnitPrice,
     capWorkAreaId,
     casePackQty,
+    createInitialDemand,
     defaultWorkAreaId,
+    initialDemandDate,
+    initialDemandQuantity,
     officialName,
     packCount,
     productCode,
+    productionType,
     standardPeople,
     unitsPerPersonHour,
     usedAtKitagoya,
   ]);
+
+  function changeProductionType(value: "stock" | "make_to_order" | "both") {
+    setProductionType(value);
+    if (value === "make_to_order") {
+      setForecastMethod("NONE");
+      setSafetyStockQuantity(0);
+      setStandardProductionLotSize(0);
+      setCreateInitialDemand(true);
+    }
+    if (value === "stock") {
+      setCreateInitialDemand(false);
+    }
+  }
 
   function resetForm() {
     setProductCode("");
@@ -147,6 +180,7 @@ export default function ProductCreateForm({
     setForecastMethod("MANUAL");
     setSafetyStockQuantity(0);
     setStandardProductionLotSize(0);
+    setSchedulePriority("");
     setValidFrom("");
     setValidTo("");
     setDefaultWorkAreaId("");
@@ -156,6 +190,12 @@ export default function ProductCreateForm({
     setBillingUnitPrice("");
     setBillingUnit("");
     setBillingEffectiveFrom("");
+    setCreateInitialDemand(false);
+    setInitialDemandDate(today());
+    setInitialDemandQuantity("100");
+    setInitialDemandCustomerName("");
+    setInitialDemandExternalRef("");
+    setInitialDemandNote("");
   }
 
   if (!open) {
@@ -173,6 +213,13 @@ export default function ProductCreateForm({
     e.preventDefault();
     setBusy(true);
     setErr(null);
+
+    const shouldCreateInitialDemand = createSummary.isOrderProduction && createInitialDemand;
+    if (shouldCreateInitialDemand && createSummary.invalidInitialDemand) {
+      setBusy(false);
+      setErr("初回受注予定の必要日と数量を確認してください。");
+      return;
+    }
 
     const resolvedPackCount = packCount ? Number(packCount) : casePackQty ? Number(casePackQty) : null;
     const resolvedCasePackQty = casePackQty ? Number(casePackQty) : resolvedPackCount;
@@ -285,6 +332,31 @@ export default function ProductCreateForm({
       }
     }
 
+    // 4) 受注生産の初回予定(任意)
+    if (shouldCreateInitialDemand) {
+      const demandRes = await fetch(kitagoyaApiPath("/product-demands"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productId,
+          dueDate: initialDemandDate,
+          demandType: "order",
+          quantity: Number(initialDemandQuantity),
+          customerName: initialDemandCustomerName.trim() || null,
+          externalRef: initialDemandExternalRef.trim() || null,
+          note: initialDemandNote.trim() || null,
+        }),
+      });
+      if (!demandRes.ok) {
+        setBusy(false);
+        setErr(
+          "商品は登録されましたが、初回受注予定の保存に失敗しました。製品計画画面で受注予定を登録してください。",
+        );
+        router.push(kitagoyaPath(`/masters/products/${productId}`));
+        return;
+      }
+    }
+
     setBusy(false);
     setOpen(false);
     resetForm();
@@ -340,6 +412,20 @@ export default function ProductCreateForm({
           >
             手間賃 {createSummary.wantsBilling ? "入力あり" : "後で設定"}
           </a>
+          {createSummary.isOrderProduction && (
+            <a
+              className={`badge ${
+                createInitialDemand
+                  ? createSummary.invalidInitialDemand
+                    ? "warn"
+                    : "success"
+                  : "muted"
+              }`}
+              href="#product-create-initial-demand"
+            >
+              初回受注 {createInitialDemand ? "同時登録" : "後で登録"}
+            </a>
+          )}
           <span className="badge info">登録後にBOM設定へ</span>
         </div>
       </div>
@@ -365,7 +451,7 @@ export default function ProductCreateForm({
           </label>
           <label>
             <span>区分</span>
-            <select value={productionType} onChange={(e) => setProductionType(e.target.value as never)}>
+            <select value={productionType} onChange={(e) => changeProductionType(e.target.value as never)}>
               <option value="stock">在庫生産</option>
               <option value="make_to_order">受注生産</option>
               <option value="both">両方</option>
@@ -539,6 +625,73 @@ export default function ProductCreateForm({
         </div>
       </fieldset>
 
+      {createSummary.isOrderProduction && (
+        <fieldset id="product-create-initial-demand">
+          <legend>
+            <span className="inline-action">
+              初回受注予定（任意）
+              <HelpTooltip text="受注生産の商品登録と同時に、製品計画の未処理受注予定を作成します。登録した受注予定は自動生産提案の不足候補に使われます。" />
+            </span>
+          </legend>
+          <div className="row">
+            <label className="inline-check full-field">
+              <input
+                type="checkbox"
+                checked={createInitialDemand}
+                onChange={(e) => setCreateInitialDemand(e.target.checked)}
+              />
+              <span>この商品で初回受注予定も登録する</span>
+            </label>
+            <label>
+              <span>必要日</span>
+              <input
+                type="date"
+                value={initialDemandDate}
+                onChange={(e) => setInitialDemandDate(e.target.value)}
+                disabled={!createInitialDemand}
+                required={createInitialDemand}
+              />
+            </label>
+            <label>
+              <span>受注数量</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={initialDemandQuantity}
+                onChange={(e) => setInitialDemandQuantity(e.target.value)}
+                disabled={!createInitialDemand}
+                required={createInitialDemand}
+              />
+            </label>
+            <label>
+              <span>得意先</span>
+              <input
+                value={initialDemandCustomerName}
+                onChange={(e) => setInitialDemandCustomerName(e.target.value)}
+                disabled={!createInitialDemand}
+              />
+            </label>
+            <label>
+              <span>受注番号/参照</span>
+              <input
+                value={initialDemandExternalRef}
+                onChange={(e) => setInitialDemandExternalRef(e.target.value)}
+                disabled={!createInitialDemand}
+              />
+            </label>
+            <label className="full-field">
+              <span>受注メモ</span>
+              <input
+                value={initialDemandNote}
+                onChange={(e) => setInitialDemandNote(e.target.value)}
+                disabled={!createInitialDemand}
+              />
+            </label>
+          </div>
+        </fieldset>
+      )}
+
       <fieldset id="product-create-work-area">
         <legend>標準作業場所</legend>
         <div className="row">
@@ -644,7 +797,11 @@ export default function ProductCreateForm({
       {err && <div className="alert danger">{err}</div>}
       <div className="row form-actions">
         <button type="submit" disabled={busy}>
-          {busy ? "登録中..." : "登録してレシピ設定へ"}
+          {busy
+            ? "登録中..."
+            : createSummary.isOrderProduction && createInitialDemand
+              ? "商品と受注予定を登録"
+              : "登録してレシピ設定へ"}
         </button>
         <button type="button" className="secondary" onClick={() => setOpen(false)} disabled={busy}>
           キャンセル

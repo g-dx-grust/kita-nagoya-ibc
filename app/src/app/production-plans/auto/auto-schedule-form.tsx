@@ -46,7 +46,7 @@ type Row = {
 };
 type Mode = "duration" | "max_quantity" | "required_people";
 type ItemReviewFocus = "all" | "invalid" | "defaults" | "capacity";
-type ResultReviewFocus = "all" | "warnings" | "unassigned" | "prints";
+type ResultReviewFocus = "all" | "warnings" | "unassigned" | "excluded" | "prints";
 type AutoScheduleRequest = {
   date: string;
   mode: Mode;
@@ -65,6 +65,7 @@ type AutoScheduleRequest = {
     workAreaId?: string;
     employeeIds?: string[];
   }[];
+  selectedTempIds?: string[];
 };
 
 type Result = {
@@ -130,6 +131,7 @@ export default function AutoScheduleForm({
   const [message, setMessage] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [previewRequest, setPreviewRequest] = useState<AutoScheduleRequest | null>(null);
+  const [selectedTempIds, setSelectedTempIds] = useState<string[]>([]);
   const [itemReviewFocus, setItemReviewFocus] = useState<ItemReviewFocus>("all");
   const [resultReviewFocus, setResultReviewFocus] = useState<ResultReviewFocus>("all");
   const controlRef = useRef<HTMLDivElement>(null);
@@ -216,26 +218,34 @@ export default function AutoScheduleForm({
     baselineEndMinutes === null ||
     desiredEndMinutes <= startMinutes ||
     baselineEndMinutes <= startMinutes;
+  const selectedTempIdSet = useMemo(() => new Set(selectedTempIds), [selectedTempIds]);
   const resultStats = useMemo(() => {
     if (!result) return null;
-    const workAreaCount = new Set(result.plans.map((plan) => plan.workAreaId)).size;
-    const warningCount = result.plans.reduce((total, plan) => total + plan.warnings.length, 0);
-    const assignedPeopleCount = result.plans.reduce(
+    const selectedPlans = result.persisted
+      ? result.plans
+      : result.plans.filter((plan) => plan.tempId && selectedTempIdSet.has(plan.tempId));
+    const workAreaCount = new Set(selectedPlans.map((plan) => plan.workAreaId)).size;
+    const warningCount = selectedPlans.reduce((total, plan) => total + plan.warnings.length, 0);
+    const assignedPeopleCount = selectedPlans.reduce(
       (total, plan) => total + (plan.assignedStaff.length > 0 ? plan.assignedStaff.length : plan.assignedCount),
       0,
     );
-    const unassignedPlanCount = result.plans.filter(
+    const unassignedPlanCount = selectedPlans.filter(
       (plan) => plan.assignedStaff.length === 0 && plan.assignedCount === 0,
     ).length;
+    const selectedPlanCount = selectedPlans.length;
+    const excludedPlanCount = result.persisted ? 0 : result.plans.length - selectedPlanCount;
 
     return {
       planCount: result.plans.length,
+      selectedPlanCount,
+      excludedPlanCount,
       workAreaCount,
       warningCount,
       assignedPeopleCount,
       unassignedPlanCount,
     };
-  }, [result]);
+  }, [result, selectedTempIdSet]);
   const visibleItemRows = itemRows.filter((item) => {
     if (itemReviewFocus === "invalid") return item.missingProduct || item.invalidQuantity;
     if (itemReviewFocus === "defaults") return item.missingDefaultArea;
@@ -249,6 +259,7 @@ export default function AutoScheduleForm({
   const visibleResultRows = resultRows.filter(({ plan }) => {
     if (resultReviewFocus === "warnings") return plan.warnings.length > 0;
     if (resultReviewFocus === "unassigned") return plan.assignedStaff.length === 0 && plan.assignedCount === 0;
+    if (resultReviewFocus === "excluded") return Boolean(plan.tempId && !selectedTempIdSet.has(plan.tempId));
     return true;
   });
   const inputStatusLabel = result?.persisted
@@ -340,9 +351,9 @@ export default function AutoScheduleForm({
   const resultReviewQueues = [
     {
       key: "all" as const,
-      label: "予定",
-      count: resultStats?.planCount ?? 0,
-      detail: `${resultStats?.workAreaCount ?? 0}か所`,
+      label: "当日実施",
+      count: resultStats?.selectedPlanCount ?? 0,
+      detail: `全${resultStats?.planCount ?? 0}件`,
       tone: "info",
       Icon: PackageCheck,
     },
@@ -361,6 +372,14 @@ export default function AutoScheduleForm({
       detail: "人員なし",
       tone: (resultStats?.unassignedPlanCount ?? 0) > 0 ? "danger" : "success",
       Icon: CheckCircle2,
+    },
+    {
+      key: "excluded" as const,
+      label: "見送り",
+      count: resultStats?.excludedPlanCount ?? 0,
+      detail: "保存しない",
+      tone: (resultStats?.excludedPlanCount ?? 0) > 0 ? "warn" : "muted",
+      Icon: RotateCcw,
     },
     {
       key: "prints" as const,
@@ -382,6 +401,7 @@ export default function AutoScheduleForm({
   function invalidatePreview() {
     setResult(null);
     setPreviewRequest(null);
+    setSelectedTempIds([]);
     setMessage(null);
     setResultReviewFocus("all");
   }
@@ -446,6 +466,16 @@ export default function AutoScheduleForm({
     })).filter((override) => override.tempId);
   }
 
+  function allPreviewTempIds() {
+    return result?.plans.map((plan) => plan.tempId).filter((tempId): tempId is string => Boolean(tempId)) ?? [];
+  }
+
+  function toggleResultPlan(tempId: string) {
+    setSelectedTempIds((current) =>
+      current.includes(tempId) ? current.filter((id) => id !== tempId) : [...current, tempId],
+    );
+  }
+
   function requestBody(persist: boolean, status: "draft" | "confirmed"): AutoScheduleRequest {
     return {
       date,
@@ -488,11 +518,20 @@ export default function AutoScheduleForm({
       return;
     }
     setResult(json);
+    setSelectedTempIds(
+      ((json.plans ?? []) as Result["plans"])
+        .map((plan) => plan.tempId)
+        .filter((tempId): tempId is string => Boolean(tempId)),
+    );
     setPreviewRequest(request);
   }
 
   async function confirmPreview() {
     if (!result || result.plans.length === 0 || !previewRequest) return;
+    if (selectedTempIds.length === 0) {
+      setError("当日実施する予定を1件以上選択してください。");
+      return;
+    }
     setConfirming(true);
     setError(null);
     setMessage(null);
@@ -504,6 +543,7 @@ export default function AutoScheduleForm({
         persist: true,
         status: "confirmed",
         overrides: previewOverrides(),
+        selectedTempIds,
       }),
     });
     const json = await res.json().catch(() => ({}));
@@ -513,7 +553,8 @@ export default function AutoScheduleForm({
       return;
     }
     setResult(json);
-    setMessage(`${json.plans?.length ?? 0}件を確定しました。`);
+    setSelectedTempIds([]);
+    setMessage(`${json.plans?.length ?? 0}件を当日実施として確定しました。`);
     router.refresh();
   }
 
@@ -892,11 +933,17 @@ export default function AutoScheduleForm({
                 </span>
                 <strong>{result.persisted ? "生産予定として確定" : "確定前チェック"}</strong>
                 <span className="subtext">
-                  予定 {resultStats.planCount}件 / 作業場所 {resultStats.workAreaCount}か所
+                  当日実施 {resultStats.selectedPlanCount} / 全{resultStats.planCount}件 / 作業場所 {resultStats.workAreaCount}か所
                 </span>
                 <span className="auto-schedule-next">次: {resultNextAction}</span>
               </div>
               <div className="auto-schedule-checks">
+                {!result.persisted && (
+                  <span className={`badge ${resultStats.selectedPlanCount > 0 ? "success" : "danger"}`}>
+                    実施 {resultStats.selectedPlanCount}
+                  </span>
+                )}
+                {!result.persisted && <span className="badge muted">見送り {resultStats.excludedPlanCount}</span>}
                 <span className={`badge ${resultStats.warningCount > 0 ? "warn" : "success"}`}>
                   注意 {resultStats.warningCount}
                 </span>
@@ -907,9 +954,17 @@ export default function AutoScheduleForm({
               </div>
               <div className="auto-schedule-result-actions">
                 {!result.persisted && (
-                  <button type="button" onClick={confirmPreview} disabled={confirming}>
-                    {confirming ? "確定中..." : "この内容で確定"}
-                  </button>
+                  <>
+                    <button type="button" className="secondary" onClick={() => setSelectedTempIds(allPreviewTempIds())}>
+                      全て実施
+                    </button>
+                    <button type="button" className="secondary" onClick={() => setSelectedTempIds([])}>
+                      全て見送り
+                    </button>
+                    <button type="button" onClick={confirmPreview} disabled={confirming || resultStats.selectedPlanCount === 0}>
+                      {confirming ? "確定中..." : "選択した内容で確定"}
+                    </button>
+                  </>
                 )}
                 {result.persisted && result.printUrls && (
                   <>
@@ -947,6 +1002,7 @@ export default function AutoScheduleForm({
           <table className="auto-schedule-result-table">
             <thead>
               <tr>
+                <th>当日実施</th>
                 <th>商品</th>
                 <th>区分</th>
                 <th>作業場所</th>
@@ -960,13 +1016,37 @@ export default function AutoScheduleForm({
             <tbody>
               {visibleResultRows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="muted center">
+                  <td colSpan={9} className="muted center">
                     この条件に該当する予定はありません。
                   </td>
                 </tr>
               ) : (
-                visibleResultRows.map(({ plan, planIndex }) => (
-                <tr key={plan.id ?? plan.tempId} className={plan.warnings.length > 0 ? "row-needs-action" : ""}>
+                visibleResultRows.map(({ plan, planIndex }) => {
+                  const selectedForToday = result.persisted || Boolean(plan.tempId && selectedTempIdSet.has(plan.tempId));
+                  return (
+                <tr
+                  key={plan.id ?? plan.tempId}
+                  className={[
+                    plan.warnings.length > 0 ? "row-needs-action" : "",
+                    !selectedForToday ? "auto-schedule-row-excluded" : "",
+                  ].join(" ")}
+                >
+                  <td data-label="当日実施">
+                    {result.persisted ? (
+                      <span className="badge success">実施</span>
+                    ) : plan.tempId ? (
+                      <label className="inline-check">
+                        <input
+                          type="checkbox"
+                          checked={selectedForToday}
+                          onChange={() => toggleResultPlan(plan.tempId!)}
+                        />
+                        <span>{selectedForToday ? "実施" : "見送り"}</span>
+                      </label>
+                    ) : (
+                      <span className="badge muted">未保存</span>
+                    )}
+                  </td>
                   <td data-label="商品">
                     <div className="auto-schedule-result-product">
                       <strong>{plan.productName}</strong>
@@ -1045,15 +1125,16 @@ export default function AutoScheduleForm({
                     {plan.id ? <Link href={kitagoyaPath(`/production-plans/${plan.id}`)}>詳細</Link> : "未保存"}
                   </td>
                 </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
           </div>
           <div className="row form-actions">
             {!result.persisted && (
-              <button type="button" onClick={confirmPreview} disabled={confirming}>
-                {confirming ? "確定中..." : "この内容で確定"}
+              <button type="button" onClick={confirmPreview} disabled={confirming || (resultStats?.selectedPlanCount ?? 0) === 0}>
+                {confirming ? "確定中..." : "選択した内容で確定"}
               </button>
             )}
             {result.persisted && result.printUrls && (
@@ -1141,6 +1222,7 @@ function errorLabel(error: string | undefined, details: unknown) {
   if (error === "product_not_found") return "選択した商品が見つかりません。";
   if (error === "no_schedulable_quantity") return "シフト時間内に作成できる数量がありません。開始時刻、終了希望、シフトを確認してください。";
   if (error === "work_area_not_schedulable") return "選択した作業場所ではこの商品を配置できません。商品マスターの生産能力を確認してください。";
+  if (error === "no_selected_schedule_plan") return "当日実施する予定を1件以上選択してください。";
   if (error === "duplicate_preview_staff") return "同じ予定に同じスタッフが重複しています。";
   if (error === "staff_not_found_or_not_scheduled") return "シフトに入っていないスタッフが含まれています。プレビューを作り直してください。";
   if (error === "employee_assignment_outside_shift") return "スタッフの勤務時間外に配置されています。シフトを確認してください。";
