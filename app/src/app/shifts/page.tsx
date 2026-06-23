@@ -9,6 +9,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import ShiftEditor from "./shift-editor";
 import ShiftChangeRequestPanel, { type ShiftChangeRequestRow } from "./shift-change-request-panel";
@@ -173,36 +174,42 @@ export default async function ShiftsPage({
             </Link>
           </div>
         </div>
-        <div className={`shift-flow-command ${dayTone}`}>
-          <div className="shift-flow-title">
-            {dayTone === "success" ? (
-              <CheckCircle2 size={18} aria-hidden="true" />
-            ) : (
-              <AlertTriangle size={18} aria-hidden="true" />
-            )}
-            <span className={`badge ${dayTone}`}>
-              {dayNeedsReviewCount > 0 ? `要確認 ${dayNeedsReviewCount}` : "確認済み"}
-            </span>
-            <strong>日単位シフトの確認フロー</strong>
-            <span className="subtext">
-              出勤 {dayPresentCount}人 / 休み {dayOffCount}人 / 見込 {formatHours(dayEstimatedMinutes)}
-            </span>
+        <CollapsiblePanel
+          title="確認・操作"
+          summary={`${dayNeedsReviewCount > 0 ? `要確認 ${dayNeedsReviewCount}` : "確認済み"} / ${date} / 出勤 ${dayPresentCount}人`}
+          className="top-flow-accordion"
+        >
+          <div className={`shift-flow-command ${dayTone}`}>
+            <div className="shift-flow-title">
+              {dayTone === "success" ? (
+                <CheckCircle2 size={18} aria-hidden="true" />
+              ) : (
+                <AlertTriangle size={18} aria-hidden="true" />
+              )}
+              <span className={`badge ${dayTone}`}>
+                {dayNeedsReviewCount > 0 ? `要確認 ${dayNeedsReviewCount}` : "確認済み"}
+              </span>
+              <strong>日単位シフトの確認フロー</strong>
+              <span className="subtext">
+                出勤 {dayPresentCount}人 / 休み {dayOffCount}人 / 見込 {formatHours(dayEstimatedMinutes)}
+              </span>
+            </div>
+            <Link className="shift-flow-next" href={dayNextAction.href}>
+              次: {dayNextAction.label}
+            </Link>
           </div>
-          <Link className="shift-flow-next" href={dayNextAction.href}>
-            次: {dayNextAction.label}
-          </Link>
-        </div>
-        <ShiftFlowGrid cards={dayFlowCards} />
-        <ShiftChangeRequestPanel requests={pendingRequestRows} />
-        <form id="shift-day-date" className="panel toolbar anchor-offset" method="GET">
-          <label>
-            <span>対象日</span>
-            <input name="date" type="date" defaultValue={date} />
-          </label>
-          <button type="submit" className="secondary">
-            表示
-          </button>
-        </form>
+          <ShiftFlowGrid cards={dayFlowCards} />
+          <ShiftChangeRequestPanel requests={pendingRequestRows} />
+          <form id="shift-day-date" className="panel toolbar anchor-offset" method="GET">
+            <label>
+              <span>対象日</span>
+              <input name="date" type="date" defaultValue={date} />
+            </label>
+            <button type="submit" className="secondary">
+              表示
+            </button>
+          </form>
+        </CollapsiblePanel>
         <div id="shift-day-editor" className="anchor-offset">
           <ShiftEditor date={date} rows={dayRows} />
         </div>
@@ -347,51 +354,57 @@ export default async function ShiftsPage({
           </Link>
         </div>
       </div>
-      <div className={`shift-flow-command ${monthTone}`}>
-        <div className="shift-flow-title">
-          {monthTone === "success" ? (
-            <CheckCircle2 size={18} aria-hidden="true" />
-          ) : (
-            <AlertTriangle size={18} aria-hidden="true" />
-          )}
-          <span className={`badge ${monthTone}`}>
-            {monthReviewCount > 0 ? `要確認 ${monthReviewCount}` : "確認済み"}
-          </span>
-          <strong>月次シフトの確認フロー</strong>
-          <span className="subtext">
-            出勤セル {presentShiftCount} / {totalShiftCells} / 勤務時間 {formatHours(totalWorkMinutes)}
-          </span>
+      <CollapsiblePanel
+        title="確認・操作"
+        summary={`${monthReviewCount > 0 ? `要確認 ${monthReviewCount}` : "確認済み"} / ${yearMonth} / 出勤セル ${presentShiftCount}`}
+        className="top-flow-accordion"
+      >
+        <div className={`shift-flow-command ${monthTone}`}>
+          <div className="shift-flow-title">
+            {monthTone === "success" ? (
+              <CheckCircle2 size={18} aria-hidden="true" />
+            ) : (
+              <AlertTriangle size={18} aria-hidden="true" />
+            )}
+            <span className={`badge ${monthTone}`}>
+              {monthReviewCount > 0 ? `要確認 ${monthReviewCount}` : "確認済み"}
+            </span>
+            <strong>月次シフトの確認フロー</strong>
+            <span className="subtext">
+              出勤セル {presentShiftCount} / {totalShiftCells} / 勤務時間 {formatHours(totalWorkMinutes)}
+            </span>
+          </div>
+          <Link className="shift-flow-next" href={monthNextAction.href}>
+            次: {monthNextAction.label}
+          </Link>
         </div>
-        <Link className="shift-flow-next" href={monthNextAction.href}>
-          次: {monthNextAction.label}
-        </Link>
-      </div>
-      <ShiftFlowGrid cards={monthFlowCards} />
-      <ShiftChangeRequestPanel requests={pendingRequestRows} />
-      <div className="shift-summary-grid">
-        <div className="metric">
-          <div className="metric-label">対象月</div>
-          <div className="metric-value">{yearMonth}</div>
-        </div>
-        <div className="metric">
-          <div className="metric-label">スタッフ</div>
-          <div className="metric-value">{employees.length} 人</div>
-        </div>
-        <div className="metric">
-          <div className="metric-label">出勤セル</div>
-          <div className="metric-value">
-            {presentShiftCount} / {totalShiftCells}
+        <ShiftFlowGrid cards={monthFlowCards} />
+        <ShiftChangeRequestPanel requests={pendingRequestRows} />
+        <div className="shift-summary-grid">
+          <div className="metric">
+            <div className="metric-label">対象月</div>
+            <div className="metric-value">{yearMonth}</div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">スタッフ</div>
+            <div className="metric-value">{employees.length} 人</div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">出勤セル</div>
+            <div className="metric-value">
+              {presentShiftCount} / {totalShiftCells}
+            </div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">出勤日数</div>
+            <div className="metric-value">{registeredDayCount} 日</div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">勤務時間合計</div>
+            <div className="metric-value">{formatHours(totalWorkMinutes)}</div>
           </div>
         </div>
-        <div className="metric">
-          <div className="metric-label">出勤日数</div>
-          <div className="metric-value">{registeredDayCount} 日</div>
-        </div>
-        <div className="metric">
-          <div className="metric-label">勤務時間合計</div>
-          <div className="metric-value">{formatHours(totalWorkMinutes)}</div>
-        </div>
-      </div>
+      </CollapsiblePanel>
       <div id="shift-month-editor" className="anchor-offset">
         <ShiftMonthEditor
           key={yearMonth}

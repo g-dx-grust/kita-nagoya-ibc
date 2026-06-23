@@ -7317,6 +7317,24 @@ form.toolbar {
   box-shadow: none;
 }
 
+.top-flow-accordion .collapsible-content {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+}
+
+.top-flow-accordion .collapsible-content > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.top-flow-accordion .panel,
+.top-flow-accordion .staff-report-top-panel,
+.top-flow-accordion .allocation-control-panel,
+.top-flow-accordion .inventory-control-panel {
+  box-shadow: none;
+}
+
 @media (max-width: 760px) {
   .collapsible-panel {
     margin: 8px 0 12px;

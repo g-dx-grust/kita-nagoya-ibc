@@ -194,60 +194,66 @@ export default async function InventoryPage({
           </Link>
         </div>
       </div>
-      <div className="inventory-page-command">
-        <div className="inventory-page-command-title">
-          <span className={`badge ${overview.needsReviewCount > 0 ? "warn" : "success"}`}>
-            {overview.needsReviewCount > 0 ? "確認が必要" : "整備済み"}
-          </span>
-          <strong>在庫確認フロー</strong>
-          <span className="subtext">
-            {formatMonthLabel(month)} / {activeTabLabel}
-          </span>
-          <Link className="inventory-page-next" href={nextInventoryAction.href}>
-            次: {nextInventoryAction.label}
-          </Link>
-        </div>
-        <div className="inventory-page-command-checks">
-          <span className="badge info">対象 {activeData.sheet.rows.length}品目</span>
-          <span className="badge muted">入出庫あり {overview.movementItemCount}品目</span>
-          <span className={`badge ${overview.negativeItemCount > 0 ? "danger" : "success"}`}>
-            マイナス {overview.negativeItemCount}品目 / {overview.negativeDayCount}日
-          </span>
-          {activeData.itemType !== "product" && (
-            <span className={`badge ${overview.missingDeadlineItemCount > 0 ? "warn" : "success"}`}>
-              期限未入力 {overview.missingDeadlineItemCount}品目
+      <CollapsiblePanel
+        title="確認・操作"
+        summary={`${overview.needsReviewCount > 0 ? `確認が必要 ${overview.needsReviewCount}品目` : "整備済み"} / ${formatMonthLabel(month)} / ${activeTabLabel}`}
+        className="top-flow-accordion"
+      >
+        <div className="inventory-page-command">
+          <div className="inventory-page-command-title">
+            <span className={`badge ${overview.needsReviewCount > 0 ? "warn" : "success"}`}>
+              {overview.needsReviewCount > 0 ? "確認が必要" : "整備済み"}
             </span>
-          )}
-        </div>
-      </div>
-      <div className="inventory-page-flow-grid" aria-label="在庫確認フロー">
-        {inventoryFlowCards.map(({ label, count, detail, href, tone, Icon }) => (
-          <Link key={label} className={`inventory-page-flow-card ${tone}`} href={href}>
-            <span>
-              <Icon size={15} aria-hidden="true" />
-              {label}
+            <strong>在庫確認フロー</strong>
+            <span className="subtext">
+              {formatMonthLabel(month)} / {activeTabLabel}
             </span>
-            <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
-            <small>{detail}</small>
-          </Link>
-        ))}
-      </div>
-      <div id="inventory-display-condition" className="anchor-offset">
-        <CollapsiblePanel title="表示条件" summary={`${formatMonthLabel(month)} / ${activeTabLabel}`}>
-          <form className="toolbar compact-controls" method="GET">
-            <input type="hidden" name="tab" value={active} />
-            {adminMode && <input type="hidden" name="admin" value="1" />}
-            {productScope === "all" && <input type="hidden" name="scope" value="all" />}
-            <label>
-              <span>対象月</span>
-              <input type="month" name="month" defaultValue={month} />
-            </label>
-            <button type="submit" className="secondary">
-              更新
-            </button>
-          </form>
-        </CollapsiblePanel>
-      </div>
+            <Link className="inventory-page-next" href={nextInventoryAction.href}>
+              次: {nextInventoryAction.label}
+            </Link>
+          </div>
+          <div className="inventory-page-command-checks">
+            <span className="badge info">対象 {activeData.sheet.rows.length}品目</span>
+            <span className="badge muted">入出庫あり {overview.movementItemCount}品目</span>
+            <span className={`badge ${overview.negativeItemCount > 0 ? "danger" : "success"}`}>
+              マイナス {overview.negativeItemCount}品目 / {overview.negativeDayCount}日
+            </span>
+            {activeData.itemType !== "product" && (
+              <span className={`badge ${overview.missingDeadlineItemCount > 0 ? "warn" : "success"}`}>
+                期限未入力 {overview.missingDeadlineItemCount}品目
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="inventory-page-flow-grid" aria-label="在庫確認フロー">
+          {inventoryFlowCards.map(({ label, count, detail, href, tone, Icon }) => (
+            <Link key={label} className={`inventory-page-flow-card ${tone}`} href={href}>
+              <span>
+                <Icon size={15} aria-hidden="true" />
+                {label}
+              </span>
+              <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
+              <small>{detail}</small>
+            </Link>
+          ))}
+        </div>
+        <div id="inventory-display-condition" className="anchor-offset">
+          <CollapsiblePanel title="表示条件" summary={`${formatMonthLabel(month)} / ${activeTabLabel}`}>
+            <form className="toolbar compact-controls" method="GET">
+              <input type="hidden" name="tab" value={active} />
+              {adminMode && <input type="hidden" name="admin" value="1" />}
+              {productScope === "all" && <input type="hidden" name="scope" value="all" />}
+              <label>
+                <span>対象月</span>
+                <input type="month" name="month" defaultValue={month} />
+              </label>
+              <button type="submit" className="secondary">
+                更新
+              </button>
+            </form>
+          </CollapsiblePanel>
+        </div>
+      </CollapsiblePanel>
 
       <InventoryTabs
         active={active}

@@ -339,38 +339,44 @@ export default async function ProductionDailyReportsPage({
         </div>
       </div>
 
-      <div className={`production-plans-overview-command ${dailyReportTone}`}>
-        <div className="production-plans-overview-title">
-          {dailyReportTone === "success" ? (
-            <CheckCircle2 size={18} aria-hidden="true" />
-          ) : (
-            <AlertTriangle size={18} aria-hidden="true" />
-          )}
-          <span className={`badge ${dailyReportTone}`}>
-            {alertCount > 0 ? `要確認 ${alertCount}件` : pendingLaborFeeCount > 0 ? `未反映 ${pendingLaborFeeCount}件` : "確認済み"}
-          </span>
-          <strong>{formatMonthLabel(month)} の日報フロー</strong>
-          <span className="subtext">
-            日報 {rows.length.toLocaleString()}件 / 計上済 {approvedCount.toLocaleString()}件 / 商品別{" "}
-            {summaries.length.toLocaleString()}件
-          </span>
-        </div>
-        <Link className="production-plans-overview-next" href={dailyReportNext.href}>
-          次: {dailyReportNext.label}
-        </Link>
-      </div>
-      <div className="production-plans-overview-grid" aria-label="日報・商品別集計の確認フロー">
-        {dailyReportFlowCards.map(({ label, count, detail, href, tone, Icon }) => (
-          <Link key={label} className={`production-plans-overview-card ${tone}`} href={href}>
-            <span>
-              <Icon size={15} aria-hidden="true" />
-              {label}
+      <CollapsiblePanel
+        title="確認・操作"
+        summary={`${alertCount > 0 ? `要確認 ${alertCount}件` : pendingLaborFeeCount > 0 ? `未反映 ${pendingLaborFeeCount}件` : "確認済み"} / 日報 ${rows.length.toLocaleString()}件`}
+        className="top-flow-accordion"
+      >
+        <div className={`production-plans-overview-command ${dailyReportTone}`}>
+          <div className="production-plans-overview-title">
+            {dailyReportTone === "success" ? (
+              <CheckCircle2 size={18} aria-hidden="true" />
+            ) : (
+              <AlertTriangle size={18} aria-hidden="true" />
+            )}
+            <span className={`badge ${dailyReportTone}`}>
+              {alertCount > 0 ? `要確認 ${alertCount}件` : pendingLaborFeeCount > 0 ? `未反映 ${pendingLaborFeeCount}件` : "確認済み"}
             </span>
-            <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
-            <small>{detail}</small>
+            <strong>{formatMonthLabel(month)} の日報フロー</strong>
+            <span className="subtext">
+              日報 {rows.length.toLocaleString()}件 / 計上済 {approvedCount.toLocaleString()}件 / 商品別{" "}
+              {summaries.length.toLocaleString()}件
+            </span>
+          </div>
+          <Link className="production-plans-overview-next" href={dailyReportNext.href}>
+            次: {dailyReportNext.label}
           </Link>
-        ))}
-      </div>
+        </div>
+        <div className="production-plans-overview-grid" aria-label="日報・商品別集計の確認フロー">
+          {dailyReportFlowCards.map(({ label, count, detail, href, tone, Icon }) => (
+            <Link key={label} className={`production-plans-overview-card ${tone}`} href={href}>
+              <span>
+                <Icon size={15} aria-hidden="true" />
+                {label}
+              </span>
+              <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
+              <small>{detail}</small>
+            </Link>
+          ))}
+        </div>
+      </CollapsiblePanel>
 
       {pendingApprovalCount > 0 && (
         <div className="alert warn top-page-alert">

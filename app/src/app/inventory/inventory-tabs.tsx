@@ -199,6 +199,11 @@ export function InventoryTabs({
           ))}
         </div>
       </div>
+      <CollapsiblePanel
+        title="確認・操作"
+        summary={`${reviewSummary.needsReviewCount > 0 ? `要確認 ${reviewSummary.needsReviewCount}品目` : "整備済み"} / 表示 ${filteredRows.length} / ${sheet.rows.length} 件`}
+        className="top-flow-accordion"
+      >
       <div className="inventory-review-command">
         <div className="inventory-review-command-title">
           <strong>在庫確認</strong>
@@ -401,6 +406,7 @@ export function InventoryTabs({
             {filteredRows.length} / {sheet.rows.length} 件
           </span>
         </div>
+      </CollapsiblePanel>
       </CollapsiblePanel>
       {adminMode && editableGrid ? (
         <InventoryEditableGrid

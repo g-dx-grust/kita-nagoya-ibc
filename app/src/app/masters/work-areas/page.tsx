@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import { ClipboardCheck, Clock, Factory, Settings, Table2, Users } from "lucide-react";
 import { areaTypeLabel, autoScheduleRoleLabel } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
@@ -132,99 +133,105 @@ export default async function WorkAreasPage() {
           <HelpTooltip text="部屋名・外注先名はマスターで追加・変更できます。生産予定や能力設定ではここに登録した名称を使います。" />
         </div>
       </div>
-      <div className="master-page-command">
-        <div className="master-page-command-title">
-          <span className={`badge ${needsActionCount > 0 ? "warn" : "success"}`}>
-            {needsActionCount > 0 ? `整備が必要 ${needsActionCount}` : "整備済み"}
-          </span>
-          <strong>作業場所マスター整備フロー</strong>
-          <span className="subtext">登録作業場所 {rows.length}件</span>
-          <a className="master-page-next" href={nextAction.href}>
-            次: {nextAction.label}
-          </a>
-        </div>
-        <div className="master-page-checks">
-          <span className={`badge ${standardTimeMissingCount > 0 ? "warn" : "success"}`}>
-            標準時間 {standardTimeMissingCount}件
-          </span>
-          <span className={`badge ${invalidPeopleCount > 0 ? "warn" : "success"}`}>
-            人数 {invalidPeopleCount}件
-          </span>
-          <span className={`badge ${excludedCount > 0 ? "warn" : "success"}`}>
-            自動予定除外 {excludedCount}件
-          </span>
-          <span className={`badge ${concurrentBlockedCount > 0 ? "warn" : "success"}`}>
-            同時稼働不可 {concurrentBlockedCount}件
-          </span>
-          <span className={`badge ${externalMismatchCount > 0 ? "warn" : "success"}`}>
-            外注差異 {externalMismatchCount}件
-          </span>
-        </div>
-      </div>
-      <div className="master-flow-grid" aria-label="作業場所マスター整備フロー">
-        {flowCards.map(({ label, count, detail, href, tone, Icon }) => (
-          <Link key={label} className={`master-flow-card ${tone}`} href={href}>
-            <span>
-              <Icon size={15} aria-hidden="true" />
-              {label}
+      <CollapsiblePanel
+        title="確認・操作"
+        summary={`${needsActionCount > 0 ? `整備が必要 ${needsActionCount}件` : "整備済み"} / 登録作業場所 ${rows.length}件`}
+        className="top-flow-accordion"
+      >
+        <div className="master-page-command">
+          <div className="master-page-command-title">
+            <span className={`badge ${needsActionCount > 0 ? "warn" : "success"}`}>
+              {needsActionCount > 0 ? `整備が必要 ${needsActionCount}` : "整備済み"}
             </span>
-            <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
-            <small>{detail}</small>
-          </Link>
-        ))}
-      </div>
-      <div className="work-area-summary-grid">
-        <div className="metric">
-          <div className="metric-label">登録作業場所</div>
-          <div className="metric-value">{rows.length}件</div>
-          <div className="metric-note">最大配置合計 {totalMaxPeople}人</div>
-        </div>
-        <div className="metric">
-          <div className="metric-label">種別</div>
-          <div className="metric-value work-area-summary-breakdown">
-            <span>
-              {areaTypeLabel("internal")} {areaTypeCounts.get("internal") ?? 0}件
+            <strong>作業場所マスター整備フロー</strong>
+            <span className="subtext">登録作業場所 {rows.length}件</span>
+            <a className="master-page-next" href={nextAction.href}>
+              次: {nextAction.label}
+            </a>
+          </div>
+          <div className="master-page-checks">
+            <span className={`badge ${standardTimeMissingCount > 0 ? "warn" : "success"}`}>
+              標準時間 {standardTimeMissingCount}件
             </span>
-            <span>
-              {areaTypeLabel("external")} {areaTypeCounts.get("external") ?? 0}件
+            <span className={`badge ${invalidPeopleCount > 0 ? "warn" : "success"}`}>
+              人数 {invalidPeopleCount}件
             </span>
-            <span>
-              {areaTypeLabel("warehouse")} {areaTypeCounts.get("warehouse") ?? 0}件
+            <span className={`badge ${excludedCount > 0 ? "warn" : "success"}`}>
+              自動予定除外 {excludedCount}件
+            </span>
+            <span className={`badge ${concurrentBlockedCount > 0 ? "warn" : "success"}`}>
+              同時稼働不可 {concurrentBlockedCount}件
+            </span>
+            <span className={`badge ${externalMismatchCount > 0 ? "warn" : "success"}`}>
+              外注差異 {externalMismatchCount}件
             </span>
           </div>
         </div>
-        <div className="metric">
-          <div className="metric-label">標準時間</div>
-          <div className={`metric-value ${standardTimeMissingCount > 0 ? "warn-value" : ""}`}>
-            {standardTimeConfiguredCount}件
-          </div>
-          <div className="metric-note">未設定 {standardTimeMissingCount}件</div>
+        <div className="master-flow-grid" aria-label="作業場所マスター整備フロー">
+          {flowCards.map(({ label, count, detail, href, tone, Icon }) => (
+            <Link key={label} className={`master-flow-card ${tone}`} href={href}>
+              <span>
+                <Icon size={15} aria-hidden="true" />
+                {label}
+              </span>
+              <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
+              <small>{detail}</small>
+            </Link>
+          ))}
         </div>
-        <div className="metric">
-          <div className="metric-label">稼働設定</div>
-          <div className="metric-value work-area-summary-breakdown">
-            <span>同時可 {concurrentAllowedCount}件</span>
-            <span>不可 {concurrentBlockedCount}件</span>
+        <div className="work-area-summary-grid">
+          <div className="metric">
+            <div className="metric-label">登録作業場所</div>
+            <div className="metric-value">{rows.length}件</div>
+            <div className="metric-note">最大配置合計 {totalMaxPeople}人</div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">種別</div>
+            <div className="metric-value work-area-summary-breakdown">
+              <span>
+                {areaTypeLabel("internal")} {areaTypeCounts.get("internal") ?? 0}件
+              </span>
+              <span>
+                {areaTypeLabel("external")} {areaTypeCounts.get("external") ?? 0}件
+              </span>
+              <span>
+                {areaTypeLabel("warehouse")} {areaTypeCounts.get("warehouse") ?? 0}件
+              </span>
+            </div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">標準時間</div>
+            <div className={`metric-value ${standardTimeMissingCount > 0 ? "warn-value" : ""}`}>
+              {standardTimeConfiguredCount}件
+            </div>
+            <div className="metric-note">未設定 {standardTimeMissingCount}件</div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">稼働設定</div>
+            <div className="metric-value work-area-summary-breakdown">
+              <span>同時可 {concurrentAllowedCount}件</span>
+              <span>不可 {concurrentBlockedCount}件</span>
+            </div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">自動予定</div>
+            <div className="metric-value work-area-summary-breakdown">
+              <span>
+                {autoScheduleRoleLabel("ORDER_PRIMARY")} {autoScheduleRoleCounts.get("ORDER_PRIMARY") ?? 0}件
+              </span>
+              <span>
+                {autoScheduleRoleLabel("STOCK_PRIMARY")} {autoScheduleRoleCounts.get("STOCK_PRIMARY") ?? 0}件
+              </span>
+              <span>
+                {autoScheduleRoleLabel("SHARED")} {autoScheduleRoleCounts.get("SHARED") ?? 0}件
+              </span>
+              <span>
+                除外 {autoScheduleRoleCounts.get("EXCLUDED") ?? 0}件
+              </span>
+            </div>
           </div>
         </div>
-        <div className="metric">
-          <div className="metric-label">自動予定</div>
-          <div className="metric-value work-area-summary-breakdown">
-            <span>
-              {autoScheduleRoleLabel("ORDER_PRIMARY")} {autoScheduleRoleCounts.get("ORDER_PRIMARY") ?? 0}件
-            </span>
-            <span>
-              {autoScheduleRoleLabel("STOCK_PRIMARY")} {autoScheduleRoleCounts.get("STOCK_PRIMARY") ?? 0}件
-            </span>
-            <span>
-              {autoScheduleRoleLabel("SHARED")} {autoScheduleRoleCounts.get("SHARED") ?? 0}件
-            </span>
-            <span>
-              除外 {autoScheduleRoleCounts.get("EXCLUDED") ?? 0}件
-            </span>
-          </div>
-        </div>
-      </div>
+      </CollapsiblePanel>
       <section id="work-area-create" className="anchor-offset">
         <MasterForm
           endpoint={kitagoyaApiPath("/work-areas")}

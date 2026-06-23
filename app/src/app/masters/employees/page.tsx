@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CalendarDays, ClipboardCheck, ListChecks, UserPlus, Users } from "lucide-react";
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import { prisma } from "@/lib/prisma";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 import MasterForm, { type MasterField } from "../master-form";
@@ -139,74 +140,80 @@ export default async function EmployeesPage() {
           </Link>
         </div>
       </div>
-      <div className="master-page-command">
-        <div className="master-page-command-title">
-          <span className={`badge ${needsActionCount > 0 ? "warn" : "success"}`}>
-            {needsActionCount > 0 ? `整備が必要 ${needsActionCount}` : "整備済み"}
-          </span>
-          <strong>従業員マスター整備フロー</strong>
-          <span className="subtext">有効スタッフ {rows.length}名</span>
-          <a className="master-page-next" href={nextAction.href}>
-            次: {nextAction.label}
-          </a>
-        </div>
-        <div className="master-page-checks">
-          <span className={`badge ${missingAffiliationCount > 0 ? "warn" : "success"}`}>
-            所属 {missingAffiliationCount}名
-          </span>
-          <span className={`badge ${missingWorkTimeCount > 0 ? "warn" : "success"}`}>
-            勤務時間 {missingWorkTimeCount}名
-          </span>
-          <span className={`badge ${invalidBreakCount > 0 ? "warn" : "success"}`}>
-            休憩 {invalidBreakCount}名
-          </span>
-          <span className={`badge ${shiftEntryUnissuedCount > 0 ? "warn" : "success"}`}>
-            URL未発行 {shiftEntryUnissuedCount}名
-          </span>
-          <span className={`badge ${shiftEntryDisabledCount > 0 ? "warn" : "success"}`}>
-            本人入力停止 {shiftEntryDisabledCount}名
-          </span>
-        </div>
-      </div>
-      <div className="master-flow-grid" aria-label="従業員マスター整備フロー">
-        {flowCards.map(({ label, count, detail, href, tone, Icon }) => (
-          <Link key={label} className={`master-flow-card ${tone}`} href={href}>
-            <span>
-              <Icon size={15} aria-hidden="true" />
-              {label}
+      <CollapsiblePanel
+        title="確認・操作"
+        summary={`${needsActionCount > 0 ? `整備が必要 ${needsActionCount}名` : "整備済み"} / 有効スタッフ ${rows.length}名`}
+        className="top-flow-accordion"
+      >
+        <div className="master-page-command">
+          <div className="master-page-command-title">
+            <span className={`badge ${needsActionCount > 0 ? "warn" : "success"}`}>
+              {needsActionCount > 0 ? `整備が必要 ${needsActionCount}` : "整備済み"}
             </span>
-            <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
-            <small>{detail}</small>
-          </Link>
-        ))}
-      </div>
-      <div className="employee-summary-grid">
-        <div className="metric">
-          <div className="metric-label">登録スタッフ</div>
-          <div className="metric-value">{rows.length}名</div>
-          <div className="metric-note">有効な従業員</div>
-        </div>
-        <div className="metric">
-          <div className="metric-label">雇用区分</div>
-          <div className="metric-value employee-summary-breakdown">
-            <span>自社 {ownCount}名</span>
-            <span>派遣 {tempCount}名</span>
-            {otherCount > 0 && <span>その他 {otherCount}名</span>}
+            <strong>従業員マスター整備フロー</strong>
+            <span className="subtext">有効スタッフ {rows.length}名</span>
+            <a className="master-page-next" href={nextAction.href}>
+              次: {nextAction.label}
+            </a>
+          </div>
+          <div className="master-page-checks">
+            <span className={`badge ${missingAffiliationCount > 0 ? "warn" : "success"}`}>
+              所属 {missingAffiliationCount}名
+            </span>
+            <span className={`badge ${missingWorkTimeCount > 0 ? "warn" : "success"}`}>
+              勤務時間 {missingWorkTimeCount}名
+            </span>
+            <span className={`badge ${invalidBreakCount > 0 ? "warn" : "success"}`}>
+              休憩 {invalidBreakCount}名
+            </span>
+            <span className={`badge ${shiftEntryUnissuedCount > 0 ? "warn" : "success"}`}>
+              URL未発行 {shiftEntryUnissuedCount}名
+            </span>
+            <span className={`badge ${shiftEntryDisabledCount > 0 ? "warn" : "success"}`}>
+              本人入力停止 {shiftEntryDisabledCount}名
+            </span>
           </div>
         </div>
-        <div className="metric">
-          <div className="metric-label">本人入力許可</div>
-          <div className="metric-value">{shiftEntryEnabledCount}名</div>
-          <div className="metric-note">URL発行済み {shiftEntryIssuedCount}名</div>
+        <div className="master-flow-grid" aria-label="従業員マスター整備フロー">
+          {flowCards.map(({ label, count, detail, href, tone, Icon }) => (
+            <Link key={label} className={`master-flow-card ${tone}`} href={href}>
+              <span>
+                <Icon size={15} aria-hidden="true" />
+                {label}
+              </span>
+              <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
+              <small>{detail}</small>
+            </Link>
+          ))}
         </div>
-        <div className="metric">
-          <div className="metric-label">URL未発行</div>
-          <div className={`metric-value ${shiftEntryUnissuedCount > 0 ? "warn-value" : ""}`}>
-            {shiftEntryUnissuedCount}名
+        <div className="employee-summary-grid">
+          <div className="metric">
+            <div className="metric-label">登録スタッフ</div>
+            <div className="metric-value">{rows.length}名</div>
+            <div className="metric-note">有効な従業員</div>
           </div>
-          <div className="metric-note">本人入力URLの共有待ち</div>
+          <div className="metric">
+            <div className="metric-label">雇用区分</div>
+            <div className="metric-value employee-summary-breakdown">
+              <span>自社 {ownCount}名</span>
+              <span>派遣 {tempCount}名</span>
+              {otherCount > 0 && <span>その他 {otherCount}名</span>}
+            </div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">本人入力許可</div>
+            <div className="metric-value">{shiftEntryEnabledCount}名</div>
+            <div className="metric-note">URL発行済み {shiftEntryIssuedCount}名</div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">URL未発行</div>
+            <div className={`metric-value ${shiftEntryUnissuedCount > 0 ? "warn-value" : ""}`}>
+              {shiftEntryUnissuedCount}名
+            </div>
+            <div className="metric-note">本人入力URLの共有待ち</div>
+          </div>
         </div>
-      </div>
+      </CollapsiblePanel>
       <section id="employee-create" className="anchor-offset">
         <MasterForm
           endpoint={kitagoyaApiPath("/employees")}

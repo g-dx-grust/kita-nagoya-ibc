@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ClipboardCheck, Database, PackageCheck, Truck } from "lucide-react";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import { prisma } from "@/lib/prisma";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 import MasterForm, { type MasterField } from "../master-form";
@@ -156,77 +157,83 @@ export default async function SuppliersPage() {
           <HelpTooltip text="発注書に表示される仕入先を管理します。原料・資材マスターから仕入先を選んで紐付けます。" />
         </div>
       </div>
-      <div className="master-page-command">
-        <div className="master-page-command-title">
-          <span className={`badge ${needsActionCount > 0 ? "warn" : "success"}`}>
-            {needsActionCount > 0 ? `整備が必要 ${needsActionCount}` : "整備済み"}
-          </span>
-          <strong>仕入先マスター整備フロー</strong>
-          <span className="subtext">登録仕入先 {rows.length}件</span>
-          <a className="master-page-next" href={nextAction.href}>
-            次: {nextAction.label}
-          </a>
-        </div>
-        <div className="master-page-checks">
-          <span className={`badge ${unusedSupplierCount > 0 ? "warn" : "success"}`}>
-            未使用 {unusedSupplierCount}件
-          </span>
-          <span className={`badge ${contactMissingCount > 0 ? "warn" : "success"}`}>
-            連絡先 {contactMissingCount}件
-          </span>
-          <span className={`badge ${orderingUnitMissingCount > 0 ? "warn" : "success"}`}>
-            発注単位 {orderingUnitMissingCount}件
-          </span>
-          <span className={`badge ${closingInfoMissingCount > 0 ? "warn" : "success"}`}>
-            締め {closingInfoMissingCount}件
-          </span>
-        </div>
-      </div>
-      <div className="master-flow-grid" aria-label="仕入先マスター整備フロー">
-        {flowCards.map(({ label, count, detail, href, tone, Icon }) => (
-          <Link key={label} className={`master-flow-card ${tone}`} href={href}>
-            <span>
-              <Icon size={15} aria-hidden="true" />
-              {label}
+      <CollapsiblePanel
+        title="確認・操作"
+        summary={`${needsActionCount > 0 ? `整備が必要 ${needsActionCount}件` : "整備済み"} / 登録仕入先 ${rows.length}件`}
+        className="top-flow-accordion"
+      >
+        <div className="master-page-command">
+          <div className="master-page-command-title">
+            <span className={`badge ${needsActionCount > 0 ? "warn" : "success"}`}>
+              {needsActionCount > 0 ? `整備が必要 ${needsActionCount}` : "整備済み"}
             </span>
-            <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
-            <small>{detail}</small>
-          </Link>
-        ))}
-      </div>
-      <div className="supplier-summary-grid">
-        <div className="metric">
-          <div className="metric-label">登録仕入先</div>
-          <div className="metric-value">{rows.length}件</div>
-          <div className="metric-note">有効な仕入先マスター</div>
-        </div>
-        <div className="metric">
-          <div className="metric-label">マスター紐付け</div>
-          <div className="metric-value">{linkedSupplierCount}件</div>
-          <div className="metric-note">
-            原料 {linkedMaterialCount}件 / 資材 {linkedPackagingCount}件
+            <strong>仕入先マスター整備フロー</strong>
+            <span className="subtext">登録仕入先 {rows.length}件</span>
+            <a className="master-page-next" href={nextAction.href}>
+              次: {nextAction.label}
+            </a>
+          </div>
+          <div className="master-page-checks">
+            <span className={`badge ${unusedSupplierCount > 0 ? "warn" : "success"}`}>
+              未使用 {unusedSupplierCount}件
+            </span>
+            <span className={`badge ${contactMissingCount > 0 ? "warn" : "success"}`}>
+              連絡先 {contactMissingCount}件
+            </span>
+            <span className={`badge ${orderingUnitMissingCount > 0 ? "warn" : "success"}`}>
+              発注単位 {orderingUnitMissingCount}件
+            </span>
+            <span className={`badge ${closingInfoMissingCount > 0 ? "warn" : "success"}`}>
+              締め {closingInfoMissingCount}件
+            </span>
           </div>
         </div>
-        <div className="metric">
-          <div className="metric-label">連絡先</div>
-          <div className={`metric-value ${contactConfiguredCount === 0 ? "warn-value" : ""}`}>
-            {contactConfiguredCount}件
+        <div className="master-flow-grid" aria-label="仕入先マスター整備フロー">
+          {flowCards.map(({ label, count, detail, href, tone, Icon }) => (
+            <Link key={label} className={`master-flow-card ${tone}`} href={href}>
+              <span>
+                <Icon size={15} aria-hidden="true" />
+                {label}
+              </span>
+              <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
+              <small>{detail}</small>
+            </Link>
+          ))}
+        </div>
+        <div className="supplier-summary-grid">
+          <div className="metric">
+            <div className="metric-label">登録仕入先</div>
+            <div className="metric-value">{rows.length}件</div>
+            <div className="metric-note">有効な仕入先マスター</div>
           </div>
-          <div className="metric-note">発注書・確認連絡に利用</div>
-        </div>
-        <div className="metric">
-          <div className="metric-label">発注条件</div>
-          <div className="metric-value supplier-summary-breakdown">
-            <span>発注単位 {orderingUnitConfiguredCount}件</span>
-            <span>締め {closingInfoConfiguredCount}件</span>
+          <div className="metric">
+            <div className="metric-label">マスター紐付け</div>
+            <div className="metric-value">{linkedSupplierCount}件</div>
+            <div className="metric-note">
+              原料 {linkedMaterialCount}件 / 資材 {linkedPackagingCount}件
+            </div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">連絡先</div>
+            <div className={`metric-value ${contactConfiguredCount === 0 ? "warn-value" : ""}`}>
+              {contactConfiguredCount}件
+            </div>
+            <div className="metric-note">発注書・確認連絡に利用</div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">発注条件</div>
+            <div className="metric-value supplier-summary-breakdown">
+              <span>発注単位 {orderingUnitConfiguredCount}件</span>
+              <span>締め {closingInfoConfiguredCount}件</span>
+            </div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">有効期間</div>
+            <div className="metric-value">{validityConfiguredCount}件</div>
+            <div className="metric-note">期間指定あり</div>
           </div>
         </div>
-        <div className="metric">
-          <div className="metric-label">有効期間</div>
-          <div className="metric-value">{validityConfiguredCount}件</div>
-          <div className="metric-note">期間指定あり</div>
-        </div>
-      </div>
+      </CollapsiblePanel>
       <section id="supplier-create" className="anchor-offset">
         <MasterForm
           endpoint={kitagoyaApiPath("/suppliers")}

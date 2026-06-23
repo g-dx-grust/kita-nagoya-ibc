@@ -169,37 +169,43 @@ export default async function ProductionPlansPage({
           </Link>
         </div>
       </div>
-      <div className={`production-plans-overview-command ${planOverviewTone}`}>
-        <div className="production-plans-overview-title">
-          {planOverviewTone === "success" ? (
-            <CheckCircle2 size={18} aria-hidden="true" />
-          ) : (
-            <AlertTriangle size={18} aria-hidden="true" />
-          )}
-          <span className={`badge ${planOverviewTone}`}>
-            {reviewCount > 0 ? `要確認 ${reviewCount}件` : "確認済み"}
-          </span>
-          <strong>生産予定の確認フロー</strong>
-          <span className="subtext">
-            {displayScope} / 表示 {tableRows.length}件
-          </span>
-        </div>
-        <Link className="production-plans-overview-next" href={planNextAction.href}>
-          次: {planNextAction.label}
-        </Link>
-      </div>
-      <div className="production-plans-overview-grid" aria-label="生産予定確認フロー">
-        {planOverviewCards.map(({ label, count, detail, href, tone, Icon }) => (
-          <Link key={label} className={`production-plans-overview-card ${tone}`} href={href}>
-            <span>
-              <Icon size={15} aria-hidden="true" />
-              {label}
+      <CollapsiblePanel
+        title="確認・操作"
+        summary={`${reviewCount > 0 ? `要確認 ${reviewCount}件` : "確認済み"} / 表示 ${tableRows.length}件 / ${displayScope}`}
+        className="top-flow-accordion"
+      >
+        <div className={`production-plans-overview-command ${planOverviewTone}`}>
+          <div className="production-plans-overview-title">
+            {planOverviewTone === "success" ? (
+              <CheckCircle2 size={18} aria-hidden="true" />
+            ) : (
+              <AlertTriangle size={18} aria-hidden="true" />
+            )}
+            <span className={`badge ${planOverviewTone}`}>
+              {reviewCount > 0 ? `要確認 ${reviewCount}件` : "確認済み"}
             </span>
-            <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
-            <small>{detail}</small>
+            <strong>生産予定の確認フロー</strong>
+            <span className="subtext">
+              {displayScope} / 表示 {tableRows.length}件
+            </span>
+          </div>
+          <Link className="production-plans-overview-next" href={planNextAction.href}>
+            次: {planNextAction.label}
           </Link>
-        ))}
-      </div>
+        </div>
+        <div className="production-plans-overview-grid" aria-label="生産予定確認フロー">
+          {planOverviewCards.map(({ label, count, detail, href, tone, Icon }) => (
+            <Link key={label} className={`production-plans-overview-card ${tone}`} href={href}>
+              <span>
+                <Icon size={15} aria-hidden="true" />
+                {label}
+              </span>
+              <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
+              <small>{detail}</small>
+            </Link>
+          ))}
+        </div>
+      </CollapsiblePanel>
       <CollapsiblePanel
         title="検索・表示条件"
         summary={`${dateFrom || "開始日未指定"} 〜 ${dateTo || "終了日未指定"}${status ? ` / 状態 ${status}` : ""}${

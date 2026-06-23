@@ -12,6 +12,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { prisma } from "@/lib/prisma";
 import { kitagoyaPath } from "@/lib/paths";
@@ -254,68 +255,74 @@ export default async function StaffDailyReportsPage({
           <HelpTooltip text="現場スタッフが当日の予定を選び、生産数・原料使用量・ラベル写真を提出します。提出後は日報画面で管理者が計上します。" />
         </div>
       </div>
-      <div className={`production-plans-overview-command ${readinessTone}`}>
-        <div className="production-plans-overview-title">
-          {readinessTone === "success" ? (
-            <CheckCircle2 size={18} aria-hidden="true" />
-          ) : (
-            <AlertTriangle size={18} aria-hidden="true" />
-          )}
-          <span className={`badge ${readinessTone}`}>
-            {readinessIssues > 0 ? `準備確認 ${readinessIssues}件` : "入力準備OK"}
-          </span>
-          <strong>{date} のスタッフ日報フロー</strong>
-          <span className="subtext">
-            予定 {planSuggestions.length.toLocaleString()}件 / 出勤 {uniqueStaffCount.toLocaleString()}人 / 提出済み{" "}
-            {submittedReports.length.toLocaleString()}件
-          </span>
-        </div>
-        <Link className="production-plans-overview-next" href={nextAction.href}>
-          次: {nextAction.label}
-        </Link>
-      </div>
-      <div className="production-plans-overview-grid" aria-label="スタッフ日報の入力フロー">
-        {flowCards.map(({ label, count, detail, href, tone, Icon }) => (
-          <Link key={label} className={`production-plans-overview-card ${tone}`} href={href}>
-            <span>
-              <Icon size={15} aria-hidden="true" />
-              {label}
+      <CollapsiblePanel
+        title="確認・操作"
+        summary={`${readinessIssues > 0 ? `準備確認 ${readinessIssues}件` : "入力準備OK"} / ${date} / 予定 ${planSuggestions.length}件`}
+        className="top-flow-accordion"
+      >
+        <div className={`production-plans-overview-command ${readinessTone}`}>
+          <div className="production-plans-overview-title">
+            {readinessTone === "success" ? (
+              <CheckCircle2 size={18} aria-hidden="true" />
+            ) : (
+              <AlertTriangle size={18} aria-hidden="true" />
+            )}
+            <span className={`badge ${readinessTone}`}>
+              {readinessIssues > 0 ? `準備確認 ${readinessIssues}件` : "入力準備OK"}
             </span>
-            <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
-            <small>{detail}</small>
-          </Link>
-        ))}
-      </div>
-      <section id="staff-report-date" className="staff-report-top-panel anchor-offset">
-        <div className="staff-report-date-nav">
-          <Link className="button-link secondary-link gap-2" href={kitagoyaPath(`/staff-daily-reports?date=${previousDate}`)}>
-            <ChevronLeft className="h-4 w-4" />
-            前日
-          </Link>
-          <Link className="button-link secondary-link" href={kitagoyaPath(`/staff-daily-reports?date=${today}`)}>
-            今日
-          </Link>
-          <Link className="button-link secondary-link gap-2" href={kitagoyaPath(`/staff-daily-reports?date=${nextDate}`)}>
-            翌日
-            <ChevronRight className="h-4 w-4" />
+            <strong>{date} のスタッフ日報フロー</strong>
+            <span className="subtext">
+              予定 {planSuggestions.length.toLocaleString()}件 / 出勤 {uniqueStaffCount.toLocaleString()}人 / 提出済み{" "}
+              {submittedReports.length.toLocaleString()}件
+            </span>
+          </div>
+          <Link className="production-plans-overview-next" href={nextAction.href}>
+            次: {nextAction.label}
           </Link>
         </div>
-        <form className="staff-report-date-form" method="GET">
-          <label>
-            <span>対象日</span>
-            <input name="date" type="date" defaultValue={date} />
-          </label>
-          <button type="submit" className="secondary">
-            表示
-          </button>
-        </form>
-        <div className="staff-report-overview-grid">
-          <Metric label="当日の予定" value={`${planSuggestions.length}件`} />
-          <Metric label="出勤者" value={`${staffOptions.length}人`} />
-          <Metric label="商品候補" value={`${productOptions.length}件`} />
-          <Metric label="原料候補" value={`${materialOptions.length}件`} />
+        <div className="production-plans-overview-grid" aria-label="スタッフ日報の入力フロー">
+          {flowCards.map(({ label, count, detail, href, tone, Icon }) => (
+            <Link key={label} className={`production-plans-overview-card ${tone}`} href={href}>
+              <span>
+                <Icon size={15} aria-hidden="true" />
+                {label}
+              </span>
+              <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
+              <small>{detail}</small>
+            </Link>
+          ))}
         </div>
-      </section>
+        <section id="staff-report-date" className="staff-report-top-panel anchor-offset">
+          <div className="staff-report-date-nav">
+            <Link className="button-link secondary-link gap-2" href={kitagoyaPath(`/staff-daily-reports?date=${previousDate}`)}>
+              <ChevronLeft className="h-4 w-4" />
+              前日
+            </Link>
+            <Link className="button-link secondary-link" href={kitagoyaPath(`/staff-daily-reports?date=${today}`)}>
+              今日
+            </Link>
+            <Link className="button-link secondary-link gap-2" href={kitagoyaPath(`/staff-daily-reports?date=${nextDate}`)}>
+              翌日
+              <ChevronRight className="h-4 w-4" />
+            </Link>
+          </div>
+          <form className="staff-report-date-form" method="GET">
+            <label>
+              <span>対象日</span>
+              <input name="date" type="date" defaultValue={date} />
+            </label>
+            <button type="submit" className="secondary">
+              表示
+            </button>
+          </form>
+          <div className="staff-report-overview-grid">
+            <Metric label="当日の予定" value={`${planSuggestions.length}件`} />
+            <Metric label="出勤者" value={`${staffOptions.length}人`} />
+            <Metric label="商品候補" value={`${productOptions.length}件`} />
+            <Metric label="原料候補" value={`${materialOptions.length}件`} />
+          </div>
+        </section>
+      </CollapsiblePanel>
       <StaffDailyReportForm
         date={date}
         plans={planSuggestions}

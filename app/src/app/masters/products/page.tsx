@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ClipboardCheck, Database, FileUp, PackagePlus, Settings, Table2 } from "lucide-react";
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import { prisma } from "@/lib/prisma";
 import ProductCreateForm from "./product-create-form";
 import ProductsMasterTable, { type ProductRow } from "./products-master-table";
@@ -156,78 +157,84 @@ export default async function ProductsPage() {
         </div>
       </div>
 
-      <div className="product-master-page-command">
-        <div className="product-master-page-command-title">
-          <span className={`badge ${setupSummary.needsActionCount > 0 ? "warn" : "success"}`}>
-            {setupSummary.needsActionCount > 0 ? `整備が必要 ${setupSummary.needsActionCount}` : "整備済み"}
-          </span>
-          <strong>商品マスター整備フロー</strong>
-          <span className="subtext">
-            北名古屋 {setupSummary.kitagoyaCount} / 全商品 {setupSummary.totalCount}
-          </span>
-          <a className="product-master-page-next" href={nextProductAction.href}>
-            次: {nextProductAction.label}
-          </a>
-        </div>
-        <div className="product-master-page-checks">
-          <span className="badge info">整備済み {setupSummary.readyCount}件</span>
-          <span className={`badge ${setupSummary.missingWorkArea > 0 ? "warn" : "success"}`}>
-            標準場所 {setupSummary.missingWorkArea}件
-          </span>
-          <span className={`badge ${setupSummary.missingBom > 0 ? "warn" : "success"}`}>
-            レシピ {setupSummary.missingBom}件
-          </span>
-          <span className={`badge ${setupSummary.missingCapacity > 0 ? "warn" : "success"}`}>
-            能力 {setupSummary.missingCapacity}件
-          </span>
-          <span className={`badge ${setupSummary.missingBilling > 0 ? "warn" : "success"}`}>
-            手間賃 {setupSummary.missingBilling}件
-          </span>
-        </div>
-      </div>
-
-      <div className="product-master-flow-grid" aria-label="商品マスター整備フロー">
-        {productMasterFlowCards.map(({ label, count, detail, href, tone, Icon }) => (
-          <a key={label} className={`product-master-flow-card ${tone}`} href={href}>
-            <span>
-              <Icon size={15} aria-hidden="true" />
-              {label}
+      <CollapsiblePanel
+        title="確認・操作"
+        summary={`${setupSummary.needsActionCount > 0 ? `整備が必要 ${setupSummary.needsActionCount}件` : "整備済み"} / 北名古屋 ${setupSummary.kitagoyaCount}件`}
+        className="top-flow-accordion"
+      >
+        <div className="product-master-page-command">
+          <div className="product-master-page-command-title">
+            <span className={`badge ${setupSummary.needsActionCount > 0 ? "warn" : "success"}`}>
+              {setupSummary.needsActionCount > 0 ? `整備が必要 ${setupSummary.needsActionCount}` : "整備済み"}
             </span>
-            <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
-            <small>{detail}</small>
-          </a>
-        ))}
-      </div>
-
-      <div className="product-master-summary-grid">
-        <div className="metric">
-          <div className="metric-label">北名古屋商品</div>
-          <div className="metric-value">{setupSummary.kitagoyaCount} 件</div>
-          <div className="metric-note">全商品 {setupSummary.totalCount} 件</div>
-        </div>
-        <div className="metric">
-          <div className="metric-label">整備済み</div>
-          <div className="metric-value">{setupSummary.readyCount} 件</div>
-          <div className="metric-note">レシピ・能力・手間賃・標準場所</div>
-        </div>
-        <div className="metric">
-          <div className="metric-label">未整備</div>
-          <div className={`metric-value${setupSummary.needsActionCount > 0 ? " warn-value" : ""}`}>
-            {setupSummary.needsActionCount} 件
+            <strong>商品マスター整備フロー</strong>
+            <span className="subtext">
+              北名古屋 {setupSummary.kitagoyaCount} / 全商品 {setupSummary.totalCount}
+            </span>
+            <a className="product-master-page-next" href={nextProductAction.href}>
+              次: {nextProductAction.label}
+            </a>
           </div>
-          <div className="metric-note">一覧の未整備のみで確認</div>
+          <div className="product-master-page-checks">
+            <span className="badge info">整備済み {setupSummary.readyCount}件</span>
+            <span className={`badge ${setupSummary.missingWorkArea > 0 ? "warn" : "success"}`}>
+              標準場所 {setupSummary.missingWorkArea}件
+            </span>
+            <span className={`badge ${setupSummary.missingBom > 0 ? "warn" : "success"}`}>
+              レシピ {setupSummary.missingBom}件
+            </span>
+            <span className={`badge ${setupSummary.missingCapacity > 0 ? "warn" : "success"}`}>
+              能力 {setupSummary.missingCapacity}件
+            </span>
+            <span className={`badge ${setupSummary.missingBilling > 0 ? "warn" : "success"}`}>
+              手間賃 {setupSummary.missingBilling}件
+            </span>
+          </div>
         </div>
-        <div className="metric">
-          <div className="metric-label">請求対象</div>
-          <div className="metric-value">{setupSummary.billingEnabledCount} 件</div>
-          <div className="metric-note">手間賃未設定 {setupSummary.missingBilling} 件</div>
+
+        <div className="product-master-flow-grid" aria-label="商品マスター整備フロー">
+          {productMasterFlowCards.map(({ label, count, detail, href, tone, Icon }) => (
+            <a key={label} className={`product-master-flow-card ${tone}`} href={href}>
+              <span>
+                <Icon size={15} aria-hidden="true" />
+                {label}
+              </span>
+              <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
+              <small>{detail}</small>
+            </a>
+          ))}
         </div>
-        <div className="metric">
-          <div className="metric-label">受注生産</div>
-          <div className="metric-value">{setupSummary.makeToOrderCount} 件</div>
-          <div className="metric-note">未処理受注 {openOrderDemandCount} 件</div>
+
+        <div className="product-master-summary-grid">
+          <div className="metric">
+            <div className="metric-label">北名古屋商品</div>
+            <div className="metric-value">{setupSummary.kitagoyaCount} 件</div>
+            <div className="metric-note">全商品 {setupSummary.totalCount} 件</div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">整備済み</div>
+            <div className="metric-value">{setupSummary.readyCount} 件</div>
+            <div className="metric-note">レシピ・能力・手間賃・標準場所</div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">未整備</div>
+            <div className={`metric-value${setupSummary.needsActionCount > 0 ? " warn-value" : ""}`}>
+              {setupSummary.needsActionCount} 件
+            </div>
+            <div className="metric-note">一覧の未整備のみで確認</div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">請求対象</div>
+            <div className="metric-value">{setupSummary.billingEnabledCount} 件</div>
+            <div className="metric-note">手間賃未設定 {setupSummary.missingBilling} 件</div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">受注生産</div>
+            <div className="metric-value">{setupSummary.makeToOrderCount} 件</div>
+            <div className="metric-note">未処理受注 {openOrderDemandCount} 件</div>
+          </div>
         </div>
-      </div>
+      </CollapsiblePanel>
 
       <section id="product-create" className="anchor-offset">
         <ProductCreateForm workAreas={workAreas} />

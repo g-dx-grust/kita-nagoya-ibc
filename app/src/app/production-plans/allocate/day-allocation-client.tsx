@@ -12,6 +12,7 @@ import {
   Save,
   Users,
 } from "lucide-react";
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import SearchableCombobox from "@/components/ui/searchable-combobox";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
@@ -512,168 +513,174 @@ export default function DayAllocationClient({
         </div>
       </div>
 
-      <div className={`allocation-flow-command ${allocationFlowTone}`}>
-        <div className="allocation-flow-title">
-          {allocationFlowTone === "success" ? (
-            <CheckCircle2 size={18} aria-hidden="true" />
-          ) : (
-            <AlertTriangle size={18} aria-hidden="true" />
-          )}
-          <span className={`badge ${allocationFlowTone}`}>
-            {allocationFlowTone === "success" ? "配置保存済み" : "配置確認中"}
-          </span>
-          <strong>当日割り当てフロー</strong>
-          <span className="subtext">
-            {date} / 予定 {previewPlanCount}件 / 出勤 {previewStaffCount}名
-            {result ? ` / 注意 ${totalAlertCount}件` : " / プレビュー前"}
-          </span>
-        </div>
-        {persisted ? (
-          <Link className="allocation-flow-next" href={staffPrintHref}>
-            次: {nextAllocationLabel}
-          </Link>
-        ) : (
-          <button type="button" className="allocation-flow-next" onClick={runNextAllocationAction} disabled={loading}>
-            次: {nextAllocationLabel}
-          </button>
-        )}
-      </div>
-      <div className="allocation-flow-queue" aria-label="当日割り当てフロー">
-        <Link className="allocation-flow-card info" href={productionPlansHref}>
-          <span>
-            <ClipboardList size={15} aria-hidden="true" />
-            生産予定
-          </span>
-          <strong>{previewPlanCount}</strong>
-          <small>仮 {initialReadiness.draftPlanCount} / 確定 {initialReadiness.confirmedPlanCount}</small>
-        </Link>
-        <Link className="allocation-flow-card info" href={shiftsHref}>
-          <span>
-            <CalendarDays size={15} aria-hidden="true" />
-            シフト
-          </span>
-          <strong>{previewStaffCount}</strong>
-          <small>有効スタッフ {initialReadiness.activeEmployeeCount}名</small>
-        </Link>
-        <button type="button" className={`allocation-flow-card ${result ? (totalAlertCount > 0 ? "warn" : "success") : "info"}`} onClick={() => call(false)} disabled={loading}>
-          <span>
-            <Users size={15} aria-hidden="true" />
-            プレビュー
-          </span>
-          <strong>{result ? (totalAlertCount > 0 ? totalAlertCount : "OK") : "未"}</strong>
-          <small>{result ? readinessLabel : "未計算"}</small>
-        </button>
-        {persisted ? (
-          <Link className="allocation-flow-card success" href={staffPrintHref}>
-            <span>
-              <Printer size={15} aria-hidden="true" />
-              保存・印刷
+      <CollapsiblePanel
+        title="確認・操作"
+        summary={`${date} / 予定 ${previewPlanCount}件 / 出勤 ${previewStaffCount}名${result ? ` / 注意 ${totalAlertCount}件` : " / プレビュー前"}`}
+        className="top-flow-accordion"
+      >
+        <div className={`allocation-flow-command ${allocationFlowTone}`}>
+          <div className="allocation-flow-title">
+            {allocationFlowTone === "success" ? (
+              <CheckCircle2 size={18} aria-hidden="true" />
+            ) : (
+              <AlertTriangle size={18} aria-hidden="true" />
+            )}
+            <span className={`badge ${allocationFlowTone}`}>
+              {allocationFlowTone === "success" ? "配置保存済み" : "配置確認中"}
             </span>
-            <strong>済</strong>
-            <small>配置表へ</small>
-          </Link>
-        ) : (
-          <button type="button" className={`allocation-flow-card ${result ? "warn" : "info"}`} onClick={() => (result ? call(true) : call(false))} disabled={loading || (!result && loading)}>
-            <span>
-              {result ? <Save size={15} aria-hidden="true" /> : <ClipboardCheck size={15} aria-hidden="true" />}
-              保存・印刷
-            </span>
-            <strong>{result ? "保存" : "未"}</strong>
-            <small>{result ? "確定して印刷へ" : "プレビュー後"}</small>
-          </button>
-        )}
-      </div>
-
-      <div className="panel allocation-control-panel">
-        <div className="allocation-control-main">
-          <div className="allocation-control-fields">
-            <label className="allocation-field">
-              <span>対象日</span>
-              <input type="date" value={date} onChange={(e) => handleDateChange(e.target.value)} />
-            </label>
-            <label className="allocation-field">
-              <span>開始</span>
-              <input type="time" value={dayStart} onChange={(e) => changeDayStart(e.target.value)} />
-            </label>
-            <label className="allocation-field">
-              <span>基準終了</span>
-              <input type="time" value={dayEnd} onChange={(e) => changeDayEnd(e.target.value)} />
-            </label>
-          </div>
-          <div className="allocation-control-actions">
-            <button type="button" onClick={() => call(false)} disabled={loading}>
-              {loading ? "計算中…" : "割り当てプレビュー"}
-            </button>
-            <button type="button" onClick={() => call(true)} disabled={loading || !result}>
-              この割り当てを保存
-            </button>
-          </div>
-        </div>
-        <div className="allocation-control-status">
-          <span className={`badge ${resultStatusClass}`}>{resultStatusLabel}</span>
-          {summary ? (
+            <strong>当日割り当てフロー</strong>
             <span className="subtext">
-              出勤者 {summary.totalStaff}名 / 稼働率 {utilPct}% / 手すき {summary.idleStaffCount}名
+              {date} / 予定 {previewPlanCount}件 / 出勤 {previewStaffCount}名
+              {result ? ` / 注意 ${totalAlertCount}件` : " / プレビュー前"}
             </span>
+          </div>
+          {persisted ? (
+            <Link className="allocation-flow-next" href={staffPrintHref}>
+              次: {nextAllocationLabel}
+            </Link>
           ) : (
-            <span className="subtext">対象日と時間を指定してプレビュー</span>
+            <button type="button" className="allocation-flow-next" onClick={runNextAllocationAction} disabled={loading}>
+              次: {nextAllocationLabel}
+            </button>
           )}
-          <div className="allocation-date-jump" aria-label="対象日の移動">
-            <button type="button" className="ghost-button" onClick={() => handleDateChange(previousDate)} disabled={loading}>
-              前日
-            </button>
-            <button type="button" className="ghost-button" onClick={() => handleDateChange(today)} disabled={loading}>
-              今日
-            </button>
-            <button type="button" className="ghost-button" onClick={() => handleDateChange(nextDate)} disabled={loading}>
-              翌日
-            </button>
-          </div>
         </div>
-        {result && summary && (
-          <div className="allocation-check-strip">
-            <div className="allocation-readiness">
-              <span className={`badge ${readinessClass}`}>{readinessLabel}</span>
-              <strong>保存前チェック</strong>
-              <span className="subtext">
-                手動調整 {manualAdjustmentCount}件 / 商品部屋変更 {workAreaOverrides.length}件
+        <div className="allocation-flow-queue" aria-label="当日割り当てフロー">
+          <Link className="allocation-flow-card info" href={productionPlansHref}>
+            <span>
+              <ClipboardList size={15} aria-hidden="true" />
+              生産予定
+            </span>
+            <strong>{previewPlanCount}</strong>
+            <small>仮 {initialReadiness.draftPlanCount} / 確定 {initialReadiness.confirmedPlanCount}</small>
+          </Link>
+          <Link className="allocation-flow-card info" href={shiftsHref}>
+            <span>
+              <CalendarDays size={15} aria-hidden="true" />
+              シフト
+            </span>
+            <strong>{previewStaffCount}</strong>
+            <small>有効スタッフ {initialReadiness.activeEmployeeCount}名</small>
+          </Link>
+          <button type="button" className={`allocation-flow-card ${result ? (totalAlertCount > 0 ? "warn" : "success") : "info"}`} onClick={() => call(false)} disabled={loading}>
+            <span>
+              <Users size={15} aria-hidden="true" />
+              プレビュー
+            </span>
+            <strong>{result ? (totalAlertCount > 0 ? totalAlertCount : "OK") : "未"}</strong>
+            <small>{result ? readinessLabel : "未計算"}</small>
+          </button>
+          {persisted ? (
+            <Link className="allocation-flow-card success" href={staffPrintHref}>
+              <span>
+                <Printer size={15} aria-hidden="true" />
+                保存・印刷
               </span>
+              <strong>済</strong>
+              <small>配置表へ</small>
+            </Link>
+          ) : (
+            <button type="button" className={`allocation-flow-card ${result ? "warn" : "info"}`} onClick={() => (result ? call(true) : call(false))} disabled={loading || (!result && loading)}>
+              <span>
+                {result ? <Save size={15} aria-hidden="true" /> : <ClipboardCheck size={15} aria-hidden="true" />}
+                保存・印刷
+              </span>
+              <strong>{result ? "保存" : "未"}</strong>
+              <small>{result ? "確定して印刷へ" : "プレビュー後"}</small>
+            </button>
+          )}
+        </div>
+
+        <div className="panel allocation-control-panel">
+          <div className="allocation-control-main">
+            <div className="allocation-control-fields">
+              <label className="allocation-field">
+                <span>対象日</span>
+                <input type="date" value={date} onChange={(e) => handleDateChange(e.target.value)} />
+              </label>
+              <label className="allocation-field">
+                <span>開始</span>
+                <input type="time" value={dayStart} onChange={(e) => changeDayStart(e.target.value)} />
+              </label>
+              <label className="allocation-field">
+                <span>基準終了</span>
+                <input type="time" value={dayEnd} onChange={(e) => changeDayEnd(e.target.value)} />
+              </label>
             </div>
-            <div className="allocation-check-metrics">
-              <span>
-                警告 <strong>{totalAlertCount}</strong>
-              </span>
-              <span>
-                未完了 <strong>{overflowJobCount}</strong>
-              </span>
-              <span>
-                商品移動 <strong>{movedJobCount}</strong>
-              </span>
-              <span>
-                能力未登録 <strong>{skippedPlanCount}</strong>
-              </span>
-            </div>
-            <div className="allocation-check-actions">
-              <button type="button" className="ghost-button" onClick={() => setView("jobs")} disabled={loading}>
-                商品別を確認
+            <div className="allocation-control-actions">
+              <button type="button" onClick={() => call(false)} disabled={loading}>
+                {loading ? "計算中…" : "割り当てプレビュー"}
               </button>
-              <button type="button" className="ghost-button" onClick={() => setView("board")} disabled={loading}>
-                部屋ボックス
+              <button type="button" onClick={() => call(true)} disabled={loading || !result}>
+                この割り当てを保存
               </button>
-              {workAreaOverrides.length > 0 && (
-                <button type="button" className="ghost-button" onClick={clearWorkAreaOverrides} disabled={loading}>
-                  部屋変更を戻す
-                </button>
-              )}
-              {pins.length > 0 && (
-                <button type="button" className="ghost-button" onClick={clearPins} disabled={loading}>
-                  手動固定を戻す
-                </button>
-              )}
             </div>
           </div>
-        )}
-      </div>
+          <div className="allocation-control-status">
+            <span className={`badge ${resultStatusClass}`}>{resultStatusLabel}</span>
+            {summary ? (
+              <span className="subtext">
+                出勤者 {summary.totalStaff}名 / 稼働率 {utilPct}% / 手すき {summary.idleStaffCount}名
+              </span>
+            ) : (
+              <span className="subtext">対象日と時間を指定してプレビュー</span>
+            )}
+            <div className="allocation-date-jump" aria-label="対象日の移動">
+              <button type="button" className="ghost-button" onClick={() => handleDateChange(previousDate)} disabled={loading}>
+                前日
+              </button>
+              <button type="button" className="ghost-button" onClick={() => handleDateChange(today)} disabled={loading}>
+                今日
+              </button>
+              <button type="button" className="ghost-button" onClick={() => handleDateChange(nextDate)} disabled={loading}>
+                翌日
+              </button>
+            </div>
+          </div>
+          {result && summary && (
+            <div className="allocation-check-strip">
+              <div className="allocation-readiness">
+                <span className={`badge ${readinessClass}`}>{readinessLabel}</span>
+                <strong>保存前チェック</strong>
+                <span className="subtext">
+                  手動調整 {manualAdjustmentCount}件 / 商品部屋変更 {workAreaOverrides.length}件
+                </span>
+              </div>
+              <div className="allocation-check-metrics">
+                <span>
+                  警告 <strong>{totalAlertCount}</strong>
+                </span>
+                <span>
+                  未完了 <strong>{overflowJobCount}</strong>
+                </span>
+                <span>
+                  商品移動 <strong>{movedJobCount}</strong>
+                </span>
+                <span>
+                  能力未登録 <strong>{skippedPlanCount}</strong>
+                </span>
+              </div>
+              <div className="allocation-check-actions">
+                <button type="button" className="ghost-button" onClick={() => setView("jobs")} disabled={loading}>
+                  商品別を確認
+                </button>
+                <button type="button" className="ghost-button" onClick={() => setView("board")} disabled={loading}>
+                  部屋ボックス
+                </button>
+                {workAreaOverrides.length > 0 && (
+                  <button type="button" className="ghost-button" onClick={clearWorkAreaOverrides} disabled={loading}>
+                    部屋変更を戻す
+                  </button>
+                )}
+                {pins.length > 0 && (
+                  <button type="button" className="ghost-button" onClick={clearPins} disabled={loading}>
+                    手動固定を戻す
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </CollapsiblePanel>
 
       {error && <div className="alert danger">エラー: {error}</div>}
       {!result && (

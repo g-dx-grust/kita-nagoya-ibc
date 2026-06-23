@@ -174,96 +174,102 @@ export default async function PurchasesPage({
       <div className="page-title-row">
         <h1>発注候補</h1>
       </div>
-      <div className="purchase-command">
-        <div className="purchase-command-title">
-          <span className={`badge ${hardShortageCount > 0 || criticalOrderCount > 0 ? "warn" : "success"}`}>
-            {hardShortageCount > 0 || criticalOrderCount > 0 ? "確認が必要" : "不足なし"}
-          </span>
-          <strong>発注判断</strong>
-          <span className="subtext">
-            {dateFrom} 〜 {dateTo}
-          </span>
-          <a className="purchase-command-next" href={purchaseNextAction.href}>
-            次: {purchaseNextAction.label}
-          </a>
-        </div>
-        <div className="purchase-command-checks">
-          <span className={`badge ${hardShortageCount > 0 ? "danger" : "success"}`}>実不足 {hardShortageCount}</span>
-          <span className={`badge ${safetyShortageCount > 0 ? "warn" : "success"}`}>安全在庫割れ {safetyShortageCount}</span>
-          <span className={`badge ${pendingOrderCount > 0 ? "warn" : "success"}`}>未発注 {pendingOrderCount}</span>
-          <span className={`badge ${criticalOrderCount > 0 ? "danger" : "success"}`}>緊急 {criticalOrderCount}</span>
-          <span className="badge info">入荷待ち {waitingArrivalCount}</span>
-        </div>
-        <div className="purchase-command-actions">
-          <GeneratePurchaseCandidatesButton dateFrom={dateFrom} dateTo={dateTo} />
-        </div>
-      </div>
-      <div className="purchase-flow-queue" aria-label="購買確認フロー">
-        {purchaseFlowCards.map(({ label, count, detail, href, tone, Icon }) => (
-          <a key={label} className={`purchase-flow-card ${tone}`} href={href}>
-            <span>
-              <Icon size={15} aria-hidden="true" />
-              {label}
+      <CollapsiblePanel
+        title="確認・操作"
+        summary={`${hardShortageCount > 0 || criticalOrderCount > 0 ? "確認が必要" : "不足なし"} / ${dateFrom} 〜 ${dateTo}`}
+        className="top-flow-accordion"
+      >
+        <div className="purchase-command">
+          <div className="purchase-command-title">
+            <span className={`badge ${hardShortageCount > 0 || criticalOrderCount > 0 ? "warn" : "success"}`}>
+              {hardShortageCount > 0 || criticalOrderCount > 0 ? "確認が必要" : "不足なし"}
             </span>
-            <strong>{count}</strong>
-            <small>{detail}</small>
-          </a>
-        ))}
-      </div>
-      <div className="purchase-summary-grid">
-        <div className="metric">
-          <div className="metric-label">確認期間</div>
-          <div className="metric-value purchase-summary-period">
-            {dateFrom} 〜 {dateTo}
+            <strong>発注判断</strong>
+            <span className="subtext">
+              {dateFrom} 〜 {dateTo}
+            </span>
+            <a className="purchase-command-next" href={purchaseNextAction.href}>
+              次: {purchaseNextAction.label}
+            </a>
+          </div>
+          <div className="purchase-command-checks">
+            <span className={`badge ${hardShortageCount > 0 ? "danger" : "success"}`}>実不足 {hardShortageCount}</span>
+            <span className={`badge ${safetyShortageCount > 0 ? "warn" : "success"}`}>安全在庫割れ {safetyShortageCount}</span>
+            <span className={`badge ${pendingOrderCount > 0 ? "warn" : "success"}`}>未発注 {pendingOrderCount}</span>
+            <span className={`badge ${criticalOrderCount > 0 ? "danger" : "success"}`}>緊急 {criticalOrderCount}</span>
+            <span className="badge info">入荷待ち {waitingArrivalCount}</span>
+          </div>
+          <div className="purchase-command-actions">
+            <GeneratePurchaseCandidatesButton dateFrom={dateFrom} dateTo={dateTo} />
           </div>
         </div>
-        <div className="metric">
-          <div className="metric-label">不足見込み</div>
-          <div className={`metric-value${hardShortageCount > 0 ? " danger-value" : ""}`}>
-            {forecastShortages.length} 件
+        <div className="purchase-flow-queue" aria-label="購買確認フロー">
+          {purchaseFlowCards.map(({ label, count, detail, href, tone, Icon }) => (
+            <a key={label} className={`purchase-flow-card ${tone}`} href={href}>
+              <span>
+                <Icon size={15} aria-hidden="true" />
+                {label}
+              </span>
+              <strong>{count}</strong>
+              <small>{detail}</small>
+            </a>
+          ))}
+        </div>
+        <div className="purchase-summary-grid">
+          <div className="metric">
+            <div className="metric-label">確認期間</div>
+            <div className="metric-value purchase-summary-period">
+              {dateFrom} 〜 {dateTo}
+            </div>
           </div>
-          <div className="metric-note">実不足 {hardShortageCount} / 安全在庫割れ {safetyShortageCount}</div>
+          <div className="metric">
+            <div className="metric-label">不足見込み</div>
+            <div className={`metric-value${hardShortageCount > 0 ? " danger-value" : ""}`}>
+              {forecastShortages.length} 件
+            </div>
+            <div className="metric-note">実不足 {hardShortageCount} / 安全在庫割れ {safetyShortageCount}</div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">未発注</div>
+            <div className={`metric-value${pendingOrderCount > 0 ? " warn-value" : ""}`}>{pendingOrderCount} 件</div>
+            <div className="metric-note">候補・下書き</div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">入荷待ち</div>
+            <div className="metric-value">{waitingArrivalCount} 件</div>
+            <div className="metric-note">未確定・確定発注</div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">緊急</div>
+            <div className={`metric-value${criticalOrderCount > 0 ? " danger-value" : ""}`}>{criticalOrderCount} 件</div>
+            <div className="metric-note">推奨発注日ベース</div>
+          </div>
         </div>
-        <div className="metric">
-          <div className="metric-label">未発注</div>
-          <div className={`metric-value${pendingOrderCount > 0 ? " warn-value" : ""}`}>{pendingOrderCount} 件</div>
-          <div className="metric-note">候補・下書き</div>
+        <div id="purchase-conditions" className="anchor-offset">
+          <CollapsiblePanel title="表示・再計算条件" summary={`${dateFrom} 〜 ${dateTo}`}>
+            <form className="toolbar compact-controls purchase-conditions-form" method="GET">
+              <label>
+                <span>
+                  <CalendarDays size={14} aria-hidden="true" />
+                  基準日
+                </span>
+                <input name="dateFrom" type="date" defaultValue={dateFrom} />
+              </label>
+              <label>
+                <span>
+                  <CalendarDays size={14} aria-hidden="true" />
+                  不足確認期限
+                </span>
+                <input name="dateTo" type="date" defaultValue={dateTo} />
+              </label>
+              <button type="submit" className="secondary">
+                <Search size={15} aria-hidden="true" />
+                再計算
+              </button>
+            </form>
+          </CollapsiblePanel>
         </div>
-        <div className="metric">
-          <div className="metric-label">入荷待ち</div>
-          <div className="metric-value">{waitingArrivalCount} 件</div>
-          <div className="metric-note">未確定・確定発注</div>
-        </div>
-        <div className="metric">
-          <div className="metric-label">緊急</div>
-          <div className={`metric-value${criticalOrderCount > 0 ? " danger-value" : ""}`}>{criticalOrderCount} 件</div>
-          <div className="metric-note">推奨発注日ベース</div>
-        </div>
-      </div>
-      <div id="purchase-conditions" className="anchor-offset">
-      <CollapsiblePanel title="表示・再計算条件" summary={`${dateFrom} 〜 ${dateTo}`}>
-        <form className="toolbar compact-controls purchase-conditions-form" method="GET">
-          <label>
-            <span>
-              <CalendarDays size={14} aria-hidden="true" />
-              基準日
-            </span>
-            <input name="dateFrom" type="date" defaultValue={dateFrom} />
-          </label>
-          <label>
-            <span>
-              <CalendarDays size={14} aria-hidden="true" />
-              不足確認期限
-            </span>
-            <input name="dateTo" type="date" defaultValue={dateTo} />
-          </label>
-          <button type="submit" className="secondary">
-            <Search size={15} aria-hidden="true" />
-            再計算
-          </button>
-        </form>
       </CollapsiblePanel>
-      </div>
 
       <section id="purchase-shortages" className="anchor-offset">
         <h2>累積不足見込み</h2>
