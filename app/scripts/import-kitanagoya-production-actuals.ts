@@ -6,6 +6,10 @@ import * as XLSX from "xlsx";
 import { PrismaClient, type Product } from "@prisma/client";
 
 import { normalizeIdentityText } from "../src/lib/product-classification";
+import {
+  defaultForecastMethodForProductionType,
+  resolveProductProductionType,
+} from "../src/lib/product-production-type";
 import { normalizeForSearch } from "../src/lib/search";
 
 const prisma = new PrismaClient();
@@ -112,11 +116,12 @@ async function main() {
         });
         const info = productList.get(product.sourceProductKey) ?? null;
         const note = buildProductNote(info);
+        const productionType = resolveProductProductionType({ productName: product.productName });
         const data = {
           officialName: product.productName,
           displayName: product.productName,
-          productionType: "stock",
-          forecastMethod: "MANUAL",
+          productionType,
+          forecastMethod: defaultForecastMethodForProductionType(productionType),
           unit: "袋",
           packSizeG: info?.packSizeG ?? null,
           packCount: info?.packCount ?? null,

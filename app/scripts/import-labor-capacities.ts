@@ -31,6 +31,10 @@ import {
   computeProductionDuration,
   computeUnitsPerPersonHourFromLaborUnitPrice,
 } from "../src/lib/calculations";
+import {
+  defaultForecastMethodForProductionType,
+  resolveProductProductionType,
+} from "../src/lib/product-production-type";
 
 const DEFAULT_XLSX_PATH = path.resolve(__dirname, "../../docs/手間賃集計 最新.xlsx");
 const EFFECTIVE_FROM = new Date(process.env.LABOR_CAPACITY_EFFECTIVE_FROM ?? "2026-03-01");
@@ -295,12 +299,13 @@ async function createProductFromLaborEntry(input: {
   entry: LaborEntry;
   workAreaId: string;
 }): Promise<Product> {
+  const productionType = resolveProductProductionType({ productName: input.entry.name });
   const data = {
     productCode: input.code,
     officialName: input.entry.name,
     displayName: input.entry.name,
-    productionType: "stock",
-    forecastMethod: "MANUAL",
+    productionType,
+    forecastMethod: defaultForecastMethodForProductionType(productionType),
     unit: "袋",
     defaultWorkAreaId: input.workAreaId,
     billingEnabled: true,

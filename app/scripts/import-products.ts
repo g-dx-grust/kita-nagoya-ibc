@@ -21,6 +21,10 @@ import { readFileSync } from "node:fs";
 import * as XLSX from "xlsx";
 import { PrismaClient } from "@prisma/client";
 import { parseCsvWithHeader } from "../src/lib/csv";
+import {
+  defaultForecastMethodForProductionType,
+  resolveProductProductionType,
+} from "../src/lib/product-production-type";
 
 const XLSX_PATH = path.resolve(
   __dirname,
@@ -150,11 +154,12 @@ async function main() {
       where: { officialName: row.name },
     });
 
+    const productionType = resolveProductProductionType({ productName: row.name });
     const data = {
       officialName: row.name,
       displayName: row.name,
-      productionType: "stock",
-      forecastMethod: "MANUAL",
+      productionType,
+      forecastMethod: defaultForecastMethodForProductionType(productionType),
       unit: "袋",
       packSizeG: row.packSizeG,
       packCount: row.packCount ?? row.totalCount ?? null,
@@ -249,6 +254,11 @@ async function importProductsCsv(filePath: string) {
       errors.push(`${line}: invalid forecast_method`);
       continue;
     }
+    const explicitProductionType = csvValue(row.production_type);
+    if (explicitProductionType && !["stock", "make_to_order", "both"].includes(explicitProductionType)) {
+      errors.push(`${line}: invalid production_type`);
+      continue;
+    }
     if (validFrom === false || validTo === false || (validFrom && validTo && validFrom >= validTo)) {
       errors.push(`${line}: invalid validity period`);
       continue;
@@ -275,11 +285,19 @@ async function importProductsCsv(filePath: string) {
     }
 
     const aliases = (row.aliases ?? "").split("|").map((s) => s.trim()).filter(Boolean);
+    const productionType =
+      explicitProductionType ??
+      resolveProductProductionType({
+        productCode,
+        officialName,
+        displayName: csvValue(row.display_name),
+        aliases,
+      });
     const data = {
       productCode,
       officialName,
       displayName: csvValue(row.display_name),
-      productionType: csvValue(row.production_type) ?? "stock",
+      productionType,
       forecastMethod,
       equivalenceGroupId,
       safetyStockQuantity: safetyStockQuantity ?? 0,

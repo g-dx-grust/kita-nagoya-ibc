@@ -1,10 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
+import { kitagoyaPath } from "@/lib/paths";
 import { matchesQuery } from "@/lib/search";
 
 type Employee = {
@@ -15,12 +13,8 @@ type Employee = {
   defaultEndTime: string;
   defaultBreakMinutes: number;
 };
-type CellState = "present" | "off";
-type CellMap = Record<
-  string,
-  { startTime: string; endTime: string; breakMinutes: number; status: string }
->;
-type DefaultWorkTime = { startTime: string; endTime: string; breakMinutes: number };
+type ShiftCell = { startTime: string; endTime: string; breakMinutes: number; status: string };
+type CellMap = Record<string, ShiftCell>;
 
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -40,43 +34,7 @@ export default function ShiftMonthEditor({
   cells: CellMap;
 }) {
   const router = useRouter();
-
-  const [bulkStart, setBulkStart] = useState("09:00");
-  const [bulkEnd, setBulkEnd] = useState("17:00");
-  const [bulkBreak, setBulkBreak] = useState(60);
-  const [employeeDefaults, setEmployeeDefaults] = useState<Record<string, DefaultWorkTime>>(
-    Object.fromEntries(
-      employees.map((employee) => [
-        employee.id,
-        {
-          startTime: employee.defaultStartTime,
-          endTime: employee.defaultEndTime,
-          breakMinutes: employee.defaultBreakMinutes,
-        },
-      ]),
-    ),
-  );
-
-  // grid[employeeId][day] = "present" | "off"
-  const initialGrid: Record<string, Record<number, CellState>> = useMemo(() => {
-    const g: Record<string, Record<number, CellState>> = {};
-    for (const e of employees) {
-      g[e.id] = {};
-      for (let d = 1; d <= lastDay; d++) {
-        const found = cells[`${e.id}#${d}`];
-        g[e.id][d] = found && found.status !== "off" ? "present" : "off";
-      }
-    }
-    return g;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [yearMonth]);
-
-  const [grid, setGrid] = useState(initialGrid);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [reviewOnly, setReviewOnly] = useState(false);
 
   const days = useMemo(() => {
     const list: { day: number; weekday: string; isWeekend: boolean }[] = [];
@@ -87,238 +45,56 @@ export default function ShiftMonthEditor({
     return list;
   }, [year, month, lastDay]);
 
-  function toggle(empId: string, day: number) {
-    setGrid((prev) => ({
-      ...prev,
-      [empId]: {
-        ...prev[empId],
-        [day]: prev[empId][day] === "present" ? "off" : "present",
-      },
-    }));
-  }
-
-  function fillEmployee(empId: string, weekdaysOnly: boolean) {
-    setGrid((prev) => {
-      const next = { ...prev, [empId]: { ...prev[empId] } };
-      for (const d of days) {
-        if (weekdaysOnly && d.isWeekend) continue;
-        next[empId][d.day] = "present";
-      }
-      return next;
-    });
-  }
-  function clearEmployee(empId: string) {
-    setGrid((prev) => {
-      const next = { ...prev, [empId]: { ...prev[empId] } };
-      for (let d = 1; d <= lastDay; d++) next[empId][d] = "off";
-      return next;
-    });
-  }
-  function fillColumn(day: number) {
-    setGrid((prev) => {
-      const next: typeof prev = {};
-      for (const e of employees) {
-        const allOn = employees.every((emp) => prev[emp.id][day] === "present");
-        next[e.id] = { ...prev[e.id], [day]: allOn ? "off" : "present" };
-      }
-      return next;
-    });
-  }
-  function fillAllWeekdays() {
-    setGrid((prev) => {
-      const next: typeof prev = {};
-      for (const e of employees) {
-        next[e.id] = { ...prev[e.id] };
-        for (const d of days) {
-          if (!d.isWeekend) next[e.id][d.day] = "present";
-        }
-      }
-      return next;
-    });
-  }
-  function clearAll() {
-    setGrid((prev) => {
-      const next: typeof prev = {};
-      for (const e of employees) {
-        next[e.id] = {};
-        for (let d = 1; d <= lastDay; d++) next[e.id][d] = "off";
-      }
-      return next;
-    });
-  }
-  function updateEmployeeDefault(empId: string, patch: Partial<DefaultWorkTime>) {
-    setEmployeeDefaults((prev) => ({
-      ...prev,
-      [empId]: { ...prev[empId], ...patch },
-    }));
-  }
-  function applyBulkDefaults() {
-    setEmployeeDefaults((prev) => {
-      const next: typeof prev = {};
-      for (const e of employees) {
-        next[e.id] = {
-          ...(prev[e.id] ?? {
-            startTime: e.defaultStartTime,
-            endTime: e.defaultEndTime,
-            breakMinutes: e.defaultBreakMinutes,
-          }),
-          startTime: bulkStart,
-          endTime: bulkEnd,
-          breakMinutes: bulkBreak,
-        };
-      }
-      return next;
-    });
-  }
-
-  const totalCells = employees.length * lastDay;
-  const presentCount = useMemo(
-    () =>
-      employees.reduce(
-        (sum, e) =>
-          sum + days.reduce((acc, d) => acc + (grid[e.id][d.day] === "present" ? 1 : 0), 0),
-        0,
-      ),
-    [grid, employees, days],
-  );
-  const employeeReview = useMemo(() => {
-    const map = new Map<
+  const employeeStats = useMemo(() => {
+    const stats = new Map<
       string,
       {
         dayCount: number;
-        weekendCount: number;
-        invalidDefault: boolean;
+        customTimeCount: number;
         workMinutes: number;
-        needsReview: boolean;
       }
     >();
     for (const employee of employees) {
-      const row = grid[employee.id];
-      const defaults = employeeDefaults[employee.id];
-      const dayCount = days.reduce((sum, day) => sum + (row[day.day] === "present" ? 1 : 0), 0);
-      const weekendCount = days.reduce(
-        (sum, day) => sum + (day.isWeekend && row[day.day] === "present" ? 1 : 0),
-        0,
-      );
-      const invalidDefault = !isValidDefaultWorkTime(defaults);
-      const workMinutes = Math.max(0, workMinutesFor(defaults)) * dayCount;
-      map.set(employee.id, {
-        dayCount,
-        weekendCount,
-        invalidDefault,
-        workMinutes,
-        needsReview: dayCount === 0 || invalidDefault || weekendCount > 0,
-      });
+      let dayCount = 0;
+      let customTimeCount = 0;
+      let workMinutes = 0;
+      for (const day of days) {
+        const cell = cells[`${employee.id}#${day.day}`];
+        if (!isPresentCell(cell)) continue;
+        dayCount += 1;
+        workMinutes += Math.max(0, diffMinutes(cell.startTime, cell.endTime) - cell.breakMinutes);
+        if (hasCustomTime(cell, employee)) customTimeCount += 1;
+      }
+      stats.set(employee.id, { dayCount, customTimeCount, workMinutes });
     }
-    return map;
-  }, [days, employeeDefaults, employees, grid]);
-  const monthReview = useMemo(() => {
-    const daysWithoutStaff = days.filter((day) =>
-      employees.every((employee) => grid[employee.id][day.day] !== "present"),
-    ).length;
-    const employeesWithoutShift = employees.filter(
-      (employee) => (employeeReview.get(employee.id)?.dayCount ?? 0) === 0,
-    ).length;
-    const invalidDefaultCount = employees.filter(
-      (employee) => employeeReview.get(employee.id)?.invalidDefault,
-    ).length;
-    const weekendPresentCount = employees.reduce(
-      (sum, employee) => sum + (employeeReview.get(employee.id)?.weekendCount ?? 0),
-      0,
-    );
-    const estimatedWorkMinutes = employees.reduce(
-      (sum, employee) => sum + (employeeReview.get(employee.id)?.workMinutes ?? 0),
-      0,
-    );
-    const needsActionCount = [
-      daysWithoutStaff > 0,
-      employeesWithoutShift > 0,
-      invalidDefaultCount > 0,
-      weekendPresentCount > 0,
-    ].filter(Boolean).length;
-    return {
-      daysWithoutStaff,
-      employeesWithoutShift,
-      invalidDefaultCount,
-      weekendPresentCount,
-      estimatedWorkMinutes,
-      needsActionCount,
-    };
-  }, [days, employeeReview, employees, grid]);
+    return stats;
+  }, [cells, days, employees]);
+
+  const monthStats = useMemo(() => {
+    let registeredCount = 0;
+    let customTimeCount = 0;
+    let workMinutes = 0;
+    for (const employee of employees) {
+      const stats = employeeStats.get(employee.id);
+      registeredCount += stats?.dayCount ?? 0;
+      customTimeCount += stats?.customTimeCount ?? 0;
+      workMinutes += stats?.workMinutes ?? 0;
+    }
+    return { registeredCount, customTimeCount, workMinutes };
+  }, [employeeStats, employees]);
+
   const visibleEmployees = useMemo(
     () =>
-      employees.filter((employee) => {
-        if (reviewOnly && !employeeReview.get(employee.id)?.needsReview) return false;
-        return matchesQuery(query, [
+      employees.filter((employee) =>
+        matchesQuery(query, [
           employee.name,
           employee.affiliation,
           employee.defaultStartTime,
           employee.defaultEndTime,
-        ]);
-      }),
-    [employeeReview, employees, query, reviewOnly],
+        ]),
+      ),
+    [employees, query],
   );
-
-  async function save() {
-    setBusy(true);
-    setMessage(null);
-    setError(null);
-    const cellsPayload: {
-      employeeId: string;
-      day: number;
-      startTime: string;
-      endTime: string;
-      breakMinutes: number;
-      status: "confirmed";
-    }[] = [];
-    for (const e of employees) {
-      const defaults = employeeDefaults[e.id];
-      for (let d = 1; d <= lastDay; d++) {
-        if (grid[e.id][d] === "present") {
-          cellsPayload.push({
-            employeeId: e.id,
-            day: d,
-            startTime: defaults.startTime,
-            endTime: defaults.endTime,
-            breakMinutes: defaults.breakMinutes,
-            status: "confirmed",
-          });
-        }
-      }
-    }
-    const res = await fetch(kitagoyaApiPath("/shifts/month"), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        yearMonth,
-        defaults: {
-          startTime: bulkStart,
-          endTime: bulkEnd,
-          breakMinutes: bulkBreak,
-          status: "confirmed",
-        },
-        employeeDefaults: employees.map((employee) => ({
-          employeeId: employee.id,
-          startTime: employeeDefaults[employee.id].startTime,
-          endTime: employeeDefaults[employee.id].endTime,
-          breakMinutes: employeeDefaults[employee.id].breakMinutes,
-        })),
-        cells: cellsPayload,
-      }),
-    });
-    const json = await res.json().catch(() => ({}));
-    setBusy(false);
-    if (!res.ok) {
-      setError(
-        json.error === "invalid_time_range" || json.error === "invalid_default_work_time"
-          ? "終了時刻は開始時刻より後にしてください。"
-          : `保存に失敗しました: ${json.error ?? "unknown"}`,
-      );
-      return;
-    }
-    setMessage(`${json.count} 件のシフトと基本勤務時間を保存しました`);
-    router.refresh();
-  }
 
   function changeMonth(delta: number) {
     const d = new Date(Date.UTC(year, month - 1 + delta, 1));
@@ -328,80 +104,29 @@ export default function ShiftMonthEditor({
 
   return (
     <>
-      <div className="panel shift-month-control-panel">
+      <div className="panel shift-month-view-panel">
         <div className="shift-month-nav">
           <button type="button" className="secondary" onClick={() => changeMonth(-1)}>
             ← 前月
           </button>
-          <strong>{year}年{month}月</strong>
+          <strong>
+            {year}年{month}月
+          </strong>
           <button type="button" className="secondary" onClick={() => changeMonth(1)}>
             翌月 →
           </button>
         </div>
-        <div className="shift-month-defaults">
-          <label>
-            <span>一括 基本開始</span>
-            <input type="time" value={bulkStart} onChange={(e) => setBulkStart(e.target.value)} />
-          </label>
-          <label>
-            <span>一括 基本終了</span>
-            <input type="time" value={bulkEnd} onChange={(e) => setBulkEnd(e.target.value)} />
-          </label>
-          <label>
-            <span>一括 休憩(分)</span>
-            <input
-              type="number"
-              min={0}
-              step={5}
-              value={bulkBreak}
-              onChange={(e) => setBulkBreak(Number(e.target.value))}
-            />
-          </label>
-          <button type="button" className="secondary" onClick={applyBulkDefaults}>
-            全員の基本に反映
-          </button>
-        </div>
-        <div className="shift-month-save">
-          <button type="button" onClick={save} disabled={busy}>
-            {busy ? "保存中..." : "月一括保存"}
-          </button>
+        <div className="shift-month-view-summary" aria-label="月次シフト概要">
+          <span className="badge info">勤務登録 {monthStats.registeredCount}件</span>
+          <span className="badge info">時間変更 {monthStats.customTimeCount}件</span>
+          <span className="badge muted">見込 {formatMinutesAsHours(monthStats.workMinutes)}</span>
+          <span className="badge muted">閲覧専用</span>
         </div>
       </div>
 
-      <div className="panel shift-month-command">
-        <div className="shift-month-command-title">
-          <span className={`badge ${monthReview.needsActionCount > 0 ? "warn" : "success"}`}>
-            {monthReview.needsActionCount > 0 ? "確認が必要" : "整備済み"}
-          </span>
-          <strong>月次シフト確認</strong>
-          <span className="subtext">{monthReview.needsActionCount}項目</span>
-        </div>
-        <div className="shift-month-checks">
-          <span className={`badge ${presentCount > 0 ? "success" : "warn"}`}>
-            出勤セル {presentCount} / {totalCells}
-          </span>
-          <span className={`badge ${monthReview.employeesWithoutShift > 0 ? "warn" : "success"}`}>
-            出勤なし {monthReview.employeesWithoutShift}人
-          </span>
-          <span className={`badge ${monthReview.daysWithoutStaff > 0 ? "warn" : "success"}`}>
-            スタッフ0の日 {monthReview.daysWithoutStaff}日
-          </span>
-          <span className={`badge ${monthReview.invalidDefaultCount > 0 ? "warn" : "success"}`}>
-            時間要確認 {monthReview.invalidDefaultCount}人
-          </span>
-          <span className={`badge ${monthReview.weekendPresentCount > 0 ? "warn" : "success"}`}>
-            土日出勤 {monthReview.weekendPresentCount}セル
-          </span>
-          <span className="badge info">見込 {formatMinutesAsHours(monthReview.estimatedWorkMinutes)}</span>
-        </div>
-      </div>
-
-      <div className="panel shift-month-filter-panel">
+      <div className="panel shift-month-filter-panel shift-month-view-filter-panel">
         <div className="shift-month-filter-head">
-          <span className="muted">
-            出勤セル {presentCount} / {totalCells}
-          </span>
-          <HelpTooltip text="セルクリックで出勤と休みを切り替えます。日付ヘッダークリックで全員分を一括切替できます。月一括保存では、その月の他シフト記録をセル選択された出勤者だけに置き換えます。個別の時刻変更は保存後に日単位画面で調整します。" />
+          <span className="muted">入力済みシフトの確認</span>
         </div>
         <div className="shift-month-filter-body">
           <input
@@ -412,151 +137,76 @@ export default function ShiftMonthEditor({
             onChange={(event) => setQuery(event.target.value)}
             aria-label="シフトスタッフを検索"
           />
-          <label className="filter-check">
-            <input
-              type="checkbox"
-              checked={reviewOnly}
-              onChange={(event) => setReviewOnly(event.target.checked)}
-            />
-            要確認のみ
-          </label>
           <span className="filter-count">
             表示 {visibleEmployees.length} / {employees.length} 人
           </span>
-          <div className="shift-month-filter-actions">
-            <button type="button" className="secondary" onClick={fillAllWeekdays}>
-              全員の平日を出勤
-            </button>
-            <button type="button" className="secondary" onClick={clearAll}>
-              全てクリア
-            </button>
-          </div>
         </div>
       </div>
 
-      {error && <div className="alert danger">{error}</div>}
-      {message && <div className="alert success">{message}</div>}
-
       <div className="month-grid-wrap">
-        <div className="shift-scroll-hint">横スクロールで日付と操作列を確認できます。</div>
-        <table className="month-grid">
+        <div className="shift-scroll-hint">横スクロールで日付ごとのシフトを確認できます。</div>
+        <table className="month-grid shift-month-view-table">
           <thead>
             <tr>
               <th className="sticky-col">スタッフ</th>
-              <th>基本開始</th>
-              <th>基本終了</th>
-              <th>休憩</th>
-              {days.map((d) => (
-                <th
-                  key={d.day}
-                  className={d.isWeekend ? "weekend" : ""}
-                  onClick={() => fillColumn(d.day)}
-                  title="クリックで列を切替"
-                  style={{ cursor: "pointer" }}
-                >
-                  {d.day}
-                  <div className="subtext">{d.weekday}</div>
+              {days.map((day) => (
+                <th key={day.day} className={day.isWeekend ? "weekend" : ""}>
+                  {day.day}
+                  <div className="subtext">{day.weekday}</div>
                 </th>
               ))}
-              <th>操作</th>
             </tr>
           </thead>
           <tbody>
-            {visibleEmployees.map((e) => {
-              const row = grid[e.id];
-              const defaults = employeeDefaults[e.id];
-              const review = employeeReview.get(e.id);
-              const dayCount = review?.dayCount ?? 0;
+            {visibleEmployees.map((employee) => {
+              const stats = employeeStats.get(employee.id);
               return (
-                <tr key={e.id} className={review?.needsReview ? "shift-review-row" : ""}>
+                <tr key={employee.id}>
                   <td className="sticky-col">
                     <div>
-                      <strong>{e.name}</strong>
+                      <strong>{employee.name}</strong>
                     </div>
                     <div className="subtext">
-                      {e.affiliation ?? "—"} ・ {dayCount}日
+                      {employee.affiliation ?? "—"} ・ {stats?.dayCount ?? 0}日
                     </div>
-                    {review?.needsReview && (
+                    {(stats?.customTimeCount ?? 0) > 0 && (
                       <div className="shift-row-badges">
-                        {dayCount === 0 && <span className="badge warn">出勤なし</span>}
-                        {review.invalidDefault && <span className="badge warn">時間要確認</span>}
-                        {review.weekendCount > 0 && (
-                          <span className="badge warn">土日 {review.weekendCount}</span>
-                        )}
+                        <span className="badge info">時間変更 {stats?.customTimeCount}件</span>
                       </div>
                     )}
                   </td>
-                  <td className="shift-default-cell">
-                    <input
-                      type="time"
-                      value={defaults.startTime}
-                      onChange={(event) => updateEmployeeDefault(e.id, { startTime: event.target.value })}
-                    />
-                  </td>
-                  <td className="shift-default-cell">
-                    <input
-                      type="time"
-                      value={defaults.endTime}
-                      onChange={(event) => updateEmployeeDefault(e.id, { endTime: event.target.value })}
-                    />
-                  </td>
-                  <td className="shift-default-cell">
-                    <input
-                      type="number"
-                      min={0}
-                      step={5}
-                      value={defaults.breakMinutes}
-                      onChange={(event) =>
-                        updateEmployeeDefault(e.id, { breakMinutes: Number(event.target.value) })
-                      }
-                    />
-                  </td>
-                  {days.map((d) => {
-                    const on = row[d.day] === "present";
+                  {days.map((day) => {
+                    const cell = cells[`${employee.id}#${day.day}`];
+                    const present = isPresentCell(cell);
+                    const customTime = present && hasCustomTime(cell, employee);
                     return (
                       <td
-                        key={d.day}
-                        className={`${d.isWeekend ? "weekend" : ""} cell-toggle ${on ? "on" : ""}`}
-                        onClick={() => toggle(e.id, d.day)}
-                        title={`${e.name} / ${month}/${d.day} (${d.weekday})`}
+                        key={day.day}
+                        className={[
+                          day.isWeekend ? "weekend" : "",
+                          "shift-cell",
+                          present ? "on" : "",
+                          customTime ? "has-time" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        title={buildCellTitle(employee, month, day.day, day.weekday, cell)}
                       >
-                        {on ? "○" : ""}
+                        {present && (
+                          <span className="shift-cell-inner">
+                            <span className="shift-cell-mark">○</span>
+                            {customTime && <span className="shift-cell-time">{formatShiftRange(cell)}</span>}
+                          </span>
+                        )}
                       </td>
                     );
                   })}
-                  <td>
-                    <div className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
-                      <button
-                        type="button"
-                        className="secondary mini"
-                        onClick={() => fillEmployee(e.id, true)}
-                        title="平日全部出勤"
-                      >
-                        平日
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary mini"
-                        onClick={() => fillEmployee(e.id, false)}
-                        title="全日出勤"
-                      >
-                        全日
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary mini"
-                        onClick={() => clearEmployee(e.id)}
-                      >
-                        休
-                      </button>
-                    </div>
-                  </td>
                 </tr>
               );
             })}
             {visibleEmployees.length === 0 && (
               <tr>
-                <td colSpan={lastDay + 5} className="muted">
+                <td colSpan={lastDay + 1} className="muted">
                   条件に一致するスタッフがいません。
                 </td>
               </tr>
@@ -564,29 +214,56 @@ export default function ShiftMonthEditor({
           </tbody>
         </table>
       </div>
-
-      <div className="after-table">
-        <Link href={kitagoyaPath(`/shifts?date=${year}-${String(month).padStart(2, "0")}-01`)}>日単位画面</Link>
-      </div>
     </>
   );
 }
 
-function isValidDefaultWorkTime(defaults: DefaultWorkTime) {
-  return workMinutesFor(defaults) > 0 && defaults.breakMinutes >= 0;
+function isPresentCell(cell: ShiftCell | undefined): cell is ShiftCell {
+  return !!cell && cell.status !== "off";
 }
 
-function workMinutesFor(defaults: DefaultWorkTime) {
-  const start = parseTimeMinutes(defaults.startTime);
-  const end = parseTimeMinutes(defaults.endTime);
-  if (start == null || end == null) return 0;
-  return end - start - defaults.breakMinutes;
+function hasCustomTime(cell: ShiftCell, employee: Employee) {
+  return (
+    cell.startTime !== employee.defaultStartTime ||
+    cell.endTime !== employee.defaultEndTime ||
+    cell.breakMinutes !== employee.defaultBreakMinutes
+  );
+}
+
+function buildCellTitle(
+  employee: Employee,
+  month: number,
+  day: number,
+  weekday: string,
+  cell: ShiftCell | undefined,
+) {
+  if (!isPresentCell(cell)) return `${employee.name} / ${month}/${day} (${weekday}) / 休み`;
+  return `${employee.name} / ${month}/${day} (${weekday}) / ${cell.startTime}-${cell.endTime} / 休憩 ${cell.breakMinutes}分`;
+}
+
+function diffMinutes(start: string, end: string) {
+  const startMinutes = parseTimeMinutes(start);
+  const endMinutes = parseTimeMinutes(end);
+  if (startMinutes === null || endMinutes === null) return 0;
+  return endMinutes - startMinutes;
 }
 
 function parseTimeMinutes(value: string) {
   const [hour, minute] = value.split(":").map(Number);
   if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
   return hour * 60 + minute;
+}
+
+function formatShiftRange(cell: ShiftCell) {
+  return `${formatShiftTime(cell.startTime)}-${formatShiftTime(cell.endTime)}`;
+}
+
+function formatShiftTime(value: string) {
+  const [hour, minute] = value.split(":").map(Number);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return value;
+  if (minute === 0) return `${hour}`;
+  if (minute === 30) return `${hour}.5`;
+  return `${hour}:${String(minute).padStart(2, "0")}`;
 }
 
 function formatMinutesAsHours(minutes: number) {

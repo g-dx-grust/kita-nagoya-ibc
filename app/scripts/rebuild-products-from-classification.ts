@@ -22,6 +22,10 @@ import {
   type ProductClassificationProduct,
   type ProductClassificationCell,
 } from "../src/lib/product-classification";
+import {
+  defaultForecastMethodForProductionType,
+  resolveProductProductionType,
+} from "../src/lib/product-production-type";
 
 const prisma = new PrismaClient();
 
@@ -165,12 +169,13 @@ async function main() {
 }
 
 function buildProductData(product: ProductClassificationProduct) {
+  const productionType = resolveProductProductionType(product);
   return {
     productCode: product.productCode,
     officialName: product.officialName,
     displayName: product.productName,
-    productionType: "stock",
-    forecastMethod: "MANUAL",
+    productionType,
+    forecastMethod: defaultForecastMethodForProductionType(productionType),
     equivalenceGroupId: null,
     safetyStockQuantity: 0,
     standardProductionLotSize: 0,

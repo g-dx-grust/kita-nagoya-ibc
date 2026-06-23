@@ -38,6 +38,7 @@
     "import:labor-capacities": "tsx scripts/import-labor-capacities.ts",
     "backfill:capacity-room-candidates": "tsx scripts/backfill-capacity-room-candidates.ts",
     "backfill:stock-products-tarappe-room": "tsx scripts/backfill-stock-products-tarappe-room.ts",
+    "backfill:product-production-types": "tsx scripts/backfill-product-production-types.ts",
     "rebuild:products:classification": "tsx scripts/rebuild-products-from-classification.ts",
     "link:products:classification": "tsx scripts/link-classification-products.ts",
     "import:all": "npm run import:products && npm run import:materials && npm run import:packaging && npm run link:products:classification -- --apply && npm run import:shifts && npm run import:capacities && npm run import:labor-capacities",

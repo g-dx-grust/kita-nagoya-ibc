@@ -20,6 +20,10 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { normalizeIdentityText } from "../src/lib/product-classification";
+import {
+  defaultForecastMethodForProductionType,
+  resolveProductProductionType,
+} from "../src/lib/product-production-type";
 
 const prisma = new PrismaClient();
 const APPLY = process.argv.includes("--apply");
@@ -139,11 +143,12 @@ async function main() {
           e?.material_total != null ? `材料費(原表): ${e.material_total}` : null,
           e?.price != null ? `売価(原表): ${e.price}` : null,
         ].filter(Boolean) as string[];
+        const productionType = resolveProductProductionType({ productName: name });
         const data = {
           officialName: name,
           displayName: name,
-          productionType: "stock",
-          forecastMethod: "MANUAL",
+          productionType,
+          forecastMethod: defaultForecastMethodForProductionType(productionType),
           unit: "袋",
           packSizeG: numOrNull(e?.pack_size_g),
           packCount: intOrNull(e?.pack_count_total),

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { manualNote } from "@/lib/labels";
 import { kitagoyaPath } from "@/lib/paths";
 import { formatCases } from "@/lib/units";
 import PrintButton from "../print-button";
@@ -179,7 +178,7 @@ export default async function ProductionSchedulePrintPage({
                       {/* 出荷方法は未マスター化のため手書き */}
                       <td />
                       <td>{packagingByKind(plan.product, packagingMap, ["carton"])}</td>
-                      <td>{remarks(plan)}</td>
+                      <td />
                     </tr>
                   ))}
                   {Array.from({ length: blankRows }).map((_, i) => (
@@ -318,16 +317,6 @@ function packagingByKind(product: ProductWithBom, packagingMap: PackagingMap, ki
     .filter((p): p is PackagingInfo => !!p && kinds.includes(p.kind ?? ""))
     .map((p) => p.name);
   return [...new Set(names)].join(" / ");
-}
-
-function remarks(plan: PlanWithPrintData): string {
-  const parts: string[] = [];
-  if (plan.status === "draft") parts.push("【仮】");
-  const note = manualNote(plan.note);
-  if (note) parts.push(note);
-  const warns = warningList(plan);
-  if (warns.length) parts.push(`⚠${warns.join("・")}`);
-  return parts.join(" ");
 }
 
 function warningList(plan: PlanWithPrintData): string[] {

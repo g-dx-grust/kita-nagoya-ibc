@@ -6,7 +6,10 @@ import {
   type ProductionCapacity,
   type WorkArea,
 } from "@prisma/client";
-import { normalizeForSearch } from "../src/lib/search";
+import {
+  STOCK_PRODUCTION_PRODUCT_LABELS,
+  matchedStockProductionProductLabels,
+} from "../src/lib/product-production-type";
 
 const TARAPPE_WORK_AREA_NAME = "たらっぺ部屋";
 const AUTO_SCHEDULE_ROLE_STOCK_PRIMARY = "STOCK_PRIMARY";
@@ -21,78 +24,6 @@ type ProductWithRoomData = Prisma.ProductGetPayload<{
     defaultWorkArea: true;
   };
 }>;
-
-type TargetRule = {
-  label: string;
-  matches: (text: string) => boolean;
-};
-
-const TARGET_RULES: TargetRule[] = [
-  {
-    label: "個食美学28gたらっぺ",
-    matches: (text) => hasAll(text, ["個食美学", "たらっぺ", "28g"]),
-  },
-  {
-    label: "65g 贅沢焼かま（20入り）",
-    matches: (text) => hasAll(text, ["贅沢焼かま", "65g"]) && !hasAny(text, ["ピリ辛", "80g"]),
-  },
-  {
-    label: "NTSするめそーめん10g",
-    matches: (text) => hasAll(text, ["nts", "するめそーめん", "10g"]),
-  },
-  {
-    label: "NTS焼めざし14g",
-    matches: (text) => hasAll(text, ["nts", "焼めざし", "14g"]),
-  },
-  {
-    label: "こんがり焼きかま 70g 20入り",
-    matches: (text) => hasAll(text, ["こんがり焼きかま", "70g"]),
-  },
-  {
-    label: "NS無差別 するめそーめん95g（10x10）",
-    matches: (text) => hasAll(text, ["ns", "するめそーめん", "95g"]),
-  },
-  {
-    label: "30g MM焼かまぼこ",
-    matches: (text) => hasAll(text, ["30g"]) && hasAny(text, ["焼きかまぼこ", "焼かまぼこ"]) && hasAny(text, ["mm", "ミスターマックス"]),
-  },
-  {
-    label: "するめそーめん 35g",
-    matches: (text) => hasAll(text, ["するめそーめん", "35g"]),
-  },
-  {
-    label: "55g ドライ塩とまと夢クリエイト",
-    matches: (text) => hasAll(text, ["55g", "ドライ塩とまと", "夢クリエイト"]),
-  },
-  {
-    label: "おくら梅かつお53g KSB",
-    matches: (text) => hasAll(text, ["おくら梅かつお", "53g"]) && hasAny(text, ["ksb"]),
-  },
-  {
-    label: "うめ玉",
-    matches: (text) => hasAny(text, ["うめ玉"]),
-  },
-  {
-    label: "焼きかま（大黒天物産用）30g（12x15）",
-    matches: (text) =>
-      hasAll(text, ["30g"]) &&
-      hasAny(text, ["大黒天物産", "dprice", "dプライス", "デイプライス"]) &&
-      hasAny(text, ["焼きかま", "焼かま"]) &&
-      !hasAny(text, ["こんがり", "そーめん", "ソーメン"]),
-  },
-  {
-    label: "NIDピリ辛贅沢焼きかま18g（12x10）",
-    matches: (text) => hasAll(text, ["nid", "ピリ辛", "贅沢焼かま", "18g"]),
-  },
-  {
-    label: "40g 素焼きマカダミアナッツ",
-    matches: (text) => hasAll(text, ["素焼きマカダミアナッツ", "40g"]),
-  },
-  {
-    label: "個食プラス30g くんさき",
-    matches: (text) => hasAll(text, ["個食プラス", "くんさき", "30g"]),
-  },
-];
 
 type Options = {
   apply: boolean;
@@ -132,9 +63,9 @@ async function main() {
     .filter((entry) => entry.matchedTargets.length > 0);
   const templateByTargetLabel = buildTemplateByTargetLabel(matchedProducts, tarappe.id);
   const matchedProductIds = new Set(matchedProducts.map((entry) => entry.product.id));
-  const missingTargets = TARGET_RULES.filter(
-    (rule) => !matchedProducts.some((entry) => entry.matchedTargets.includes(rule.label)),
-  ).map((rule) => rule.label);
+  const missingTargets = STOCK_PRODUCTION_PRODUCT_LABELS.filter(
+    (label) => !matchedProducts.some((entry) => entry.matchedTargets.includes(label)),
+  );
 
   const previews = matchedProducts.map(({ product, matchedTargets }) => {
     const tarappeCapacity = product.capacities.find((capacity) => capacity.workAreaId === tarappe.id);
@@ -367,8 +298,7 @@ async function findOrCreateTarappeWorkArea(options: Options) {
 }
 
 function matchedTargetLabels(product: ProductWithRoomData) {
-  const text = productText(product);
-  return TARGET_RULES.filter((rule) => rule.matches(text)).map((rule) => rule.label);
+  return matchedStockProductionProductLabels(product);
 }
 
 function buildTemplateByTargetLabel(
@@ -389,21 +319,6 @@ function buildTemplateByTargetLabel(
     }
   }
   return templateByTargetLabel;
-}
-
-function productText(product: ProductWithRoomData) {
-  return compact(
-    [
-      product.productCode,
-      product.officialName,
-      product.displayName,
-      product.brandName,
-      product.specification,
-      ...product.aliases.map((alias) => alias.aliasName),
-    ]
-      .filter(Boolean)
-      .join(" "),
-  );
 }
 
 function chooseTemplate(
@@ -470,24 +385,6 @@ function withRoomCorrectionNote(current: string | null, template: CapacityTempla
   const marker = `たらっぺ部屋候補追加: ${template.sourceProductCode} ${template.sourceProductName} / ${template.capacity.workArea.name}の能力値をコピー`;
   if (current?.includes(marker)) return current;
   return [current, marker].filter(Boolean).join(" / ");
-}
-
-function hasAll(text: string, terms: string[]) {
-  return terms.every((term) => text.includes(compact(term)));
-}
-
-function hasAny(text: string, terms: string[]) {
-  return terms.some((term) => text.includes(compact(term)));
-}
-
-function compact(value: string) {
-  return normalizeForSearch(value)
-    .replace(/無差別/g, "無選別")
-    .replace(/焼きかま/g, "焼かま")
-    .replace(/d-price|dプライス|デイプライス|でいぷらいす|でぃぷらいす/g, "dprice")
-    .replace(/ミスターマックス|みすたーまっくす|mrmax/g, "mm")
-    .replace(/個食美学ぷらす|個食ぷらす/g, "個食プラス")
-    .replace(/[\s\u3000/()（）×✖︎✖️✕xX・,，.。\-_]/g, "");
 }
 
 function parseArgs(args: string[]): Options {

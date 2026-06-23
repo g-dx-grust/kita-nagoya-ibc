@@ -49,6 +49,8 @@ npm run import:all                            # 商品分類表と紐づけは�
 
 `rebuild:products:classification` は `../docs/商品分類表 共有.xlsx` の五十音別シートから商品を再作成します。既存商品は削除せず無効化し、過去の生産予定・日報・在庫台帳は旧商品IDを参照したまま保持します。分類表に商品コード列が無いため、`productCode` は `KCL-...` の内部管理コードとして生成します。
 
+商品マスターの生産区分は、指定済みの在庫生産16品目だけを `stock`、それ以外を `make_to_order` として取り込みます。既存DBの区分を同じルールへ補正する場合は、まず `npm run backfill:product-production-types` で差分を確認し、問題なければ `npm run backfill:product-production-types -- --apply` を実行します。
+
 `link:products:classification` は `../docs/product_list_consistency_latest_rows_2026-06-08.csv` の exact/strong_spec 一致だけを使って旧商品の生産能力・手間賃・月次実績を新商品へコピーし、分類表の袋/トレー・ダンボール・備品・シール列から包装BOMを生成します。曖昧な「専用袋」や原料欄は自動BOM化せず、`../docs/product_linking_unresolved_2026-06-08.csv` に要確認として出します。
 
 `import:labor-capacities` は `../docs/手間賃集計 最新.xlsx` の「1袋の手間賃」から `1500円 ÷ 1袋手間賃` で `袋/人時` を計算し、手間賃単価・生産能力・未確定/下書き生産予定の見積もりを更新します。商品分類表に無い商品はデフォルトでは新規作成せず未マッチとして出します。

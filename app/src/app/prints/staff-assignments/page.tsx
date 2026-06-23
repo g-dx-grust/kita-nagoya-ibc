@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { prisma } from "@/lib/prisma";
-import { employmentTypeLabel, manualNote } from "@/lib/labels";
+import { employmentTypeLabel } from "@/lib/labels";
 import { kitagoyaPath } from "@/lib/paths";
 import { formatCases } from "@/lib/units";
 import PrintButton from "../print-button";
@@ -214,7 +214,7 @@ export default async function StaffAssignmentsPrintPage({
                 <td>{row.assignmentTime}</td>
                 <td>{row.workArea}</td>
                 <td>{row.product}</td>
-                <td>{row.note}</td>
+                <td />
               </tr>
             ))}
           </tbody>
@@ -267,7 +267,6 @@ function buildEmployeeRows(employees: EmployeeWithPrintData[], plans: PlanWithPr
     movement: string;
     workArea: string;
     product: string;
-    note: string;
   }[] = [];
 
   for (const employee of employees) {
@@ -293,7 +292,6 @@ function buildEmployeeRows(employees: EmployeeWithPrintData[], plans: PlanWithPr
         movement: "",
         workArea: "",
         product: "",
-        note: "",
       });
       continue;
     }
@@ -309,7 +307,6 @@ function buildEmployeeRows(employees: EmployeeWithPrintData[], plans: PlanWithPr
         assignmentTime: `${assignment.startTime}-${assignment.endTime}`,
         workArea: plan.workArea.name,
         product: plan.product.officialName,
-        note: manualNote(plan.note),
       });
     });
   }

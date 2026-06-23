@@ -3,20 +3,18 @@ import {
   AlertTriangle,
   CalendarDays,
   CheckCircle2,
+  Clock,
   ClipboardCheck,
   Table2,
-  Upload,
   Users,
   type LucideIcon,
 } from "lucide-react";
 import CollapsiblePanel from "@/components/ui/collapsible-panel";
-import { HelpTooltip } from "@/components/ui/help-tooltip";
 import ShiftEditor from "./shift-editor";
 import ShiftChangeRequestPanel, { type ShiftChangeRequestRow } from "./shift-change-request-panel";
 import ShiftMonthEditor from "./shift-month-editor";
-import CsvImport from "../masters/csv-import";
 import { prisma } from "@/lib/prisma";
-import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
+import { kitagoyaPath } from "@/lib/paths";
 import { normalizeShiftChangeDays, type ShiftChangeDay } from "@/lib/shift-change-request";
 
 export const dynamic = "force-dynamic";
@@ -31,8 +29,7 @@ type ShiftFlowCard = {
 };
 
 // `/shifts` のデフォルトは「月モード」(Excel出勤表と同じレイアウト)。
-// 日単位で時刻調整したい場合は ?date=YYYY-MM-DD を渡すか、月モードの行から
-// 日単位画面へ遷移する。
+// スタッフ専用画面で登録されたシフトを管理側で確認する。
 export default async function ShiftsPage({
   searchParams,
 }: {
@@ -87,35 +84,18 @@ export default async function ShiftsPage({
         row.shift.status !== "off" &&
         !isValidWorkTime(row.shift.startTime, row.shift.endTime, row.shift.breakMinutes),
     ).length;
-    const invalidDefaultCount = dayRows.filter(
-      (row) =>
-        !isValidWorkTime(
-          row.employee.defaultStartTime,
-          row.employee.defaultEndTime,
-          row.employee.defaultBreakMinutes,
-        ),
-    ).length;
     const dayEstimatedMinutes = dayRows.reduce((sum, row) => {
       if (!row.shift || row.shift.status === "off") return sum;
       return sum + Math.max(0, diffMinutes(row.shift.startTime, row.shift.endTime) - row.shift.breakMinutes);
     }, 0);
-    const dayNeedsReviewCount =
-      (dayPresentCount === 0 ? 1 : 0) +
-      dayDraftCount +
-      invalidShiftCount +
-      invalidDefaultCount +
-      (pendingRequestRows.length > 0 ? 1 : 0);
+    const dayNeedsReviewCount = dayDraftCount + invalidShiftCount + pendingRequestRows.length;
     const dayTone = dayNeedsReviewCount > 0 ? "warn" : "success";
     const monthHref = kitagoyaPath(`/shifts?yearMonth=${ym}`);
     const allocateHref = kitagoyaPath(`/production-plans/allocate?date=${date}`);
     const dayNextAction =
       pendingRequestRows.length > 0
         ? { label: "修正申請を確認", href: "#shift-change-requests" }
-        : dayPresentCount === 0
-        ? { label: "出勤者を登録", href: "#shift-day-editor" }
-        : dayNeedsReviewCount > 0
-          ? { label: "要確認を修正", href: "#shift-day-editor" }
-          : { label: "当日割り当て", href: allocateHref };
+        : { label: "当日割り当て", href: allocateHref };
     const dayFlowCards: ShiftFlowCard[] = [
       {
         label: "対象日",
@@ -130,11 +110,11 @@ export default async function ShiftsPage({
         count: dayPresentCount,
         detail: `休み ${dayOffCount}人 / ${formatHours(dayEstimatedMinutes)}`,
         href: "#shift-day-editor",
-        tone: dayPresentCount > 0 ? "success" : "warn",
+        tone: "info",
         Icon: Users,
       },
       {
-        label: "要確認",
+        label: "確認",
         count: dayNeedsReviewCount,
         detail: `仮 ${dayDraftCount} / 申請 ${pendingRequestRows.length}`,
         href: "#shift-day-editor",
@@ -175,7 +155,7 @@ export default async function ShiftsPage({
           </div>
         </div>
         <CollapsiblePanel
-          title="確認・操作"
+          title="確認"
           summary={`${dayNeedsReviewCount > 0 ? `要確認 ${dayNeedsReviewCount}` : "確認済み"} / ${date} / 出勤 ${dayPresentCount}人`}
           className="top-flow-accordion"
         >
@@ -238,34 +218,31 @@ export default async function ShiftsPage({
   ]);
   const pendingRequestRows = pendingRequests.map(toShiftChangeRequestRow);
   const presentShiftCount = shifts.filter((shift) => shift.status !== "off").length;
-  const totalShiftCells = employees.length * lastDay;
   const registeredDayCount = new Set(
     shifts.filter((shift) => shift.status !== "off").map((shift) => shift.date.getUTCDate()),
   ).size;
-  const daysWithoutStaff = Math.max(0, lastDay - registeredDayCount);
-  const employeeIdsWithShift = new Set(
-    shifts.filter((shift) => shift.status !== "off").map((shift) => shift.employeeId),
-  );
-  const employeesWithoutShift = employees.filter((employee) => !employeeIdsWithShift.has(employee.id)).length;
+  const employeeById = new Map(employees.map((employee) => [employee.id, employee]));
+  const customTimeCount = shifts.filter((shift) => {
+    if (shift.status === "off") return false;
+    const employee = employeeById.get(shift.employeeId);
+    if (!employee) return false;
+    return (
+      shift.startTime !== employee.defaultStartTime ||
+      shift.endTime !== employee.defaultEndTime ||
+      shift.breakMinutes !== employee.defaultBreakMinutes
+    );
+  }).length;
   const totalWorkMinutes = shifts.reduce((sum, shift) => {
     if (shift.status === "off") return sum;
     return sum + Math.max(0, diffMinutes(shift.startTime, shift.endTime) - shift.breakMinutes);
   }, 0);
   const firstDay = `${year}-${String(month).padStart(2, "0")}-01`;
   const focusDay = yearMonth === todayString.slice(0, 7) ? todayString : firstDay;
-  const monthReviewCount =
-    (presentShiftCount === 0 ? 1 : 0) +
-    (daysWithoutStaff > 0 ? 1 : 0) +
-    (employeesWithoutShift > 0 ? 1 : 0) +
-    (pendingRequestRows.length > 0 ? 1 : 0);
+  const monthReviewCount = pendingRequestRows.length;
   const monthTone = monthReviewCount > 0 ? "warn" : "success";
   const monthNextAction = pendingRequestRows.length > 0
     ? { label: "修正申請を確認", href: "#shift-change-requests" }
-    : presentShiftCount === 0
-    ? { label: "月シフトを登録", href: "#shift-month-editor" }
-    : monthReviewCount > 0
-      ? { label: "要確認を確認", href: "#shift-month-editor" }
-      : { label: "日単位で調整", href: kitagoyaPath(`/shifts?date=${focusDay}`) };
+    : null;
   const monthFlowCards: ShiftFlowCard[] = [
     {
       label: "対象月",
@@ -276,25 +253,25 @@ export default async function ShiftsPage({
       Icon: CalendarDays,
     },
     {
-      label: "出勤セル",
+      label: "勤務登録",
       count: presentShiftCount,
-      detail: `${presentShiftCount} / ${totalShiftCells}`,
+      detail: `${registeredDayCount}日 / ${formatHours(totalWorkMinutes)}`,
       href: "#shift-month-editor",
-      tone: presentShiftCount > 0 ? "success" : "warn",
+      tone: "info",
       Icon: Users,
     },
     {
-      label: "未登録日",
-      count: daysWithoutStaff,
-      detail: `出勤日 ${registeredDayCount}日`,
+      label: "時間変更",
+      count: customTimeCount,
+      detail: "基本時間との差分",
       href: "#shift-month-editor",
-      tone: daysWithoutStaff > 0 ? "warn" : "success",
-      Icon: AlertTriangle,
+      tone: customTimeCount > 0 ? "info" : "success",
+      Icon: Clock,
     },
     {
-      label: "日単位",
+      label: "日表示",
       count: focusDay.slice(8),
-      detail: "個別時刻調整",
+      detail: "日別の確認",
       href: kitagoyaPath(`/shifts?date=${focusDay}`),
       tone: "info",
       Icon: Table2,
@@ -309,19 +286,11 @@ export default async function ShiftsPage({
     },
     {
       label: "割り当て",
-      count: monthReviewCount === 0 ? "OK" : "要",
+      count: pendingRequestRows.length === 0 ? "OK" : "要",
       detail: focusDay,
       href: kitagoyaPath(`/production-plans/allocate?date=${focusDay}`),
-      tone: monthReviewCount === 0 ? "success" : "info",
+      tone: pendingRequestRows.length === 0 ? "success" : "info",
       Icon: ClipboardCheck,
-    },
-    {
-      label: "CSV取込",
-      count: "取込",
-      detail: "出勤表CSV",
-      href: "#shift-csv-import",
-      tone: presentShiftCount > 0 ? "info" : "warn",
-      Icon: Upload,
     },
   ];
 
@@ -346,17 +315,13 @@ export default async function ShiftsPage({
         <div className="page-title-actions">
           <Link className="button-link secondary-link gap-2" href={kitagoyaPath(`/shifts?date=${focusDay}`)}>
             <Table2 className="h-4 w-4" />
-            日単位画面
-          </Link>
-          <Link className="button-link secondary-link gap-2" href="#shift-csv-import">
-            <Upload className="h-4 w-4" />
-            CSV取り込み
+            日単位表示
           </Link>
         </div>
       </div>
       <CollapsiblePanel
-        title="確認・操作"
-        summary={`${monthReviewCount > 0 ? `要確認 ${monthReviewCount}` : "確認済み"} / ${yearMonth} / 出勤セル ${presentShiftCount}`}
+        title="確認"
+        summary={`${monthReviewCount > 0 ? `要確認 ${monthReviewCount}` : "確認済み"} / ${yearMonth} / 勤務登録 ${presentShiftCount}件`}
         className="top-flow-accordion"
       >
         <div className={`shift-flow-command ${monthTone}`}>
@@ -371,12 +336,16 @@ export default async function ShiftsPage({
             </span>
             <strong>月次シフトの確認フロー</strong>
             <span className="subtext">
-              出勤セル {presentShiftCount} / {totalShiftCells} / 勤務時間 {formatHours(totalWorkMinutes)}
+              勤務登録 {presentShiftCount}件 / 稼働日 {registeredDayCount}日 / 勤務時間 {formatHours(totalWorkMinutes)}
             </span>
           </div>
-          <Link className="shift-flow-next" href={monthNextAction.href}>
-            次: {monthNextAction.label}
-          </Link>
+          {monthNextAction ? (
+            <Link className="shift-flow-next" href={monthNextAction.href}>
+              確認: {monthNextAction.label}
+            </Link>
+          ) : (
+            <span className="shift-flow-status">閲覧専用</span>
+          )}
         </div>
         <ShiftFlowGrid cards={monthFlowCards} />
         <ShiftChangeRequestPanel requests={pendingRequestRows} />
@@ -390,14 +359,16 @@ export default async function ShiftsPage({
             <div className="metric-value">{employees.length} 人</div>
           </div>
           <div className="metric">
-            <div className="metric-label">出勤セル</div>
-            <div className="metric-value">
-              {presentShiftCount} / {totalShiftCells}
-            </div>
+            <div className="metric-label">勤務登録</div>
+            <div className="metric-value">{presentShiftCount} 件</div>
           </div>
           <div className="metric">
-            <div className="metric-label">出勤日数</div>
+            <div className="metric-label">稼働日</div>
             <div className="metric-value">{registeredDayCount} 日</div>
+          </div>
+          <div className="metric">
+            <div className="metric-label">時間変更</div>
+            <div className="metric-value">{customTimeCount} 件</div>
           </div>
           <div className="metric">
             <div className="metric-label">勤務時間合計</div>
@@ -422,14 +393,6 @@ export default async function ShiftsPage({
           }))}
           cells={cellMap}
         />
-      </div>
-
-      <div id="shift-csv-import" className="panel after-table anchor-offset">
-        <div className="toolbar flush-top">
-          <strong>シフトCSV取り込み（前月15日公開の出勤表）</strong>
-          <HelpTooltip text="従業員はマスター登録済みの正式名称で照合します。未登録の名称行はスキップされ、従業員マスターの基本勤務時間は上書きされません。" />
-        </div>
-        <CsvImport endpoint={kitagoyaApiPath("/import/shifts")} templateType="shifts" />
       </div>
     </>
   );
