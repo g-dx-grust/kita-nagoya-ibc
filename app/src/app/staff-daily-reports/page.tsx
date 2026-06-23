@@ -62,7 +62,14 @@ export default async function StaffDailyReportsPage({
     }),
     prisma.productionPlan.findMany({
       where: { date: { gte: dayStart, lte: dayEnd }, status: { not: "cancelled" } },
-      include: { product: true, workArea: true },
+      include: {
+        product: true,
+        workArea: true,
+        assignments: {
+          include: { employee: true },
+          orderBy: [{ startTime: "asc" }],
+        },
+      },
       orderBy: [{ workArea: { displayOrder: "asc" } }, { plannedStartTime: "asc" }],
     }),
     prisma.shift.findMany({
@@ -144,6 +151,9 @@ export default async function StaffDailyReportsPage({
     plannedStartTime: plan.plannedStartTime,
     plannedEndTime: plan.plannedEndTime,
     plannedPeopleCount: plan.plannedPeopleCount,
+    assignedStaffNames: Array.from(
+      new Set(plan.assignments.map((assignment) => assignment.employee.name)),
+    ),
   }));
   const staffOptions: StaffDailyReportStaffOption[] = shifts.map((shift) => ({
     id: shift.employeeId,

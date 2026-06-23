@@ -354,6 +354,110 @@ describe("simulateMonthlyShiftSchedule", () => {
     expect(result.plans.map((plan) => plan.quantity).sort((a, b) => a - b)).toEqual([200, 200]);
   });
 
+  it("受注生産を受注優先部屋で先に回し、完了後に在庫優先部屋へ合流する", () => {
+    const makeProduct = (
+      productId: string,
+      productCode: string,
+      productName: string,
+      productionType: "stock" | "make_to_order",
+    ): ShiftSimulationProduct => ({
+      productId,
+      productCode,
+      productName,
+      productionType,
+      unit: "袋",
+      defaultWorkAreaId: "order-room",
+      capacities: [
+        {
+          productId,
+          workAreaId: "order-room",
+          workAreaName: "受注優先部屋",
+          workAreaDefaultStartTime: "09:00",
+          workAreaDefaultEndTime: "12:00",
+          workAreaMaxPeopleCount: 2,
+          workAreaDisplayOrder: 1,
+          workAreaAutoScheduleRole: "ORDER_PRIMARY",
+          unitsPerPersonHour: 100,
+          standardPeople: 2,
+          standardBreakMinutes: 0,
+        },
+        {
+          productId,
+          workAreaId: "stock-room",
+          workAreaName: "在庫優先部屋",
+          workAreaDefaultStartTime: "09:00",
+          workAreaDefaultEndTime: "12:00",
+          workAreaMaxPeopleCount: 4,
+          workAreaDisplayOrder: 2,
+          workAreaAutoScheduleRole: "STOCK_PRIMARY",
+          unitsPerPersonHour: 100,
+          standardPeople: 4,
+          standardBreakMinutes: 0,
+        },
+      ],
+    });
+
+    const result = simulateMonthlyShiftSchedule({
+      dateFrom: "2026-05-01",
+      dateTo: "2026-05-01",
+      defaultStartTime: "09:00",
+      baselineEndTime: "12:00",
+      breakWindows: [],
+      products: [
+        makeProduct("order", "O001", "受注商品", "make_to_order"),
+        makeProduct("stock", "S001", "在庫商品", "stock"),
+      ],
+      items: [
+        {
+          productId: "stock",
+          productCode: "S001",
+          productName: "在庫商品",
+          productionType: "stock",
+          unit: "袋",
+          preferredDate: "2026-05-01",
+          dueDates: ["2026-05-01"],
+          quantity: 200,
+          reasons: ["月間予測"],
+        },
+        {
+          productId: "order",
+          productCode: "O001",
+          productName: "受注商品",
+          productionType: "make_to_order",
+          unit: "袋",
+          preferredDate: "2026-05-01",
+          dueDates: ["2026-05-01"],
+          quantity: 200,
+          reasons: ["受注"],
+        },
+      ],
+      shifts: [
+        { employeeId: "e1", employeeName: "A", date: "2026-05-01", startTime: "09:00", endTime: "12:00" },
+        { employeeId: "e2", employeeName: "B", date: "2026-05-01", startTime: "09:00", endTime: "12:00" },
+        { employeeId: "e3", employeeName: "C", date: "2026-05-01", startTime: "09:00", endTime: "12:00" },
+        { employeeId: "e4", employeeName: "D", date: "2026-05-01", startTime: "09:00", endTime: "12:00" },
+      ],
+      existingPlans: [],
+      existingAssignments: [],
+    });
+
+    expect(result.skipped).toHaveLength(0);
+    expect(result.plans).toHaveLength(2);
+    const orderPlan = result.plans.find((plan) => plan.productId === "order")!;
+    const stockPlan = result.plans.find((plan) => plan.productId === "stock")!;
+    expect(orderPlan).toMatchObject({
+      workAreaId: "order-room",
+      startTime: "09:00",
+      endTime: "10:00",
+      peopleCount: 2,
+    });
+    expect(stockPlan).toMatchObject({
+      workAreaId: "stock-room",
+      startTime: "10:00",
+      peopleCount: 4,
+    });
+  });
+
   it("商品ごとの候補順位がある場合は第1候補の部屋を優先する", () => {
     const prioritizedProduct = productWithTwoRooms("p1", "P001", "商品A");
     prioritizedProduct.capacities = prioritizedProduct.capacities.map((capacity) => ({

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CalendarDays, ClipboardList, PackageCheck, Search } from "lucide-react";
 import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import MonthlyPlanDecisionClient from "./monthly-plan-decision-client";
+import { autoScheduleRoleRank } from "@/lib/auto-schedule-policy";
 import { computeDemandPlanCoverage } from "@/lib/monthly-production-decision";
 import { kitagoyaPath } from "@/lib/paths";
 import { prisma } from "@/lib/prisma";
@@ -171,7 +172,10 @@ export default async function MonthlyProductionConfirmPage({
               productionType: demand.product.productionType,
               unit: demand.product.unit,
               casePackQty: demand.product.casePackQty,
-              workAreaOptions: workAreaOptionsForProduct(demand.product),
+              workAreaOptions: workAreaOptionsForProduct(
+                demand.product,
+                productionTypeForDemand(demand.product.productionType),
+              ),
             },
           };
         })}
@@ -188,11 +192,12 @@ export default async function MonthlyProductionConfirmPage({
 }
 
 function workAreaOptionsForPlan(plan: {
+  productionType: string;
   workAreaId: string;
   workArea: { id: string; name: string };
   product: Parameters<typeof workAreaOptionsForProduct>[0];
 }) {
-  const options = workAreaOptionsForProduct(plan.product);
+  const options = workAreaOptionsForProduct(plan.product, plan.productionType);
   if (!options.some((option) => option.id === plan.workAreaId)) {
     options.push({
       id: plan.workArea.id,
@@ -200,20 +205,32 @@ function workAreaOptionsForPlan(plan: {
       standardPeople: null,
       candidatePriority: null,
       displayOrder: Number.MAX_SAFE_INTEGER,
+      autoScheduleRole: "SHARED",
     });
   }
-  return sortWorkAreaOptions(options);
+  return sortWorkAreaOptions(options, plan.productionType);
 }
 
 function workAreaOptionsForProduct(product: {
+  productionType?: string;
   capacities: {
     workAreaId: string;
     standardPeople: number;
     candidatePriority: number | null;
-    workArea: { id: string; name: string; displayOrder: number; areaType: string; externalFlag: boolean; active: boolean };
+    workArea: { id: string; name: string; displayOrder: number; areaType: string; externalFlag: boolean; active: boolean; autoScheduleRole: string };
   }[];
-}) {
-  const byId = new Map<string, { id: string; name: string; standardPeople: number | null; candidatePriority: number | null; displayOrder: number }>();
+}, productionType = product.productionType ?? "stock") {
+  const byId = new Map<
+    string,
+    {
+      id: string;
+      name: string;
+      standardPeople: number | null;
+      candidatePriority: number | null;
+      displayOrder: number;
+      autoScheduleRole: string;
+    }
+  >();
   for (const capacity of product.capacities) {
     if (!capacity.workArea.active || capacity.workArea.externalFlag || capacity.workArea.areaType !== "internal") continue;
     byId.set(capacity.workAreaId, {
@@ -222,18 +239,27 @@ function workAreaOptionsForProduct(product: {
       standardPeople: capacity.standardPeople,
       candidatePriority: capacity.candidatePriority,
       displayOrder: capacity.workArea.displayOrder,
+      autoScheduleRole: capacity.workArea.autoScheduleRole,
     });
   }
-  return sortWorkAreaOptions([...byId.values()]);
+  return sortWorkAreaOptions([...byId.values()], productionType);
 }
 
-function sortWorkAreaOptions<T extends { name: string; candidatePriority?: number | null; displayOrder?: number }>(options: T[]) {
+function sortWorkAreaOptions<
+  T extends { name: string; candidatePriority?: number | null; displayOrder?: number; autoScheduleRole?: string | null },
+>(options: T[], productionType: string) {
   return options.sort(
     (a, b) =>
+      autoScheduleRoleRank(productionType, a.autoScheduleRole) -
+        autoScheduleRoleRank(productionType, b.autoScheduleRole) ||
       priorityKey(a.candidatePriority) - priorityKey(b.candidatePriority) ||
       (a.displayOrder ?? Number.MAX_SAFE_INTEGER) - (b.displayOrder ?? Number.MAX_SAFE_INTEGER) ||
       a.name.localeCompare(b.name, "ja"),
   );
+}
+
+function productionTypeForDemand(productProductionType: string) {
+  return productProductionType === "stock" ? "stock" : "make_to_order";
 }
 
 function priorityKey(value: number | null | undefined) {

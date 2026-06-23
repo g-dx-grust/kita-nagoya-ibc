@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   BarChart3,
@@ -131,6 +131,13 @@ export default function ProductPlanningClient({
   const [actualDraft, setActualDraft] = useState<MonthlyActualDraft | null>(null);
   const [showInputPanel, setShowInputPanel] = useState(false);
   const [suggestionFilter, setSuggestionFilter] = useState<SuggestionQuickFilter>("all");
+
+  useEffect(() => {
+    if (window.location.hash === "#product-planning-inputs") {
+      setShowInputPanel(true);
+      window.requestAnimationFrame(() => scrollToSection("product-planning-inputs"));
+    }
+  }, []);
   const planningStats = useMemo(() => {
     const suggestedCount = suggestions.filter((suggestion) => suggestion.suggestedQuantity > 0).length;
     const hardShortageCount = suggestions.filter((suggestion) => suggestion.shortageType === "hard_shortage").length;

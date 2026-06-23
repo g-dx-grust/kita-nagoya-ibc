@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ClipboardList,
   FileCheck2,
+  PackageCheck,
   Plus,
   Users,
   type LucideIcon,
@@ -155,6 +156,10 @@ export default async function ProductionPlansPage({
       <div className="page-title-row">
         <h1>生産予定</h1>
         <div className="page-title-actions">
+          <Link className="button-link secondary-link gap-2" href={kitagoyaPath("/product-planning#product-planning-inputs")}>
+            <PackageCheck className="h-4 w-4" />
+            受注登録
+          </Link>
           <Link className="button-link secondary-link gap-2" href={kitagoyaPath("/production-plans/monthly")}>
             <CalendarDays className="h-4 w-4" />
             月間生成

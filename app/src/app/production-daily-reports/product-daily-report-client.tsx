@@ -433,7 +433,7 @@ export default function ProductDailyReportClient({
       return;
     }
     setApprovalReviewId(null);
-    setMessage(`${row.reportDate} ${displayProductName(row)} を計上しました。`);
+    setMessage(`${row.reportDate} ${displayProductName(row)} を計上しました。月次手間賃も再計算済みです。`);
     router.refresh();
   }
 

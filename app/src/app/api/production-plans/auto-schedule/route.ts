@@ -478,7 +478,7 @@ function toResponsePlan(plan: ScheduledPlan, id?: string) {
     workAreaName: plan.workAreaName,
     startTime: formatHM(plan.start),
     endTime: formatHM(plan.end),
-    quantity: plan.quantity,
+    quantity: ceilDisplayQuantity(plan.quantity) ?? 0,
     assignedCount: plan.assignedStaff.length,
     assignedStaff: plan.assignedStaff.map((staff) => ({
       employeeId: staff.employeeId,
@@ -868,7 +868,7 @@ function buildScheduledPlanFromJob({
   }
   if (capacity.unitsPerPersonHour <= 0) warnings.push("生産能力未登録");
   const overflow = job?.overflowQuantity ?? ref.item.quantity;
-  if (overflow > 0) warnings.push(`指定数量から ${round1(overflow)} 不足`);
+  if (overflow > 0) warnings.push(`指定数量から ${ceilDisplayQuantity(overflow) ?? 0} 不足`);
   if (job && job.scheduledQuantity > 0 && assignedStaff.length === 0) {
     warnings.push("出勤シフト内で配置できるスタッフがいません");
   }
@@ -915,16 +915,12 @@ function buildUnscheduledPlan(
     quantity: 0,
     targetPeople: 0,
     assignedStaff: [],
-    warnings: [`指定数量から ${round1(ref.item.quantity)} 不足`, "優先度の高い生産で時間枠を使い切りました"],
+    warnings: [`指定数量から ${ceilDisplayQuantity(ref.item.quantity) ?? 0} 不足`, "優先度の高い生産で時間枠を使い切りました"],
   };
 }
 
 function pickFallbackCapacity(capacities: CandidateCapacity[], forcedRoomId?: string): CandidateCapacity {
   return capacities.find((capacity) => capacity.workAreaId === forcedRoomId) ?? capacities[0];
-}
-
-function round1(n: number) {
-  return Math.round(n * 10) / 10;
 }
 
 function applyOverrides({

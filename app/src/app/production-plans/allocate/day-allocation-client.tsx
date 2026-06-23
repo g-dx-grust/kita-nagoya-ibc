@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   ClipboardCheck,
   ClipboardList,
-  Printer,
   Save,
   Users,
 } from "lucide-react";
@@ -234,8 +233,8 @@ export default function DayAllocationClient({
         ].filter(Boolean);
         setSavedMessage(
           adjustmentLabels.length > 0
-            ? `${adjustmentLabels.join("・")}を反映して割り当てを保存し、原料/資材所要量を再計算しました。`
-            : "割り当てを保存し、原料/資材所要量を再計算しました。",
+            ? `${adjustmentLabels.join("・")}を反映して当日割り当てを確定し、原料/資材所要量を再計算しました。`
+            : "当日割り当てを確定し、原料/資材所要量を再計算しました。",
         );
       } else {
         setPersisted(false);
@@ -445,8 +444,11 @@ export default function DayAllocationClient({
   const nextDate = shiftDate(date, 1);
   const productionPlansHref = productionPlansDayHref(date);
   const shiftsHref = kitagoyaPath(`/shifts?date=${date}`);
+  const productPlanningHref = kitagoyaPath(`/product-planning?dateFrom=${date}&dateTo=${date}#product-planning-inputs`);
+  const monthlyDecisionHref = kitagoyaPath(`/production-plans/monthly/confirm?dateFrom=${date}&dateTo=${date}`);
   const staffPrintHref = kitagoyaPath(`/prints/staff-assignments?date=${date}`);
   const schedulePrintHref = kitagoyaPath(`/prints/production-schedule?date=${date}`);
+  const staffDailyReportHref = kitagoyaPath(`/staff-daily-reports?date=${date}`);
   const allocationFlowTone = result && totalAlertCount === 0 && persisted ? "success" : "warn";
   const previewPlanCount = allocation?.jobs.length ?? initialReadiness.planCount;
   const previewStaffCount = summary?.totalStaff ?? initialReadiness.shiftCount;
@@ -465,8 +467,8 @@ export default function DayAllocationClient({
     : totalAlertCount > 0
       ? "商品別を確認"
       : persisted
-        ? "スタッフ配置を印刷"
-        : "割り当てを保存";
+        ? "スタッフ日報へ"
+        : "当日確定";
   const reviewQueues = [
     { key: "room" as View, label: "部屋ボード", count: areaOrder.length },
     { key: "people" as View, label: "人タイムライン", count: summary?.idleStaffCount ?? 0 },
@@ -504,11 +506,20 @@ export default function DayAllocationClient({
           <HelpTooltip text="確定済みの生産予定と当日の出勤シフトをもとに、出勤者全員を作業場所へ割り当てます。部屋レーンと人タイムラインで、誰がどの部屋で何時から何を作るかを確認できます。" />
         </h1>
         <div className="page-title-actions allocation-title-actions">
+          <Link className="button-link secondary-link" href={productPlanningHref}>
+            受注登録
+          </Link>
+          <Link className="button-link secondary-link" href={monthlyDecisionHref}>
+            本決定
+          </Link>
           <Link className="button-link secondary-link" href={shiftsHref}>
             シフトを確認
           </Link>
           <Link className="button-link secondary-link" href={productionPlansHref}>
             生産予定を確認
+          </Link>
+          <Link className="button-link secondary-link" href={staffDailyReportHref}>
+            スタッフ日報
           </Link>
         </div>
       </div>
@@ -535,7 +546,7 @@ export default function DayAllocationClient({
             </span>
           </div>
           {persisted ? (
-            <Link className="allocation-flow-next" href={staffPrintHref}>
+            <Link className="allocation-flow-next" href={staffDailyReportHref}>
               次: {nextAllocationLabel}
             </Link>
           ) : (
@@ -570,22 +581,22 @@ export default function DayAllocationClient({
             <small>{result ? readinessLabel : "未計算"}</small>
           </button>
           {persisted ? (
-            <Link className="allocation-flow-card success" href={staffPrintHref}>
+            <Link className="allocation-flow-card success" href={staffDailyReportHref}>
               <span>
-                <Printer size={15} aria-hidden="true" />
-                保存・印刷
+                <ClipboardCheck size={15} aria-hidden="true" />
+                当日確定
               </span>
               <strong>済</strong>
-              <small>配置表へ</small>
+              <small>日報へ</small>
             </Link>
           ) : (
             <button type="button" className={`allocation-flow-card ${result ? "warn" : "info"}`} onClick={() => (result ? call(true) : call(false))} disabled={loading || (!result && loading)}>
               <span>
                 {result ? <Save size={15} aria-hidden="true" /> : <ClipboardCheck size={15} aria-hidden="true" />}
-                保存・印刷
+                当日確定
               </span>
-              <strong>{result ? "保存" : "未"}</strong>
-              <small>{result ? "確定して印刷へ" : "プレビュー後"}</small>
+              <strong>{result ? "確定" : "未"}</strong>
+              <small>{result ? "確定して日報へ" : "プレビュー後"}</small>
             </button>
           )}
         </div>
@@ -611,7 +622,7 @@ export default function DayAllocationClient({
                 {loading ? "計算中…" : "割り当てプレビュー"}
               </button>
               <button type="button" onClick={() => call(true)} disabled={loading || !result}>
-                この割り当てを保存
+                当日確定
               </button>
             </div>
           </div>
@@ -707,7 +718,7 @@ export default function DayAllocationClient({
             </span>
             <span>
               <strong>4</strong>
-              保存・印刷
+              当日確定
             </span>
           </div>
           <div className="allocation-start-actions">
@@ -727,6 +738,9 @@ export default function DayAllocationClient({
         <div className="alert success allocation-save-alert">
           <span>{savedMessage}</span>
           <div className="allocation-print-actions">
+            <Link className="button-link secondary-link" href={staffDailyReportHref}>
+              スタッフ日報へ
+            </Link>
             <Link className="button-link secondary-link" href={staffPrintHref}>
               スタッフ配置を印刷
             </Link>
@@ -744,7 +758,7 @@ export default function DayAllocationClient({
               <h2>判断サマリ</h2>
               <div className="allocation-summary-status">
                 <span className={`badge ${persisted ? "success" : "info"}`}>{persisted ? "保存済み" : "プレビュー"}</span>
-                {!persisted && <HelpTooltip text="この割り当てを保存すると確定し、印刷へ進めます。" />}
+                {!persisted && <HelpTooltip text="当日確定すると割り当てが保存され、スタッフ日報と印刷へ進めます。" />}
               </div>
             </div>
             <div className="stat-grid allocation-stat-grid">

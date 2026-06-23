@@ -140,6 +140,7 @@ export async function POST(req: Request) {
             workAreaDefaultEndTime: capacity.workArea.defaultEndTime,
             workAreaMaxPeopleCount: capacity.workArea.maxPeopleCount,
             workAreaDisplayOrder: capacity.workArea.displayOrder,
+            workAreaAutoScheduleRole: capacity.workArea.autoScheduleRole,
             unitsPerPersonHour: capacity.unitsPerPersonHour,
             standardPeople: capacity.standardPeople,
             standardBreakMinutes: capacity.standardBreakMinutes,

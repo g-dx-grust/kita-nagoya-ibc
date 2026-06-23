@@ -6,8 +6,8 @@
 //
 // 流れ:
 //   1) 需要アイテムを商品マスター・社内部屋の生産能力で絞り込む。
-//   2) 日付を時系列に走査し、その日に作れるアイテム（希望日以降）を集めて
-//      `allocateDayStaff` を1回呼び、出勤者全員を部屋へ割り当てる。
+//   2) 日付を時系列に走査し、その日に作れるアイテム（希望日以降）を集める。
+//      受注生産→在庫生産の順に `allocateDayStaff` を呼び、出勤者全員を部屋へ割り当てる。
 //      作れた数量を需要から差し引き、あふれは翌日以降へ繰り越す。
 //   3) 希望日までに収まらなかったアイテムは、希望日より前の日へフォールバック配置する。
 //   4) それでも残った数量は未配置 (skipped) として返す。
@@ -16,6 +16,11 @@
 
 import { DAILY_BREAK_WINDOWS, computeBreakMinutesInTimeWindow, type BreakWindow } from "./calculations";
 import { assignBalancedRooms } from "./auto-schedule-allocation";
+import {
+  autoScheduleRoleRank,
+  productionTypeScheduleRank,
+  schedulePriorityKey,
+} from "./auto-schedule-policy";
 import { allocateDayStaff, type AllocationJob, type AllocationStaff } from "./staff-allocation";
 import { formatHM, parseHM } from "./time";
 
@@ -41,6 +46,7 @@ export type ShiftSimulationCapacity = {
   workAreaDefaultEndTime?: string | null;
   workAreaMaxPeopleCount: number;
   workAreaDisplayOrder: number;
+  workAreaAutoScheduleRole?: string | null;
   unitsPerPersonHour: number;
   standardPeople: number;
   standardBreakMinutes: number;
@@ -151,7 +157,8 @@ export function simulateMonthlyShiftSchedule(input: {
       skipped.push(skip(item, item.quantity, "商品マスターが見つかりません。"));
       continue;
     }
-    const capacities = chooseSchedulableCapacities(product);
+    const productionType = item.productionType === "make_to_order" ? "make_to_order" : "stock";
+    const capacities = chooseSchedulableCapacities(product, productionType);
     if (capacities.length === 0) {
       skipped.push(skip(item, item.quantity, "社内部屋で使える生産能力が未登録です。"));
       continue;
@@ -159,7 +166,7 @@ export function simulateMonthlyShiftSchedule(input: {
     states.push({
       id: `item-${states.length + 1}`,
       item,
-      productionType: item.productionType === "make_to_order" ? "make_to_order" : "stock",
+      productionType,
       capacities,
       preferredDate: item.preferredDate,
       dueDate: minDate(item.dueDates),
@@ -195,6 +202,18 @@ export function simulateMonthlyShiftSchedule(input: {
   const runDay = (date: string, eligible: ItemState[]) => {
     const dayShifts = shiftsByDate.get(date) ?? [];
     if (dayShifts.length === 0 || eligible.length === 0) return;
+
+    let phaseStart = parseHM(input.defaultStartTime);
+    const dayEnd = parseHM(input.baselineEndTime);
+    for (const group of groupByProductionPhase(eligible)) {
+      if (phaseStart >= dayEnd) break;
+      phaseStart = runDayPhase(date, group, phaseStart);
+    }
+  };
+
+  const runDayPhase = (date: string, eligible: ItemState[], phaseStart: number) => {
+    const dayShifts = shiftsByDate.get(date) ?? [];
+    if (dayShifts.length === 0 || eligible.length === 0) return phaseStart;
 
     const capacitiesByStateId = new Map<string, ShiftSimulationCapacity[]>();
     for (const state of eligible) {
@@ -254,12 +273,13 @@ export function simulateMonthlyShiftSchedule(input: {
     }));
 
     const allocation = allocateDayStaff({
-      dayStart: input.defaultStartTime,
+      dayStart: formatHM(phaseStart),
       dayEnd: input.baselineEndTime,
       breakWindows,
       staff,
       jobs,
     });
+    const scheduledEnds: number[] = [];
 
     for (const job of allocation.jobs) {
       if (job.scheduledQuantity <= 0 || !job.startTime || !job.endTime) continue;
@@ -305,7 +325,9 @@ export function simulateMonthlyShiftSchedule(input: {
         arr.push({ start: parseHM(a.startTime), end: parseHM(a.endTime) });
         staffBusy.set(sk, arr);
       }
+      scheduledEnds.push(parseHM(job.endTime));
     }
+    return scheduledEnds.length > 0 ? Math.max(phaseStart, ...scheduledEnds) : phaseStart;
   };
 
   // パス1: 時系列。各日に「希望日以降」のアイテムを納期優先で詰める（納期超過日も含む）。
@@ -340,15 +362,29 @@ export function simulateMonthlyShiftSchedule(input: {
 }
 
 function byPriority(a: ItemState, b: ItemState) {
-  // 商品マスタの生産順(schedulePriority)を最優先。未設定(null)は最後尾扱いで従来順にフォールバック。
-  const pa = a.item.schedulePriority ?? Number.MAX_SAFE_INTEGER;
-  const pb = b.item.schedulePriority ?? Number.MAX_SAFE_INTEGER;
+  // 受注生産を先に流し、その後に在庫生産へ合流する。商品マスタの生産順は同じ区分内で効かせる。
   return (
-    pa - pb ||
+    productionTypeScheduleRank(a.productionType) - productionTypeScheduleRank(b.productionType) ||
+    schedulePriorityKey(a.item.schedulePriority) - schedulePriorityKey(b.item.schedulePriority) ||
     a.dueDate.localeCompare(b.dueDate) ||
     a.preferredDate.localeCompare(b.preferredDate) ||
     a.item.productCode.localeCompare(b.item.productCode, "ja")
   );
+}
+
+function groupByProductionPhase(items: ItemState[]) {
+  const sorted = [...items].sort(byPriority);
+  const groups: ItemState[][] = [];
+  for (const item of sorted) {
+    const rank = productionTypeScheduleRank(item.productionType);
+    const last = groups[groups.length - 1];
+    if (last && productionTypeScheduleRank(last[0].productionType) === rank) {
+      last.push(item);
+    } else {
+      groups.push([item]);
+    }
+  }
+  return groups;
 }
 
 function dedupeAssignments(
@@ -361,19 +397,31 @@ function dedupeAssignments(
   return [...seen].map(([employeeId, employeeName]) => ({ employeeId, employeeName }));
 }
 
-function chooseSchedulableCapacities(product: ShiftSimulationProduct) {
-  return [...product.capacities].sort((a, b) => {
-    const priorityDiff = priorityKey(a.candidatePriority) - priorityKey(b.candidatePriority);
-    const defaultScore =
-      Number(b.workAreaId === product.defaultWorkAreaId) - Number(a.workAreaId === product.defaultWorkAreaId);
-    return (
-      priorityDiff ||
-      defaultScore ||
-      b.unitsPerPersonHour - a.unitsPerPersonHour ||
-      a.workAreaDisplayOrder - b.workAreaDisplayOrder ||
-      a.workAreaName.localeCompare(b.workAreaName, "ja")
-    );
-  });
+function chooseSchedulableCapacities(
+  product: ShiftSimulationProduct,
+  productionType: "stock" | "make_to_order",
+) {
+  const usable = product.capacities.filter((capacity) =>
+    Number.isFinite(autoScheduleRoleRank(productionType, capacity.workAreaAutoScheduleRole)),
+  );
+  if (usable.length === 0) return [];
+  const bestRoleRank = Math.min(
+    ...usable.map((capacity) => autoScheduleRoleRank(productionType, capacity.workAreaAutoScheduleRole)),
+  );
+  return usable
+    .filter((capacity) => autoScheduleRoleRank(productionType, capacity.workAreaAutoScheduleRole) === bestRoleRank)
+    .sort((a, b) => {
+      const priorityDiff = priorityKey(a.candidatePriority) - priorityKey(b.candidatePriority);
+      const defaultScore =
+        Number(b.workAreaId === product.defaultWorkAreaId) - Number(a.workAreaId === product.defaultWorkAreaId);
+      return (
+        priorityDiff ||
+        defaultScore ||
+        b.unitsPerPersonHour - a.unitsPerPersonHour ||
+        a.workAreaDisplayOrder - b.workAreaDisplayOrder ||
+        a.workAreaName.localeCompare(b.workAreaName, "ja")
+      );
+    });
 }
 
 function priorityKey(priority: number | null | undefined) {

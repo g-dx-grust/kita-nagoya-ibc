@@ -5,6 +5,7 @@ import {
   DEFAULT_DAILY_REPORT_LABOR_HOURLY_RATE,
   computeProductDailyReportMetrics,
 } from "./product-daily-report-calculations";
+import { recomputeMonthlyLaborFees } from "./product-monthly-labor-fee";
 import { HttpError } from "./http";
 import {
   removeProductionDailyReportMovements,
@@ -139,6 +140,7 @@ export async function createProductDailyReportEntry(input: ProductDailyReportInp
   if (shouldReflectInventory) {
     await audit({ action: "sync_inventory", entityType: "StockMovement", entityId: row!.id, after: row!.materials });
   }
+  await recomputeMonthlyLaborFeesForEntries(row);
   return row;
 }
 
@@ -185,6 +187,7 @@ export async function updateProductDailyReportEntry(id: string, input: ProductDa
   });
 
   await audit({ action: "update", entityType: "ProductionDailyReportEntry", entityId: id, before, after: row });
+  await recomputeMonthlyLaborFeesForEntries(before, row);
   return row;
 }
 
@@ -193,7 +196,7 @@ export async function approveProductDailyReportEntry(id: string, approvedBy?: st
   if (!before) throw new HttpError(404, "not_found");
   if (!before.active) throw new HttpError(400, "inactive_entry", "削除済みの日報は計上できません。");
 
-  const built = await buildProductDailyReportData(entryToInput(before), {
+  const built = await buildProductDailyReportData({ ...entryToInput(before), inventoryReflected: true }, {
     approvalStatus: "approved",
     submittedBy: before.submittedBy,
     approvedAt: new Date(),
@@ -225,6 +228,7 @@ export async function approveProductDailyReportEntry(id: string, approvedBy?: st
 
   await audit({ action: "approve", entityType: "ProductionDailyReportEntry", entityId: id, before, after: row });
   await audit({ action: "sync_inventory", entityType: "StockMovement", entityId: id, after: row!.materials });
+  await recomputeMonthlyLaborFeesForEntries(row);
   return row;
 }
 
@@ -246,6 +250,7 @@ export async function deactivateProductDailyReportEntry(id: string) {
   });
 
   await audit({ action: "deactivate", entityType: "ProductionDailyReportEntry", entityId: id, before, after: row });
+  await recomputeMonthlyLaborFeesForEntries(before);
   return row;
 }
 
@@ -380,6 +385,19 @@ function shouldReflectInventoryForEntry(entry: {
   inventoryReflected?: boolean;
 }) {
   return entry.approvalStatus === "approved" && entry.inventoryReflected === true;
+}
+
+async function recomputeMonthlyLaborFeesForEntries(
+  ...entries: Array<ProductDailyReportEntryWithDetails | null | undefined>
+) {
+  const yearMonths = new Set<string>();
+  for (const entry of entries) {
+    if (!entry?.productId || !shouldReflectInventoryForEntry(entry)) continue;
+    yearMonths.add(yearMonthFromDate(entry.reportDate));
+  }
+  for (const yearMonth of yearMonths) {
+    await recomputeMonthlyLaborFees(yearMonth);
+  }
 }
 
 function serializeLabelPhotos(photos: ProductDailyReportLabelPhotoInput[]) {

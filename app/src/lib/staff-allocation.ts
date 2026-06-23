@@ -10,13 +10,14 @@
 //   - 部屋ごとの同時人数上限 (roomMaxPeople) を超えない。
 //   - 出勤シフト時間内・休憩時間外でのみ作業する。
 //   - 余剰人員はまだ仕事が残っている部屋へ詰め、作業が終わった部屋からは
-//     別部屋へ「合流」させる。仕事が無い／部屋が満員でやむなく待機する場合は
+//     別部屋へ最大1回だけ「合流」させる。仕事が無い／部屋が満員でやむなく待機する場合は
 //     その時間と理由を idleSegments として明示する。
 //
 // すべて純関数。DB/HTTP はここに持ち込まない（calculations の型のみ参照）。
 
 import type { BreakWindow } from "./calculations";
 import { formatHM, parseHM } from "./time";
+import { ceilDisplayQuantity } from "./units";
 
 export type AllocationStaff = {
   employeeId: string;
@@ -197,6 +198,12 @@ type StaffState = {
   unavailable: { start: number; end: number }[];
   /** 直近に割り当てられていた部屋（合流の安定化に使う） */
   currentRoomId: string | null;
+  /** 最後に実作業した部屋。手すき時間を挟んでも戻り判定に使う。 */
+  lastWorkedRoomId: string | null;
+  /** 自動配置で部屋を移動した回数。原則1回まで。 */
+  moveCount: number;
+  /** 一度入った部屋。一般→在庫→一般のような戻りを防ぐ。 */
+  visitedRoomIds: Set<string>;
 };
 
 const ROUND = 1e6;
@@ -217,6 +224,9 @@ export function allocateDayStaff(input: AllocationInput): AllocationResult {
         .map((w) => ({ start: parseHM(w.startTime), end: parseHM(w.endTime) }))
         .filter((w) => w.end > w.start),
       currentRoomId: null as string | null,
+      lastWorkedRoomId: null as string | null,
+      moveCount: 0,
+      visitedRoomIds: new Set<string>(),
     }))
     .filter((s) => s.shiftEnd > s.shiftStart)
     .sort((a, b) => a.shiftStart - b.shiftStart || a.staff.employeeName.localeCompare(b.staff.employeeName, "ja"));
@@ -307,6 +317,7 @@ export function allocateDayStaff(input: AllocationInput): AllocationResult {
       if (pinnedEmp.has(s.staff.employeeId)) continue;
       const roomId = s.currentRoomId;
       if (!roomId) continue;
+      if (!canEnterRoom(s, roomId)) continue;
       const target = activeRooms.find((r) => r.room.workAreaId === roomId);
       if (!target) continue;
       const want = desired.get(roomId) ?? 0;
@@ -324,7 +335,11 @@ export function allocateDayStaff(input: AllocationInput): AllocationResult {
     );
     for (const s of placeable) {
       const candidate = activeRooms
-        .filter((r) => (assignedCount.get(r.room.workAreaId) ?? 0) < (desired.get(r.room.workAreaId) ?? 0))
+        .filter(
+          (r) =>
+            canEnterRoom(s, r.room.workAreaId) &&
+            (assignedCount.get(r.room.workAreaId) ?? 0) < (desired.get(r.room.workAreaId) ?? 0),
+        )
         // まず各部屋へ均等に配って並行稼働させ（早く終わる→遊休が減る）、
         // 同数なら残作業の多い部屋を優先する。
         .sort((a, b) => {
@@ -334,7 +349,7 @@ export function allocateDayStaff(input: AllocationInput): AllocationResult {
           const remB = b.jobState.neededPersonMinutes - b.jobState.spentPersonMinutes;
           return asgA - asgB || remB - remA || a.room.displayOrder - b.room.displayOrder;
         })[0];
-      if (!candidate) break; // これ以上入れる部屋がない
+      if (!candidate) continue; // この人が入れる部屋がない場合でも、次の人は入れる可能性がある
       const roomId = candidate.room.workAreaId;
       assignedCount.set(roomId, (assignedCount.get(roomId) ?? 0) + 1);
       assignmentByEmp.set(s.staff.employeeId, { roomId, jobId: candidate.jobState.job.jobId });
@@ -370,7 +385,7 @@ export function allocateDayStaff(input: AllocationInput): AllocationResult {
       const emp = s.staff.employeeId;
       const placement = assignmentByEmp.get(emp);
       if (placement) {
-        s.currentRoomId = placement.roomId;
+        recordRoomAssignment(s, placement.roomId);
         const arr = empWorkSteps.get(emp) ?? [];
         arr.push({ start: t, roomId: placement.roomId, jobId: placement.jobId });
         empWorkSteps.set(emp, arr);
@@ -429,6 +444,21 @@ function buildRooms(jobs: AllocationJob[], dayStartMin: number): RoomState[] {
   return [...byRoom.values()].sort((a, b) => a.displayOrder - b.displayOrder || a.workAreaName.localeCompare(b.workAreaName, "ja"));
 }
 
+function canEnterRoom(staff: StaffState, roomId: string) {
+  if (staff.lastWorkedRoomId == null || staff.lastWorkedRoomId === roomId) return true;
+  if (staff.visitedRoomIds.has(roomId)) return false;
+  return staff.moveCount < 1;
+}
+
+function recordRoomAssignment(staff: StaffState, roomId: string) {
+  if (staff.lastWorkedRoomId != null && staff.lastWorkedRoomId !== roomId) {
+    staff.moveCount += 1;
+  }
+  staff.lastWorkedRoomId = roomId;
+  staff.currentRoomId = roomId;
+  staff.visitedRoomIds.add(roomId);
+}
+
 function overlapsAny(windows: { start: number; end: number }[], start: number, end: number) {
   return windows.some((w) => start < w.end && w.start < end);
 }
@@ -468,8 +498,10 @@ function assembleResult(ctx: {
   const jobs: JobAllocation[] = allJobStates.map((jobState) => {
     const steps = (ctx.jobPeopleSteps.get(jobState.job.jobId) ?? []).sort((a, b) => a.start - b.start);
     const peopleSegments = mergePeopleSteps(steps, step);
-    const scheduledQuantity = round2((jobState.spentPersonMinutes / 60) * jobState.job.unitsPerPersonHour);
-    const overflow = Math.max(0, round2(jobState.job.quantity - scheduledQuantity));
+    const requestedQuantity = ceilDisplayQuantity(jobState.job.quantity) ?? 0;
+    const rawScheduledQuantity = (jobState.spentPersonMinutes / 60) * jobState.job.unitsPerPersonHour;
+    const scheduledQuantity = Math.min(requestedQuantity, ceilDisplayQuantity(rawScheduledQuantity) ?? 0);
+    const overflow = Math.max(0, ceilDisplayQuantity(requestedQuantity - scheduledQuantity) ?? 0);
     const startTime = peopleSegments.length > 0 ? peopleSegments[0].startTime : null;
     const endTime = peopleSegments.length > 0 ? peopleSegments[peopleSegments.length - 1].endTime : null;
     const warnings: string[] = [];
@@ -485,7 +517,7 @@ function assembleResult(ctx: {
       originalWorkAreaName: jobState.job.originalWorkAreaName,
       workAreaOptions: jobState.job.workAreaOptions,
       unit: jobState.job.unit,
-      requestedQuantity: round2(jobState.job.quantity),
+      requestedQuantity,
       scheduledQuantity,
       overflowQuantity: overflow,
       startTime,
@@ -619,10 +651,6 @@ function mergeIdleSteps(steps: { start: number; reason: IdleReason }[], step: nu
     }
   }
   return segments;
-}
-
-function round2(n: number) {
-  return Math.round(n * 100) / 100;
 }
 
 function round6(n: number) {

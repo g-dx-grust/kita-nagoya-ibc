@@ -72,4 +72,40 @@ describe("月次手間賃 (ProductMonthlyLaborFee)", () => {
     // 既定の適用開始日は対象月の翌月1日。
     expect(price.effectiveFrom.toISOString().slice(0, 10)).toBe("2026-06-01");
   });
+
+  it("提出日報は管理者計上時に当月の月次手間賃を自動再計算する", async () => {
+    const workArea = await createTestWorkArea(prisma);
+    const product = await createTestProduct(prisma, { defaultWorkAreaId: workArea.id });
+    const { approveProductDailyReportEntry, createProductDailyReportEntry } = await import(
+      "@/lib/product-daily-report-service"
+    );
+
+    const submitted = await createProductDailyReportEntry({
+      reportDate: "2026-05-20",
+      productId: product.id,
+      startTime: "09:00",
+      endTime: "11:00",
+      breakMinutes: 0,
+      workerCount: 1,
+      productionQty: 120,
+      materials: [],
+      approvalStatus: "submitted",
+    });
+
+    expect(submitted).toBeTruthy();
+    await expect(
+      prisma.productMonthlyLaborFee.findUnique({
+        where: { productId_yearMonth: { productId: product.id, yearMonth: "2026-05" } },
+      }),
+    ).resolves.toBeNull();
+
+    await approveProductDailyReportEntry(submitted!.id, "管理者");
+
+    const row = await prisma.productMonthlyLaborFee.findUniqueOrThrow({
+      where: { productId_yearMonth: { productId: product.id, yearMonth: "2026-05" } },
+    });
+    expect(row.perBagLaborFee).toBe(20);
+    expect(row.sampleCount).toBe(1);
+    expect(row.status).toBe("draft");
+  });
 });

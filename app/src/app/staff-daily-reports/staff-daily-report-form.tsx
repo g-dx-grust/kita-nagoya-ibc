@@ -55,6 +55,7 @@ export type StaffDailyReportPlanSuggestion = {
   plannedStartTime: string;
   plannedEndTime: string | null;
   plannedPeopleCount: number;
+  assignedStaffNames: string[];
 };
 
 export type StaffDailyReportStaffOption = {
@@ -165,6 +166,7 @@ export default function StaffDailyReportForm({
           plan.plannedEndTime ?? "",
           String(plan.plannedQuantity),
           plan.unit,
+          ...plan.assignedStaffNames,
         ]);
       return matchesArea && matchesText;
     });
@@ -238,7 +240,12 @@ export default function StaffDailyReportForm({
       productionQty: String(plan.plannedQuantity),
       startTime: plan.plannedStartTime,
       endTime: plan.plannedEndTime ?? prev.endTime,
-      workerCount: String(plan.plannedPeopleCount),
+      workerCount: String(
+        plan.assignedStaffNames.length > 0 ? plan.assignedStaffNames.length : plan.plannedPeopleCount,
+      ),
+      submittedBy:
+        prev.submittedBy ||
+        (plan.assignedStaffNames.length === 1 ? plan.assignedStaffNames[0] : ""),
       note: prev.note ? prev.note : plan.workAreaName,
     }));
   }
@@ -531,8 +538,19 @@ export default function StaffDailyReportForm({
                 {formatNumber(plan.plannedQuantity)}
                 {plan.unit}
               </span>
+              <span className="staff-plan-meta">
+                配置:{" "}
+                {plan.assignedStaffNames.length > 0
+                  ? plan.assignedStaffNames.join(" / ")
+                  : "当日確定前"}
+              </span>
               <span className="staff-plan-submeta">
-                <span>{plan.plannedPeopleCount}人</span>
+                <span>
+                  {plan.assignedStaffNames.length > 0
+                    ? plan.assignedStaffNames.length
+                    : plan.plannedPeopleCount}
+                  人
+                </span>
                 {selectedPlanId === plan.id ? <span>この予定で入力中</span> : <span>タップして反映</span>}
               </span>
             </button>

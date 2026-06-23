@@ -135,6 +135,7 @@ export async function runDayAllocation(options: DayAllocationOptions): Promise<D
       unit: plan.unit,
       unitsPerPersonHour,
       roomMaxPeople: workArea.maxPeopleCount ?? 1,
+      earliestStart: plan.plannedStartTime,
     });
   }
 

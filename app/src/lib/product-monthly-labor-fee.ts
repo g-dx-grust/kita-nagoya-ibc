@@ -66,6 +66,7 @@ export async function recomputeMonthlyLaborFees(yearMonth: string, client: Clien
   );
 
   const now = new Date();
+  const productIdsWithSamples = new Set(rows.map((row) => row.productId));
   for (const row of rows) {
     await client.productMonthlyLaborFee.upsert({
       where: { productId_yearMonth: { productId: row.productId, yearMonth } },
@@ -76,6 +77,7 @@ export async function recomputeMonthlyLaborFees(yearMonth: string, client: Clien
         sampleCount: row.sampleCount,
         status: "draft",
         appliedAt: null,
+        appliedBillingPriceId: null,
         computedAt: now,
       },
       create: {
@@ -89,12 +91,28 @@ export async function recomputeMonthlyLaborFees(yearMonth: string, client: Clien
       },
     });
   }
+  const staleWhere: Prisma.ProductMonthlyLaborFeeWhereInput = { yearMonth };
+  if (productIdsWithSamples.size > 0) {
+    staleWhere.productId = { notIn: Array.from(productIdsWithSamples) };
+  }
+  const stale = await client.productMonthlyLaborFee.updateMany({
+    where: staleWhere,
+    data: {
+      perBagLaborFee: 0,
+      avgPerHourQty: 0,
+      sampleCount: 0,
+      status: "draft",
+      appliedAt: null,
+      appliedBillingPriceId: null,
+      computedAt: now,
+    },
+  });
 
   await audit({
     action: "recompute_monthly_labor_fee",
     entityType: "ProductMonthlyLaborFee",
     entityId: yearMonth,
-    after: { yearMonth, productCount: rows.length },
+    after: { yearMonth, productCount: rows.length, staleCount: stale.count },
   });
 
   return client.productMonthlyLaborFee.findMany({

@@ -157,6 +157,82 @@ describe("allocateDayStaff", () => {
     expect(moved).toBeDefined();
   });
 
+  it("自動配置では一般→在庫→一般のように元の部屋へ戻らない", () => {
+    const result = allocateDayStaff({
+      ...base,
+      staff: [staff("e1", "A")],
+      jobs: [
+        {
+          jobId: "jA",
+          productId: "pA",
+          productName: "受注A",
+          workAreaId: "room1",
+          workAreaName: "一般部屋",
+          workAreaDisplayOrder: 1,
+          quantity: 100,
+          unit: "袋",
+          unitsPerPersonHour: 100,
+          roomMaxPeople: 1,
+        },
+        {
+          jobId: "jC",
+          productId: "pC",
+          productName: "受注C",
+          workAreaId: "room1",
+          workAreaName: "一般部屋",
+          workAreaDisplayOrder: 1,
+          quantity: 100,
+          unit: "袋",
+          unitsPerPersonHour: 100,
+          roomMaxPeople: 1,
+          earliestStart: "11:00",
+        },
+        {
+          jobId: "jB",
+          productId: "pB",
+          productName: "在庫B",
+          workAreaId: "room2",
+          workAreaName: "在庫部屋",
+          workAreaDisplayOrder: 2,
+          quantity: 100,
+          unit: "袋",
+          unitsPerPersonHour: 100,
+          roomMaxPeople: 1,
+        },
+      ],
+    });
+
+    const emp = result.employees[0];
+    expect(emp.segments.map((seg) => seg.workAreaId)).toEqual(["room1", "room2"]);
+    expect(result.jobs.find((job) => job.jobId === "jC")?.scheduledQuantity).toBe(0);
+    expect(result.jobs.find((job) => job.jobId === "jC")?.overflowQuantity).toBe(100);
+  });
+
+  it("商品数・袋数として表示される数量は切り上げる", () => {
+    const result = allocateDayStaff({
+      ...base,
+      dayEnd: "10:00",
+      staff: [staff("e1", "A", "09:00", "10:00")],
+      jobs: [
+        {
+          jobId: "j1",
+          productId: "p1",
+          productName: "端数商品",
+          workAreaId: "room1",
+          workAreaName: "一般部屋",
+          quantity: 10.1,
+          unit: "袋",
+          unitsPerPersonHour: 10.1,
+          roomMaxPeople: 1,
+        },
+      ],
+    });
+
+    expect(result.jobs[0].requestedQuantity).toBe(11);
+    expect(result.jobs[0].scheduledQuantity).toBe(11);
+    expect(result.jobs[0].overflowQuantity).toBe(0);
+  });
+
   it("手動ピンで指定した人は自動配置を上書きして指定の部屋に固定される", () => {
     const result = allocateDayStaff({
       ...base,
