@@ -461,7 +461,7 @@ export default async function MonthlyProductionPlansPage({
                       <tr>
                         <th>商品</th>
                         <th>基準日在庫</th>
-                        <th>{planningBasis === "historical_actual" ? "月次予測" : "未処理需要"}</th>
+                        <th>{planningBasis === "historical_actual" ? "月次予測/受注" : "未処理需要"}</th>
                         <th>既存予定</th>
                         <th>生成候補</th>
                         <th>期間末見込</th>

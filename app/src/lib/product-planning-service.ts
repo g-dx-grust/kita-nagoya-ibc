@@ -259,6 +259,28 @@ export async function loadMonthlyProductionSchedulePreview({
     openPlannedByProductId,
   }).sort((a, b) => a.productCode.localeCompare(b.productCode, "ja"));
 
+  const demandInputs = demandRows.map<MonthlyPlanningDemand>((demand) => ({
+    productId: demand.productId,
+    dueDate: toDateInput(demand.dueDate),
+    quantity: demand.quantity,
+    demandType: demand.demandType as MonthlyPlanningDemand["demandType"],
+  }));
+  const existingProductionInputs = planRows.map<MonthlyPlanningExistingProduction>((plan) => ({
+    productId: plan.productId,
+    date: toDateInput(plan.date),
+    quantity: plan.plannedQuantity,
+  }));
+  const buildShortagePreview = (extraExistingProductions: MonthlyPlanningExistingProduction[] = []) =>
+    computeMonthlyProductionSchedule({
+      dateFrom: dateFromInput,
+      dateTo: toDateInput(dateTo),
+      productionLeadDays,
+      products: monthlyProducts,
+      onHandByProductId,
+      demands: demandInputs,
+      existingProductions: [...existingProductionInputs, ...extraExistingProductions],
+    });
+
   if (planningBasis === "historical_actual") {
     const suggestions: MonthlyProductionSuggestion[] = [];
     const productSummaries: MonthlyProductionProductSummary[] = [];
@@ -319,6 +341,25 @@ export async function loadMonthlyProductionSchedulePreview({
       });
     }
 
+    const shortagePreview = buildShortagePreview(
+      suggestions.map<MonthlyPlanningExistingProduction>((suggestion) => ({
+        productId: suggestion.productId,
+        date: suggestion.scheduleDate,
+        quantity: suggestion.suggestedQuantity,
+      })),
+    );
+    const combinedSuggestions = [...suggestions, ...shortagePreview.suggestions].sort(
+      (a, b) =>
+        a.scheduleDate.localeCompare(b.scheduleDate) ||
+        schedulePriorityKey(a.schedulePriority) - schedulePriorityKey(b.schedulePriority) ||
+        a.productCode.localeCompare(b.productCode, "ja") ||
+        a.dueDate.localeCompare(b.dueDate),
+    );
+    const combinedProductSummaries = mergeHistoricalProductSummaries(
+      productSummaries,
+      shortagePreview.productSummaries,
+    );
+
     return {
       dateFrom: dateFromInput,
       dateTo: toDateInput(dateTo),
@@ -327,39 +368,12 @@ export async function loadMonthlyProductionSchedulePreview({
       forecastReferenceMonths: historicalForecast.referenceMonths,
       historicalForecasts: visibleHistoricalForecasts,
       reconciliation,
-      suggestions: suggestions.sort(
-        (a, b) =>
-          a.scheduleDate.localeCompare(b.scheduleDate) ||
-          schedulePriorityKey(a.schedulePriority) - schedulePriorityKey(b.schedulePriority) ||
-          a.productCode.localeCompare(b.productCode, "ja") ||
-          a.dueDate.localeCompare(b.dueDate),
-      ),
-      productSummaries: productSummaries.sort(
-        (a, b) =>
-          schedulePriorityKey(a.schedulePriority) - schedulePriorityKey(b.schedulePriority) ||
-          a.productCode.localeCompare(b.productCode, "ja"),
-      ),
+      suggestions: combinedSuggestions,
+      productSummaries: combinedProductSummaries,
     };
   }
 
-  const shortagePreview = computeMonthlyProductionSchedule({
-    dateFrom: dateFromInput,
-    dateTo: toDateInput(dateTo),
-    productionLeadDays,
-    products: monthlyProducts,
-    onHandByProductId,
-    demands: demandRows.map<MonthlyPlanningDemand>((demand) => ({
-      productId: demand.productId,
-      dueDate: toDateInput(demand.dueDate),
-      quantity: demand.quantity,
-      demandType: demand.demandType as MonthlyPlanningDemand["demandType"],
-    })),
-    existingProductions: planRows.map<MonthlyPlanningExistingProduction>((plan) => ({
-      productId: plan.productId,
-      date: toDateInput(plan.date),
-      quantity: plan.plannedQuantity,
-    })),
-  });
+  const shortagePreview = buildShortagePreview();
 
   return {
     ...shortagePreview,
@@ -376,4 +390,44 @@ function toDateInput(date: Date) {
 
 function round4(n: number) {
   return Math.round(n * 10000) / 10000;
+}
+
+function mergeHistoricalProductSummaries(
+  historicalSummaries: MonthlyProductionProductSummary[],
+  shortageSummaries: MonthlyProductionProductSummary[],
+) {
+  const byProductId = new Map(historicalSummaries.map((summary) => [summary.productId, summary]));
+
+  for (const shortage of shortageSummaries) {
+    const existing = byProductId.get(shortage.productId);
+    const hasShortageActivity =
+      shortage.openDemandQuantity > 0 ||
+      shortage.suggestedQuantity > 0 ||
+      shortage.existingProductionQuantity > 0 ||
+      shortage.minProjectedOnHandQuantity < 0;
+
+    if (!existing) {
+      if (hasShortageActivity) byProductId.set(shortage.productId, shortage);
+      continue;
+    }
+
+    const endingProjected = round4(
+      existing.endingProjectedOnHandQuantity + shortage.suggestedQuantity - shortage.openDemandQuantity,
+    );
+    byProductId.set(shortage.productId, {
+      ...existing,
+      openDemandQuantity: round4(existing.openDemandQuantity + shortage.openDemandQuantity),
+      suggestedQuantity: round4(existing.suggestedQuantity + shortage.suggestedQuantity),
+      endingProjectedOnHandQuantity: endingProjected,
+      minProjectedOnHandQuantity: round4(
+        Math.min(existing.minProjectedOnHandQuantity, shortage.minProjectedOnHandQuantity, endingProjected),
+      ),
+    });
+  }
+
+  return [...byProductId.values()].sort(
+    (a, b) =>
+      schedulePriorityKey(a.schedulePriority) - schedulePriorityKey(b.schedulePriority) ||
+      a.productCode.localeCompare(b.productCode, "ja"),
+  );
 }
