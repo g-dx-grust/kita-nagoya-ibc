@@ -102,6 +102,7 @@ NEXT_PUBLIC_KITAGOYA_API_BASE_PATH="/api/kitanagoya"
 - `/production-plans` 生産予定一覧 (絞り込み)
 - `/production-plans/new` 新規登録 (3モードのリアルタイム計算)
 - `/production-plans/monthly` 前々月前年比の月次予測、または現在庫・未処理需要・既存予定から月間生産予定をシミュレーションし、仮予定として下書き生成
+- `/production-plans/monthly/confirm` 月間下書き予定の本決定 (在庫品/受注品を分けて修正・一括確定、未処理受注から下書き予定化)
 - `/production-plans/auto` シフトに合わせた日別生産スケジュール自動作成 (社内部屋を並列割り振り。プレビューから当日実施分を選択して確定)
 - `/product-planning` 製品在庫・受注/出荷予定から生産候補を提案し、月次実績を登録
 - `/production-plans/[id]` 詳細・編集・確定/取消/再計算・原料不足表示
@@ -195,7 +196,7 @@ GET/POST /api/invoice-exports                         請求CSV出力 + 履歴
 - 作業場所は文字起こしの曖昧な部屋名(「カラーテレビ」「トラップ部屋」等)を固定しないため、すべて `work_areas` テーブルで管理。
 - 作業場所ごとに最大配置人数を持ち、自動作成は外注を除いた社内部屋を同時進行で使う。商品に1部屋分の生産能力だけ登録されている場合は、他の社内部屋へ同じ能力を仮適用し、採用した部屋は生産能力マスターへ自動補完する。
 - 生産能力は訪問確認用に `reviewStatus` と `reviewMemo` を持つ。`/capacity-review` で未確認・異常値・日報1件だけ・部屋別未登録を絞り込み、その場で `袋/人時` を修正できる。
-- 自動作成された生産予定はまず `draft` の下書きとして保存する。詳細画面で数量・部屋・時間・スタッフを修正し、問題なければ個別または一括で `confirmed` にする。
+- 自動作成された生産予定はまず `draft` の下書きとして保存する。月間本決定画面または詳細画面で数量・日付・部屋・時間・スタッフを修正し、問題なければ個別または一括で `confirmed` にする。
 - 在庫は `stock_movements` 台帳方式 (opening / planned_reserve / actual_consume / inbound / adjustment / transfer)。
 - 製品在庫も `stock_movements` の `itemType=product` で管理し、受注/出荷予定は `product_demands` で管理。
 - 製品計画は「現在庫 + 既存予定生産 - 未処理需要」を見て、不足分を商品ごとの安全在庫・標準ロットで丸めて提案する。

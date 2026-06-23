@@ -509,7 +509,8 @@ table {
     linear-gradient(270deg, rgba(31, 35, 41, 0.14), rgba(31, 35, 41, 0)) right center / 14px 100% no-repeat scroll,
     var(--surface);
   box-shadow: var(--shadow);
-  overscroll-behavior: contain;
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
 }
@@ -10708,7 +10709,10 @@ tr.row-selected td {
   align-items: center;
   margin-bottom: 12px;
   padding: 12px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
   border-left: 4px solid var(--border-strong);
+  border-radius: 8px;
 }
 
 .monthly-overview-command.warn {
@@ -10772,6 +10776,10 @@ tr.row-selected td {
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
   margin: 0 0 12px;
+}
+
+.monthly-control-metrics {
+  margin-top: 12px;
 }
 
 .monthly-review-item {
@@ -10845,6 +10853,10 @@ tr.row-selected td {
 .monthly-schedule-action-panel {
   display: grid;
   gap: 12px;
+}
+
+.monthly-schedule-action-panel-embedded {
+  margin-top: 12px;
 }
 
 .monthly-schedule-command {
@@ -11091,6 +11103,128 @@ tr.row-selected td {
   }
 }
 
+/* --- 月間生産予定の本決定 --- */
+.monthly-decision-command {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(260px, 1.4fr) auto;
+  gap: 10px 12px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.monthly-decision-command-title,
+.monthly-decision-checks,
+.monthly-decision-actions,
+.section-heading-row,
+.section-heading-actions,
+.monthly-decision-product-cell,
+.monthly-decision-inline-fields,
+.monthly-decision-demand-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.monthly-decision-command-title strong,
+.monthly-decision-product-cell strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.monthly-decision-actions {
+  justify-content: flex-end;
+}
+
+.monthly-decision-actions .button-link,
+.monthly-decision-actions button,
+.section-heading-actions button,
+.monthly-decision-plan-table button,
+.monthly-decision-demand-table button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+}
+
+.monthly-decision-section {
+  margin-top: 18px;
+}
+
+.section-heading-row {
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.section-heading-row h2 {
+  margin: 0;
+}
+
+.section-heading-actions {
+  justify-content: flex-end;
+}
+
+.monthly-decision-product-cell {
+  align-items: flex-start;
+  min-width: 260px;
+}
+
+.monthly-decision-inline-fields {
+  display: grid;
+  grid-template-columns: minmax(128px, 1fr) minmax(82px, 0.5fr);
+  gap: 6px;
+  min-width: 220px;
+}
+
+.monthly-decision-demand-fields {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.2fr) minmax(96px, 0.8fr) minmax(78px, 0.6fr);
+  gap: 6px;
+  min-width: 340px;
+}
+
+.monthly-decision-plan-table input,
+.monthly-decision-plan-table select,
+.monthly-decision-demand-table input,
+.monthly-decision-demand-table select {
+  min-width: 0;
+  width: 100%;
+}
+
+.monthly-decision-plan-table .row-needs-action > td,
+.monthly-decision-demand-table .row-needs-action > td {
+  background: #fffaf0;
+}
+
+.table-frame .monthly-decision-plan-table {
+  min-width: max(100%, 1320px);
+}
+
+.table-frame .monthly-decision-demand-table {
+  min-width: max(100%, 1280px);
+}
+
+@media (max-width: 760px) {
+  .monthly-decision-command {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .monthly-decision-actions,
+  .section-heading-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+
+  .monthly-decision-actions .button-link,
+  .monthly-decision-actions button,
+  .section-heading-actions button {
+    width: 100%;
+  }
+}
+
 /* --- 製品在庫・自動生産提案 --- */
 .product-planning-period-form label > span {
   display: inline-flex;
@@ -11116,6 +11250,19 @@ tr.row-selected td {
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: var(--shadow);
+}
+
+.product-planning-control-panel .product-planning-command {
+  margin: 12px 0;
+  box-shadow: none;
+}
+
+.product-planning-control-panel .product-planning-flow-grid {
+  margin: 0 0 12px;
+}
+
+.product-planning-control-panel .product-planning-queue {
+  margin: 0;
 }
 
 .product-planning-command-title,

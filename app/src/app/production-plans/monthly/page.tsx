@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, CalendarDays, ListChecks, PackageCheck, Table2 } from "lucide-react";
+import { AlertTriangle, CalendarDays, ClipboardCheck, ListChecks, PackageCheck, Table2 } from "lucide-react";
 import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import SectionTabs from "@/components/ui/section-tabs";
@@ -160,6 +160,13 @@ export default async function MonthlyProductionPlansPage({
       <div className="page-title-row">
         <h1>月間生産スケジュール生成</h1>
         <div className="page-title-actions">
+          <Link
+            className="button-link"
+            href={kitagoyaPath(`/production-plans/monthly/confirm?dateFrom=${dateFrom}&dateTo=${dateTo}`)}
+          >
+            <ClipboardCheck size={16} aria-hidden="true" />
+            本決定へ
+          </Link>
           <Link className="button-link secondary-link" href={kitagoyaPath("/product-planning")}>
             製品計画へ
           </Link>
@@ -169,84 +176,100 @@ export default async function MonthlyProductionPlansPage({
         </div>
       </div>
 
-      <div className={`monthly-overview-command panel ${monthlyStatusClass}`}>
-        <div className="monthly-overview-command-title">
-          <span className={`badge ${monthlyStatusClass}`}>{monthlyStatusLabel}</span>
-          <strong>月間生成の確認</strong>
-          <span className="subtext">
-            {dateFrom} - {dateTo} / {planningBasisLabel(planningBasis)}
-          </span>
-          <span className="monthly-overview-next">次: {nextMonthlyAction}</span>
+      <CollapsiblePanel
+        title="月間生成の通知・確認"
+        summary={`${monthlyStatusLabel} / 候補 ${groupedSuggestions.length} / 下書き ${existingDraftCount}`}
+        className="monthly-top-accordion"
+      >
+        <div className={`monthly-overview-command ${monthlyStatusClass}`}>
+          <div className="monthly-overview-command-title">
+            <span className={`badge ${monthlyStatusClass}`}>{monthlyStatusLabel}</span>
+            <strong>月間生成の確認</strong>
+            <span className="subtext">
+              {dateFrom} - {dateTo} / {planningBasisLabel(planningBasis)}
+            </span>
+            <span className="monthly-overview-next">次: {nextMonthlyAction}</span>
+          </div>
+          <div className="monthly-overview-checks">
+            <span className={`badge ${groupedSuggestions.length > 0 ? "warn" : "success"}`}>
+              生成候補 {groupedSuggestions.length}
+            </span>
+            <span className={`badge ${underTargetCount > 0 ? "danger" : "success"}`}>
+              予実不足 {underTargetCount}
+            </span>
+            <span className={`badge ${negativeProjectedCount > 0 ? "danger" : "success"}`}>
+              在庫割れ {negativeProjectedCount}
+            </span>
+            <span className={`badge ${insufficientForecastCount > 0 ? "warn" : "success"}`}>
+              実績不足 {insufficientForecastCount}
+            </span>
+            <span className="badge muted">既存下書き {existingDraftCount}</span>
+          </div>
+          <div className="monthly-overview-actions">
+            <Link className="button-link" href={monthlyHref("suggestions")}>
+              <PackageCheck size={15} aria-hidden="true" />
+              生成候補
+            </Link>
+            <Link className="button-link secondary-link" href={monthlyHref("schedule")}>
+              <Table2 size={15} aria-hidden="true" />
+              予定表
+            </Link>
+          </div>
         </div>
-        <div className="monthly-overview-checks">
-          <span className={`badge ${groupedSuggestions.length > 0 ? "warn" : "success"}`}>
-            生成候補 {groupedSuggestions.length}
-          </span>
-          <span className={`badge ${underTargetCount > 0 ? "danger" : "success"}`}>
-            予実不足 {underTargetCount}
-          </span>
-          <span className={`badge ${negativeProjectedCount > 0 ? "danger" : "success"}`}>
-            在庫割れ {negativeProjectedCount}
-          </span>
-          <span className={`badge ${insufficientForecastCount > 0 ? "warn" : "success"}`}>
-            実績不足 {insufficientForecastCount}
-          </span>
-          <span className="badge muted">既存下書き {existingDraftCount}</span>
-        </div>
-        <div className="monthly-overview-actions">
-          <Link className="button-link" href={monthlyHref("suggestions")}>
-            <PackageCheck size={15} aria-hidden="true" />
-            生成候補
-          </Link>
-          <Link className="button-link secondary-link" href={monthlyHref("schedule")}>
-            <Table2 size={15} aria-hidden="true" />
-            予定表
-          </Link>
-        </div>
-      </div>
 
-      <div className="monthly-review-queue" aria-label="月間予定レビュー順">
-        <Link className={`monthly-review-item ${groupedSuggestions.length > 0 ? "warn" : "success"}${activeView === "suggestions" ? " is-active" : ""}`} href={monthlyHref("suggestions")}>
-          <span>
-            <PackageCheck size={15} aria-hidden="true" />
-            生成候補
-          </span>
-          <strong>{groupedSuggestions.length}</strong>
-          <small>{affectedProducts} 商品</small>
-        </Link>
-        <Link className={`monthly-review-item ${underTargetCount > 0 ? "danger" : "success"}${activeView === "forecast" ? " is-active" : ""}`} href={monthlyHref("forecast")}>
-          <span>
-            <AlertTriangle size={15} aria-hidden="true" />
-            予実不足
-          </span>
-          <strong>{underTargetCount}</strong>
-          <small>超過 {overTargetCount}</small>
-        </Link>
-        <Link className={`monthly-review-item ${negativeProjectedCount > 0 ? "danger" : "success"}${activeView === "product-inventory" ? " is-active" : ""}`} href={monthlyHref("product-inventory")}>
-          <span>
-            <ListChecks size={15} aria-hidden="true" />
-            在庫見通し
-          </span>
-          <strong>{negativeProjectedCount}</strong>
-          <small>期間中マイナス</small>
-        </Link>
-        <Link className={`monthly-review-item${activeView === "schedule" ? " is-active" : ""}`} href={monthlyHref("schedule")}>
-          <span>
-            <Table2 size={15} aria-hidden="true" />
-            予定表
-          </span>
-          <strong>{productionSheetRows.length}</strong>
-          <small>商品行</small>
-        </Link>
-        <Link className={`monthly-review-item${activeView === "calendar" ? " is-active" : ""}`} href={monthlyHref("calendar")}>
-          <span>
-            <CalendarDays size={15} aria-hidden="true" />
-            カレンダー
-          </span>
-          <strong>{days.length}</strong>
-          <small>日別確認</small>
-        </Link>
-      </div>
+        <div className="monthly-review-queue" aria-label="月間予定レビュー順">
+          <Link className={`monthly-review-item ${groupedSuggestions.length > 0 ? "warn" : "success"}${activeView === "suggestions" ? " is-active" : ""}`} href={monthlyHref("suggestions")}>
+            <span>
+              <PackageCheck size={15} aria-hidden="true" />
+              生成候補
+            </span>
+            <strong>{groupedSuggestions.length}</strong>
+            <small>{affectedProducts} 商品</small>
+          </Link>
+          <Link className={`monthly-review-item ${underTargetCount > 0 ? "danger" : "success"}${activeView === "forecast" ? " is-active" : ""}`} href={monthlyHref("forecast")}>
+            <span>
+              <AlertTriangle size={15} aria-hidden="true" />
+              予実不足
+            </span>
+            <strong>{underTargetCount}</strong>
+            <small>超過 {overTargetCount}</small>
+          </Link>
+          <Link className={`monthly-review-item ${negativeProjectedCount > 0 ? "danger" : "success"}${activeView === "product-inventory" ? " is-active" : ""}`} href={monthlyHref("product-inventory")}>
+            <span>
+              <ListChecks size={15} aria-hidden="true" />
+              在庫見通し
+            </span>
+            <strong>{negativeProjectedCount}</strong>
+            <small>期間中マイナス</small>
+          </Link>
+          <Link className={`monthly-review-item${activeView === "schedule" ? " is-active" : ""}`} href={monthlyHref("schedule")}>
+            <span>
+              <Table2 size={15} aria-hidden="true" />
+              予定表
+            </span>
+            <strong>{productionSheetRows.length}</strong>
+            <small>商品行</small>
+          </Link>
+          <Link className={`monthly-review-item${activeView === "calendar" ? " is-active" : ""}`} href={monthlyHref("calendar")}>
+            <span>
+              <CalendarDays size={15} aria-hidden="true" />
+              カレンダー
+            </span>
+            <strong>{days.length}</strong>
+            <small>日別確認</small>
+          </Link>
+        </div>
+
+        <div className="monthly-control-metrics">
+          <div className="stat-grid">
+            <Metric label="生成候補" value={`${groupedSuggestions.length} 件`} />
+            <Metric label="対象商品" value={`${affectedProducts} 商品`} />
+            <Metric label="候補数量合計" value={formatNumber(suggestedTotal)} />
+            <Metric label="既存予定" value={`${existingPlans.length} 件`} />
+            <Metric label="計画基準" value={planningBasisLabel(planningBasis)} />
+          </div>
+        </div>
+      </CollapsiblePanel>
 
       <CollapsiblePanel
         title="表示・再計算条件"
@@ -278,23 +301,20 @@ export default async function MonthlyProductionPlansPage({
         </form>
       </CollapsiblePanel>
 
-      <div className="panel">
-        <div className="stat-grid">
-          <Metric label="生成候補" value={`${groupedSuggestions.length} 件`} />
-          <Metric label="対象商品" value={`${affectedProducts} 商品`} />
-          <Metric label="候補数量合計" value={formatNumber(suggestedTotal)} />
-          <Metric label="既存予定" value={`${existingPlans.length} 件`} />
-          <Metric label="計画基準" value={planningBasisLabel(planningBasis)} />
-        </div>
-      </div>
-
-      <MonthlyScheduleActions
-        dateFrom={dateFrom}
-        dateTo={dateTo}
-        productionLeadDays={productionLeadDays}
-        planningBasis={planningBasis}
-        disabled={groupedSuggestions.length === 0}
-      />
+      <CollapsiblePanel
+        title="仮予定生成"
+        summary={`生成候補 ${groupedSuggestions.length} / 既存下書き ${existingDraftCount}`}
+        className="monthly-generation-accordion"
+      >
+        <MonthlyScheduleActions
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          productionLeadDays={productionLeadDays}
+          planningBasis={planningBasis}
+          disabled={groupedSuggestions.length === 0}
+          embedded
+        />
+      </CollapsiblePanel>
 
       <SectionTabs
         ariaLabel="月間予定の表示切り替え"

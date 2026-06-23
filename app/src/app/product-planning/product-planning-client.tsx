@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 import { ceilDisplayQuantity, formatCases } from "@/lib/units";
+import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import ProductCombobox from "@/components/ui/product-combobox";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 
@@ -437,116 +438,122 @@ export default function ProductPlanningClient({
     <>
       {message && <div className="alert info">{message}</div>}
 
-      <div className="product-planning-command">
-        <div className="product-planning-command-title">
-          <span className={`badge ${planningStatusClass}`}>{planningStatusLabel}</span>
-          <strong>生産判断</strong>
-          <span className="subtext">
-            {initialDateFrom} - {initialDateTo}
-          </span>
-          <button type="button" className="product-planning-next" onClick={runNextPlanningAction}>
-            次: {nextPlanningAction.label}
-          </button>
-        </div>
-        <div className="product-planning-checks">
-          <span className={`badge ${planningStats.candidateCount > 0 ? "info" : "success"}`}>
-            候補 {planningStats.candidateCount}
-          </span>
-          <span className={`badge ${planningStats.suggestedCount > 0 ? "warn" : "success"}`}>
-            推奨あり {planningStats.suggestedCount}
-          </span>
-          <span className={`badge ${planningStats.dependencyCount > 0 ? "warn" : "success"}`}>
-            入荷確認 {planningStats.dependencyCount}
-          </span>
-          <span className="badge info">未処理予定 {planningStats.demandCount}</span>
-          <span className="badge muted">在庫 {planningStats.stockShortageCount}</span>
-          <span className="badge muted">受注 {planningStats.makeToOrderCount}</span>
-        </div>
-        <div className="product-planning-command-actions">
-          <button type="button" className="secondary" onClick={() => setShowInputPanel((current) => !current)}>
-            <SlidersHorizontal size={15} aria-hidden="true" />
-            {showInputPanel ? "登録パネルを閉じる" : "登録パネル"}
-          </button>
-          <Link
-            className="button-link"
-            href={kitagoyaPath(`/production-plans/auto?date=${initialDateFrom}&loadSuggestions=1`)}
-          >
-            <PackageCheck size={15} aria-hidden="true" />
-            候補を読込んでシフト自動作成へ
-          </Link>
-          <Link
-            className="button-link secondary-link"
-            href={kitagoyaPath(`/production-plans/monthly?dateFrom=${initialDateFrom}&dateTo=${initialDateTo}`)}
-          >
-            <ClipboardList size={15} aria-hidden="true" />
-            月間生産予定を生成
-          </Link>
-        </div>
-      </div>
-
-      <div className="product-planning-flow-grid" aria-label="製品計画フロー">
-        {planningFlowCards.map(({ label, count, detail, action, tone, Icon }) => (
-          <button key={label} type="button" className={`product-planning-flow-card ${tone}`} onClick={action}>
-            <span>
-              <Icon size={15} aria-hidden="true" />
-              {label}
+      <CollapsiblePanel
+        title="生産判断・通知"
+        summary={`${planningStatusLabel} / 候補 ${planningStats.candidateCount} / 未処理予定 ${planningStats.demandCount}`}
+        className="product-planning-control-panel"
+      >
+        <div className="product-planning-command">
+          <div className="product-planning-command-title">
+            <span className={`badge ${planningStatusClass}`}>{planningStatusLabel}</span>
+            <strong>生産判断</strong>
+            <span className="subtext">
+              {initialDateFrom} - {initialDateTo}
             </span>
-            <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
-            <small>{detail}</small>
-          </button>
-        ))}
-      </div>
+            <button type="button" className="product-planning-next" onClick={runNextPlanningAction}>
+              次: {nextPlanningAction.label}
+            </button>
+          </div>
+          <div className="product-planning-checks">
+            <span className={`badge ${planningStats.candidateCount > 0 ? "info" : "success"}`}>
+              候補 {planningStats.candidateCount}
+            </span>
+            <span className={`badge ${planningStats.suggestedCount > 0 ? "warn" : "success"}`}>
+              推奨あり {planningStats.suggestedCount}
+            </span>
+            <span className={`badge ${planningStats.dependencyCount > 0 ? "warn" : "success"}`}>
+              入荷確認 {planningStats.dependencyCount}
+            </span>
+            <span className="badge info">未処理予定 {planningStats.demandCount}</span>
+            <span className="badge muted">在庫 {planningStats.stockShortageCount}</span>
+            <span className="badge muted">受注 {planningStats.makeToOrderCount}</span>
+          </div>
+          <div className="product-planning-command-actions">
+            <button type="button" className="secondary" onClick={() => setShowInputPanel((current) => !current)}>
+              <SlidersHorizontal size={15} aria-hidden="true" />
+              {showInputPanel ? "登録パネルを閉じる" : "登録パネル"}
+            </button>
+            <Link
+              className="button-link"
+              href={kitagoyaPath(`/production-plans/auto?date=${initialDateFrom}&loadSuggestions=1`)}
+            >
+              <PackageCheck size={15} aria-hidden="true" />
+              候補を読込んでシフト自動作成へ
+            </Link>
+            <Link
+              className="button-link secondary-link"
+              href={kitagoyaPath(`/production-plans/monthly?dateFrom=${initialDateFrom}&dateTo=${initialDateTo}`)}
+            >
+              <ClipboardList size={15} aria-hidden="true" />
+              月間生産予定を生成
+            </Link>
+          </div>
+        </div>
 
-      <div className="product-planning-queue" aria-label="生産候補レビュー順">
-        <button
-          type="button"
-          className={`product-planning-queue-item ${planningStats.hardShortageCount > 0 ? "warn" : "success"}${suggestionFilter === "hard" ? " is-active" : ""}`}
-          onClick={() => setSuggestionFilter((current) => (current === "hard" ? "all" : "hard"))}
-        >
-          <span>生産が必要</span>
-          <strong>{planningStats.hardShortageCount}</strong>
-        </button>
-        <button
-          type="button"
-          className={`product-planning-queue-item ${planningStats.dependencyCount > 0 ? "warn" : "success"}${suggestionFilter === "dependency" ? " is-active" : ""}`}
-          onClick={() => setSuggestionFilter((current) => (current === "dependency" ? "all" : "dependency"))}
-        >
-          <span>入荷確認</span>
-          <strong>{planningStats.dependencyCount}</strong>
-        </button>
-        <button
-          type="button"
-          className={`product-planning-queue-item ${planningStats.suggestedCount > 0 ? "warn" : "success"}${suggestionFilter === "suggested" ? " is-active" : ""}`}
-          onClick={() => setSuggestionFilter((current) => (current === "suggested" ? "all" : "suggested"))}
-        >
-          <span>推奨あり</span>
-          <strong>{planningStats.suggestedCount}</strong>
-        </button>
-        <button
-          type="button"
-          className={`product-planning-queue-item${suggestionFilter === "stock" ? " is-active" : ""}`}
-          onClick={() => setSuggestionFilter((current) => (current === "stock" ? "all" : "stock"))}
-        >
-          <span>在庫品</span>
-          <strong>{planningStats.stockShortageCount}</strong>
-        </button>
-        <button
-          type="button"
-          className={`product-planning-queue-item${suggestionFilter === "order" ? " is-active" : ""}`}
-          onClick={() => setSuggestionFilter((current) => (current === "order" ? "all" : "order"))}
-        >
-          <span>受注品</span>
-          <strong>{planningStats.makeToOrderCount}</strong>
-        </button>
-        <button
-          type="button"
-          className={`product-planning-queue-item${suggestionFilter === "all" ? " is-active" : ""}`}
-          onClick={() => setSuggestionFilter("all")}
-        >
-          <span>全候補</span>
-          <strong>{planningStats.candidateCount}</strong>
-        </button>
-      </div>
+        <div className="product-planning-flow-grid" aria-label="製品計画フロー">
+          {planningFlowCards.map(({ label, count, detail, action, tone, Icon }) => (
+            <button key={label} type="button" className={`product-planning-flow-card ${tone}`} onClick={action}>
+              <span>
+                <Icon size={15} aria-hidden="true" />
+                {label}
+              </span>
+              <strong>{typeof count === "number" ? count.toLocaleString() : count}</strong>
+              <small>{detail}</small>
+            </button>
+          ))}
+        </div>
+
+        <div className="product-planning-queue" aria-label="生産候補レビュー順">
+          <button
+            type="button"
+            className={`product-planning-queue-item ${planningStats.hardShortageCount > 0 ? "warn" : "success"}${suggestionFilter === "hard" ? " is-active" : ""}`}
+            onClick={() => setSuggestionFilter((current) => (current === "hard" ? "all" : "hard"))}
+          >
+            <span>生産が必要</span>
+            <strong>{planningStats.hardShortageCount}</strong>
+          </button>
+          <button
+            type="button"
+            className={`product-planning-queue-item ${planningStats.dependencyCount > 0 ? "warn" : "success"}${suggestionFilter === "dependency" ? " is-active" : ""}`}
+            onClick={() => setSuggestionFilter((current) => (current === "dependency" ? "all" : "dependency"))}
+          >
+            <span>入荷確認</span>
+            <strong>{planningStats.dependencyCount}</strong>
+          </button>
+          <button
+            type="button"
+            className={`product-planning-queue-item ${planningStats.suggestedCount > 0 ? "warn" : "success"}${suggestionFilter === "suggested" ? " is-active" : ""}`}
+            onClick={() => setSuggestionFilter((current) => (current === "suggested" ? "all" : "suggested"))}
+          >
+            <span>推奨あり</span>
+            <strong>{planningStats.suggestedCount}</strong>
+          </button>
+          <button
+            type="button"
+            className={`product-planning-queue-item${suggestionFilter === "stock" ? " is-active" : ""}`}
+            onClick={() => setSuggestionFilter((current) => (current === "stock" ? "all" : "stock"))}
+          >
+            <span>在庫品</span>
+            <strong>{planningStats.stockShortageCount}</strong>
+          </button>
+          <button
+            type="button"
+            className={`product-planning-queue-item${suggestionFilter === "order" ? " is-active" : ""}`}
+            onClick={() => setSuggestionFilter((current) => (current === "order" ? "all" : "order"))}
+          >
+            <span>受注品</span>
+            <strong>{planningStats.makeToOrderCount}</strong>
+          </button>
+          <button
+            type="button"
+            className={`product-planning-queue-item${suggestionFilter === "all" ? " is-active" : ""}`}
+            onClick={() => setSuggestionFilter("all")}
+          >
+            <span>全候補</span>
+            <strong>{planningStats.candidateCount}</strong>
+          </button>
+        </div>
+      </CollapsiblePanel>
 
       {showInputPanel && (
       <div id="product-planning-inputs" className="grid grid-2 product-planning-input-grid anchor-offset">

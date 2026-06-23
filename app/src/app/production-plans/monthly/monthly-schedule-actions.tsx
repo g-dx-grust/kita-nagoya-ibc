@@ -43,12 +43,14 @@ export default function MonthlyScheduleActions({
   productionLeadDays,
   planningBasis,
   disabled,
+  embedded = false,
 }: {
   dateFrom: string;
   dateTo: string;
   productionLeadDays: number;
   planningBasis: "historical_actual" | "inventory_shortage";
   disabled: boolean;
+  embedded?: boolean;
 }) {
   const router = useRouter();
   const [defaultStartTime, setDefaultStartTime] = useState("09:00");
@@ -116,7 +118,7 @@ export default function MonthlyScheduleActions({
         : "muted";
 
   return (
-    <div className="panel monthly-schedule-action-panel">
+    <div className={embedded ? "monthly-schedule-action-panel monthly-schedule-action-panel-embedded" : "panel monthly-schedule-action-panel"}>
       <div className="monthly-schedule-command">
         <div className="monthly-schedule-command-title">
           <span className={`badge ${resultStatusClass}`}>{resultStatusLabel}</span>
@@ -227,6 +229,12 @@ export default function MonthlyScheduleActions({
                 <div className="form-actions">
                   <Link className="button-link" href={kitagoyaPath(result.listUrl)}>
                     作成した下書きを一覧で確認
+                  </Link>
+                  <Link
+                    className="button-link secondary-link"
+                    href={kitagoyaPath(`/production-plans/monthly/confirm?dateFrom=${dateFrom}&dateTo=${dateTo}`)}
+                  >
+                    本決定画面へ
                   </Link>
                 </div>
               )}
