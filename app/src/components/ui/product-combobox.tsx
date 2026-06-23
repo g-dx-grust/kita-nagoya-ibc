@@ -60,6 +60,8 @@ export default function ProductCombobox({
   emptyOptionLabel,
   ariaLabel,
   autoFocus,
+  separateSearchInput = false,
+  searchPlaceholder = "商品名・コードで候補を検索",
 }: {
   products: ProductComboOption[];
   value: string;
@@ -72,6 +74,9 @@ export default function ProductCombobox({
   emptyOptionLabel?: string;
   ariaLabel?: string;
   autoFocus?: boolean;
+  /** 選択済み表示と検索入力を分ける。フォーム内で検索文字を Enter しても即選択しない。 */
+  separateSearchInput?: boolean;
+  searchPlaceholder?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -126,8 +131,12 @@ export default function ProductCombobox({
   }, [active, open]);
 
   useEffect(() => {
-    setActive((current) => Math.min(current, Math.max(optionCount - 1, 0)));
-  }, [optionCount]);
+    setActive((current) => {
+      if (optionCount <= 0) return -1;
+      if (current < 0) return separateSearchInput ? -1 : 0;
+      return Math.min(current, optionCount - 1);
+    });
+  }, [optionCount, separateSearchInput]);
 
   useEffect(() => {
     if (!open) return;
@@ -173,12 +182,136 @@ export default function ProductCombobox({
   }
 
   function chooseActive() {
+    if (active < 0 || active >= optionCount) return;
     if (hasEmptyOption && active === 0) {
       choose("");
       return;
     }
     const option = filtered[active - (hasEmptyOption ? 1 : 0)];
     if (option) choose(option.id);
+  }
+
+  function moveActive(delta: 1 | -1) {
+    setActive((current) => {
+      if (optionCount <= 0) return -1;
+      if (current < 0) return delta > 0 ? 0 : optionCount - 1;
+      return Math.min(Math.max(current + delta, 0), optionCount - 1);
+    });
+  }
+
+  const activeDescendant = open && active >= 0 && optionCount > 0 ? `${listId}-option-${active}` : undefined;
+  const listbox = open ? (
+    <ul className="combobox-list" id={listId} role="listbox" ref={listRef} style={listStyle}>
+      {emptyOptionLabel && (
+        <li
+          id={`${listId}-option-0`}
+          data-idx={0}
+          role="option"
+          aria-selected={!value}
+          className={`combobox-option ${active === 0 ? "is-active" : ""} ${!value ? "is-selected" : ""}`}
+          onMouseEnter={() => setActive(0)}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            choose("");
+          }}
+        >
+          <span className="combobox-name muted">{emptyOptionLabel}</span>
+        </li>
+      )}
+      {filtered.length === 0 && <li className="combobox-empty">該当する商品がありません</li>}
+      {filtered.map((p, i) => (
+        <li
+          key={p.id}
+          id={`${listId}-option-${i + (hasEmptyOption ? 1 : 0)}`}
+          data-idx={i + (hasEmptyOption ? 1 : 0)}
+          role="option"
+          aria-selected={p.id === value}
+          className={`combobox-option ${i + (hasEmptyOption ? 1 : 0) === active ? "is-active" : ""} ${
+            p.id === value ? "is-selected" : ""
+          }`}
+          onMouseEnter={() => setActive(i + (hasEmptyOption ? 1 : 0))}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            choose(p.id);
+          }}
+        >
+          <span className="combobox-code">{highlightMatch(p.productCode, query)}</span>
+          <span className="combobox-name">{highlightMatch(p.officialName, query)}</span>
+          {((p.displayName && p.displayName !== p.officialName) || p.specification || p.brandName || p.unit) && (
+            <span className="combobox-sub">
+              {p.displayName && p.displayName !== p.officialName ? p.displayName : null}
+              {p.specification ? `・${p.specification}` : null}
+              {p.brandName ? `・${p.brandName}` : null}
+              {p.unit ? `・${p.unit}` : null}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
+  ) : null;
+
+  if (separateSearchInput) {
+    return (
+      <div className="combobox combobox--separate" ref={rootRef}>
+        {name && <input type="hidden" name={name} value={value} />}
+        <button
+          type="button"
+          className={`combobox-trigger ${selected ? "" : "is-placeholder"}`}
+          disabled={disabled}
+          aria-label={ariaLabel ?? placeholder}
+          aria-expanded={open}
+          aria-controls={open ? listId : undefined}
+          onClick={() => {
+            setOpen((current) => !current);
+            setActive(-1);
+          }}
+        >
+          <span>{selected ? label : placeholder}</span>
+        </button>
+        <input
+          className="combobox-input combobox-search-input"
+          type="search"
+          autoComplete="off"
+          autoFocus={autoFocus}
+          disabled={disabled}
+          placeholder={searchPlaceholder}
+          value={query}
+          aria-required={required}
+          aria-expanded={open}
+          aria-controls={open ? listId : undefined}
+          aria-activedescendant={activeDescendant}
+          aria-label={searchPlaceholder}
+          role="combobox"
+          onFocus={() => {
+            setOpen(true);
+            setActive(-1);
+          }}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+            setActive(-1);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setOpen(true);
+              moveActive(1);
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setOpen(true);
+              moveActive(-1);
+            } else if (e.key === "Enter") {
+              e.preventDefault();
+              if (open && active >= 0) chooseActive();
+              else setOpen(true);
+            } else if (e.key === "Escape") {
+              setOpen(false);
+            }
+          }}
+        />
+        {listbox}
+      </div>
+    );
   }
 
   return (
@@ -195,7 +328,7 @@ export default function ProductCombobox({
         aria-required={required}
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
-        aria-activedescendant={open && optionCount > 0 ? `${listId}-option-${active}` : undefined}
+        aria-activedescendant={activeDescendant}
         aria-label={ariaLabel ?? placeholder}
         role="combobox"
         onFocus={() => {
@@ -212,10 +345,10 @@ export default function ProductCombobox({
           if (e.key === "ArrowDown") {
             e.preventDefault();
             setOpen(true);
-            setActive((a) => Math.min(a + 1, Math.max(optionCount - 1, 0)));
+            moveActive(1);
           } else if (e.key === "ArrowUp") {
             e.preventDefault();
-            setActive((a) => Math.max(a - 1, 0));
+            moveActive(-1);
           } else if (e.key === "Enter") {
             if (open && optionCount > 0) {
               e.preventDefault();
@@ -226,55 +359,7 @@ export default function ProductCombobox({
           }
         }}
       />
-      {open && (
-        <ul className="combobox-list" id={listId} role="listbox" ref={listRef} style={listStyle}>
-          {emptyOptionLabel && (
-            <li
-              id={`${listId}-option-0`}
-              data-idx={0}
-              role="option"
-              aria-selected={!value}
-              className={`combobox-option ${active === 0 ? "is-active" : ""} ${!value ? "is-selected" : ""}`}
-              onMouseEnter={() => setActive(0)}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                choose("");
-              }}
-            >
-              <span className="combobox-name muted">{emptyOptionLabel}</span>
-            </li>
-          )}
-          {filtered.length === 0 && <li className="combobox-empty">該当する商品がありません</li>}
-          {filtered.map((p, i) => (
-            <li
-              key={p.id}
-              id={`${listId}-option-${i + (hasEmptyOption ? 1 : 0)}`}
-              data-idx={i + (hasEmptyOption ? 1 : 0)}
-              role="option"
-              aria-selected={p.id === value}
-              className={`combobox-option ${i + (hasEmptyOption ? 1 : 0) === active ? "is-active" : ""} ${
-                p.id === value ? "is-selected" : ""
-              }`}
-              onMouseEnter={() => setActive(i + (hasEmptyOption ? 1 : 0))}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                choose(p.id);
-              }}
-            >
-              <span className="combobox-code">{highlightMatch(p.productCode, query)}</span>
-              <span className="combobox-name">{highlightMatch(p.officialName, query)}</span>
-              {((p.displayName && p.displayName !== p.officialName) || p.specification || p.brandName || p.unit) && (
-                <span className="combobox-sub">
-                  {p.displayName && p.displayName !== p.officialName ? p.displayName : null}
-                  {p.specification ? `・${p.specification}` : null}
-                  {p.brandName ? `・${p.brandName}` : null}
-                  {p.unit ? `・${p.unit}` : null}
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      {listbox}
     </div>
   );
 }

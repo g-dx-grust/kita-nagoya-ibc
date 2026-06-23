@@ -86,6 +86,12 @@ type MonthlyActualDraft = {
   sourceType: string;
   note: string;
 };
+type MonthlyScheduleRegenerateResult = {
+  createdCount?: number;
+  replacedDraftCount?: number;
+  skipped?: { reason?: string }[];
+  message?: string;
+};
 type SuggestionQuickFilter = "all" | "hard" | "dependency" | "suggested" | "stock" | "order";
 
 export default function ProductPlanningClient({
@@ -131,6 +137,7 @@ export default function ProductPlanningClient({
   const [actualDraft, setActualDraft] = useState<MonthlyActualDraft | null>(null);
   const [showInputPanel, setShowInputPanel] = useState(false);
   const [suggestionFilter, setSuggestionFilter] = useState<SuggestionQuickFilter>("all");
+  const [rescheduleAfterDemandChange, setRescheduleAfterDemandChange] = useState(true);
 
   useEffect(() => {
     if (window.location.hash === "#product-planning-inputs") {
@@ -299,9 +306,16 @@ export default function ProductPlanningClient({
         customerName: customerName || null,
       }),
     });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setBusy(false);
+      setMessage(`受注/出荷予定の登録に失敗しました: ${json.error ?? "unknown"}`);
+      return;
+    }
+    const rescheduleMessage = await maybeRegenerateMonthlyDrafts();
     setBusy(false);
-    setMessage(res.ok ? "受注/出荷予定を登録しました" : "受注/出荷予定の登録に失敗しました");
-    if (res.ok) router.refresh();
+    setMessage(`受注/出荷予定を登録しました${rescheduleMessage}`);
+    router.refresh();
   }
 
   async function submitMonthlyActual(e: React.FormEvent) {
@@ -380,7 +394,10 @@ export default function ProductPlanningClient({
       setMessage("受注/出荷予定の更新に失敗しました");
       return;
     }
-    setMessage("受注/出荷予定を更新しました");
+    setBusy(true);
+    const rescheduleMessage = await maybeRegenerateMonthlyDrafts();
+    setBusy(false);
+    setMessage(`受注/出荷予定を更新しました${rescheduleMessage}`);
     setEditingDemandId(null);
     setDemandDraft(null);
     router.refresh();
@@ -391,9 +408,48 @@ export default function ProductPlanningClient({
     setBusy(true);
     setMessage(null);
     const res = await fetch(kitagoyaApiPath(`/product-demands/${demand.id}`), { method: "DELETE" });
+    if (!res.ok) {
+      setBusy(false);
+      setMessage("受注/出荷予定の取消に失敗しました");
+      return;
+    }
+    const rescheduleMessage = await maybeRegenerateMonthlyDrafts();
     setBusy(false);
-    setMessage(res.ok ? "受注/出荷予定を取消しました" : "受注/出荷予定の取消に失敗しました");
-    if (res.ok) router.refresh();
+    setMessage(`受注/出荷予定を取消しました${rescheduleMessage}`);
+    router.refresh();
+  }
+
+  async function maybeRegenerateMonthlyDrafts() {
+    if (!rescheduleAfterDemandChange) return "。月間予定の再判定は未実行です";
+    try {
+      const result = await regenerateMonthlyDrafts();
+      const created = result.createdCount ?? 0;
+      const replaced = result.replacedDraftCount ?? 0;
+      const skipped = result.skipped?.length ?? 0;
+      return `。在庫生産の自動スケジュールを再判定しました（自動生成draft置換 ${replaced}件 / 作成 ${created}件 / 未配置 ${skipped}件）`;
+    } catch (error) {
+      return `。ただし在庫生産の再判定に失敗しました: ${error instanceof Error ? error.message : "unknown"}`;
+    }
+  }
+
+  async function regenerateMonthlyDrafts(): Promise<MonthlyScheduleRegenerateResult> {
+    const res = await fetch(kitagoyaApiPath("/product-planning/monthly-schedule"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        dateFrom: initialDateFrom,
+        dateTo: initialDateTo,
+        productionLeadDays: 1,
+        planningBasis: "historical_actual",
+        defaultStartTime: "09:00",
+        baselineEndTime: "17:00",
+        replaceExistingDrafts: true,
+        replaceGeneratedDraftsOnly: true,
+      }),
+    });
+    const json = (await res.json().catch(() => ({}))) as MonthlyScheduleRegenerateResult & { error?: string };
+    if (!res.ok) throw new Error(json.error ?? "unknown");
+    return json;
   }
 
   function beginActualEdit(actual: MonthlyActualRow) {
@@ -563,8 +619,8 @@ export default function ProductPlanningClient({
       </CollapsiblePanel>
 
       {showInputPanel && (
-      <div id="product-planning-inputs" className="grid grid-2 product-planning-input-grid anchor-offset">
-        <form className="panel" onSubmit={submitStock}>
+      <div id="product-planning-inputs" className="product-planning-input-grid anchor-offset">
+        <form className="panel product-planning-secondary-panel" onSubmit={submitStock}>
           <h2>製品在庫を登録</h2>
           <div className="row">
             <label>
@@ -592,12 +648,30 @@ export default function ProductPlanningClient({
           </div>
         </form>
 
-        <form className="panel" onSubmit={submitDemand}>
-          <h2>受注/出荷予定を登録</h2>
-          <div className="row">
-            <label>
+        <form className="panel product-planning-demand-panel" onSubmit={submitDemand}>
+          <div className="toolbar product-planning-demand-head">
+            <h2>受注/出荷予定を登録</h2>
+            <label className="inline-check product-planning-reschedule-toggle">
+              <input
+                type="checkbox"
+                checked={rescheduleAfterDemandChange}
+                onChange={(e) => setRescheduleAfterDemandChange(e.target.checked)}
+              />
+              <span>登録後に在庫生産の自動スケジュールを再判定</span>
+            </label>
+          </div>
+          <div className="product-planning-demand-fields">
+            <label className="product-planning-product-field">
               <span>商品</span>
-              <ProductCombobox products={products} value={demandProductId} onChange={setDemandProductId} required />
+              <ProductCombobox
+                products={products}
+                value={demandProductId}
+                onChange={setDemandProductId}
+                required
+                separateSearchInput
+                placeholder="商品を選択"
+                searchPlaceholder="管理コード・商品名・別名で候補を検索"
+              />
             </label>
             <label>
               <span>種別</span>
@@ -626,14 +700,17 @@ export default function ProductPlanningClient({
               <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
             </label>
           </div>
+          <div className="alert info product-planning-reschedule-note">
+            受注を登録すると、確定済み・手入力の予定は残したまま、月間シフト連動で自動生成した在庫生産 draft だけを再計算します。
+          </div>
           <div className="form-actions">
             <button type="submit" disabled={busy || !demandProductId}>
-              予定を登録
+              {busy ? "登録中..." : "予定を登録"}
             </button>
           </div>
         </form>
 
-        <form className="panel" onSubmit={submitMonthlyActual}>
+        <form className="panel product-planning-secondary-panel" onSubmit={submitMonthlyActual}>
           <h2>
             月次実績を登録
             <HelpTooltip text="月間予定は、前年対象月の実績に「今年前々月 ÷ 前年前々月」の前年比を掛けて予測します。" />
@@ -669,7 +746,7 @@ export default function ProductPlanningClient({
           </div>
         </form>
 
-        <form className="panel" onSubmit={submitMonthlyActualCsv}>
+        <form className="panel product-planning-secondary-panel" onSubmit={submitMonthlyActualCsv}>
           <div className="toolbar">
             <h2>月次実績 CSV 取込</h2>
             <div className="spacer" />

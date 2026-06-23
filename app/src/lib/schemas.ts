@@ -730,6 +730,7 @@ export const MonthlyProductionScheduleCreateSchema = z.object({
   defaultStartTime: hhmm.default("09:00"),
   baselineEndTime: hhmm.default("17:00"),
   replaceExistingDrafts: z.boolean().default(false),
+  replaceGeneratedDraftsOnly: z.boolean().default(false),
 });
 
 // --- Calculation requests ---
