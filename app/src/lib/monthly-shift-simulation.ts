@@ -7,7 +7,7 @@
 // 流れ:
 //   1) 需要アイテムを商品マスター・社内部屋の生産能力で絞り込む。
 //   2) 日付を時系列に走査し、その日に作れるアイテム（希望日以降）を集める。
-//      受注生産→在庫生産の順に `allocateDayStaff` を呼び、出勤者全員を部屋へ割り当てる。
+//      受注生産を先頭に並べたうえで、在庫生産も同じ割り当てへ渡して空き部屋を並行利用する。
 //      作れた数量を需要から差し引き、あふれは翌日以降へ繰り越す。
 //   3) 希望日までに収まらなかったアイテムは、希望日より前の日へフォールバック配置する。
 //   4) それでも残った数量は未配置 (skipped) として返す。
@@ -203,17 +203,15 @@ export function simulateMonthlyShiftSchedule(input: {
     const dayShifts = shiftsByDate.get(date) ?? [];
     if (dayShifts.length === 0 || eligible.length === 0) return;
 
-    let phaseStart = parseHM(input.defaultStartTime);
     const dayEnd = parseHM(input.baselineEndTime);
-    for (const group of groupByProductionPhase(eligible)) {
-      if (phaseStart >= dayEnd) break;
-      phaseStart = runDayPhase(date, group, phaseStart);
-    }
+    const dayStart = parseHM(input.defaultStartTime);
+    if (dayStart >= dayEnd) return;
+    runDayAllocation(date, [...eligible].sort(byPriority), dayStart);
   };
 
-  const runDayPhase = (date: string, eligible: ItemState[], phaseStart: number) => {
+  const runDayAllocation = (date: string, eligible: ItemState[], dayStart: number) => {
     const dayShifts = shiftsByDate.get(date) ?? [];
-    if (dayShifts.length === 0 || eligible.length === 0) return phaseStart;
+    if (dayShifts.length === 0 || eligible.length === 0) return;
 
     const capacitiesByStateId = new Map<string, ShiftSimulationCapacity[]>();
     for (const state of eligible) {
@@ -273,13 +271,12 @@ export function simulateMonthlyShiftSchedule(input: {
     }));
 
     const allocation = allocateDayStaff({
-      dayStart: formatHM(phaseStart),
+      dayStart: formatHM(dayStart),
       dayEnd: input.baselineEndTime,
       breakWindows,
       staff,
       jobs,
     });
-    const scheduledEnds: number[] = [];
 
     for (const job of allocation.jobs) {
       if (job.scheduledQuantity <= 0 || !job.startTime || !job.endTime) continue;
@@ -325,9 +322,7 @@ export function simulateMonthlyShiftSchedule(input: {
         arr.push({ start: parseHM(a.startTime), end: parseHM(a.endTime) });
         staffBusy.set(sk, arr);
       }
-      scheduledEnds.push(parseHM(job.endTime));
     }
-    return scheduledEnds.length > 0 ? Math.max(phaseStart, ...scheduledEnds) : phaseStart;
   };
 
   // パス1: 時系列。各日に「希望日以降」のアイテムを納期優先で詰める（納期超過日も含む）。
@@ -370,21 +365,6 @@ function byPriority(a: ItemState, b: ItemState) {
     a.preferredDate.localeCompare(b.preferredDate) ||
     a.item.productCode.localeCompare(b.item.productCode, "ja")
   );
-}
-
-function groupByProductionPhase(items: ItemState[]) {
-  const sorted = [...items].sort(byPriority);
-  const groups: ItemState[][] = [];
-  for (const item of sorted) {
-    const rank = productionTypeScheduleRank(item.productionType);
-    const last = groups[groups.length - 1];
-    if (last && productionTypeScheduleRank(last[0].productionType) === rank) {
-      last.push(item);
-    } else {
-      groups.push([item]);
-    }
-  }
-  return groups;
 }
 
 function dedupeAssignments(

@@ -354,7 +354,7 @@ describe("simulateMonthlyShiftSchedule", () => {
     expect(result.plans.map((plan) => plan.quantity).sort((a, b) => a - b)).toEqual([200, 200]);
   });
 
-  it("受注生産を受注優先部屋で先に回し、完了後に在庫優先部屋へ合流する", () => {
+  it("受注生産を優先しつつ在庫生産を空き部屋で並行開始する", () => {
     const makeProduct = (
       productId: string,
       productCode: string,
@@ -416,7 +416,7 @@ describe("simulateMonthlyShiftSchedule", () => {
           unit: "袋",
           preferredDate: "2026-05-01",
           dueDates: ["2026-05-01"],
-          quantity: 200,
+          quantity: 400,
           reasons: ["月間予測"],
         },
         {
@@ -453,7 +453,8 @@ describe("simulateMonthlyShiftSchedule", () => {
     });
     expect(stockPlan).toMatchObject({
       workAreaId: "stock-room",
-      startTime: "10:00",
+      startTime: "09:00",
+      endTime: "10:30",
       peopleCount: 4,
     });
   });

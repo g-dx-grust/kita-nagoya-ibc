@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   aggregateMonthlySuggestions,
   computeMonthlyProductionSchedule,
+  spreadMonthlyStockSuggestions,
+  type MonthlyProductionSuggestion,
   type MonthlyPlanningProduct,
 } from "./monthly-production-schedule";
 
@@ -123,5 +125,83 @@ describe("aggregateMonthlySuggestions", () => {
     expect(aggregated).toHaveLength(1);
     expect(aggregated[0].scheduleDate).toBe("2026-05-10");
     expect(aggregated[0].suggestedQuantity).toBe(1000);
+  });
+});
+
+describe("spreadMonthlyStockSuggestions", () => {
+  const baseSuggestion: MonthlyProductionSuggestion = {
+    productId: "p1",
+    productCode: "P001",
+    productName: "在庫商品",
+    productionType: "stock",
+    unit: "袋",
+    dueDate: "2026-05-01",
+    scheduleDate: "2026-05-01",
+    demandQuantity: 1000,
+    existingProductionQuantity: 0,
+    safetyStockQuantity: 0,
+    startingOnHandQuantity: 0,
+    projectedOnHandBeforeDemand: 0,
+    projectedOnHandBeforeSuggestion: 0,
+    projectedOnHandAfterSuggestion: 1000,
+    shortageQuantity: 1000,
+    suggestedQuantity: 1000,
+    schedulePriority: null,
+    reason: "前々月前年比予測",
+  };
+
+  it("前年同月の日別実績比率で在庫生産の月間数量を分散する", () => {
+    const result = spreadMonthlyStockSuggestions([baseSuggestion], {
+      dateFrom: "2026-05-01",
+      dateTo: "2026-05-31",
+      historicalDailyActuals: [
+        { productId: "p1", date: "2025-05-02", quantity: 100 },
+        { productId: "p1", date: "2025-05-12", quantity: 300 },
+        { productId: "p1", date: "2025-05-20", quantity: 100 },
+      ],
+    });
+
+    expect(result.map((row) => [row.scheduleDate, row.suggestedQuantity])).toEqual([
+      ["2026-05-02", 200],
+      ["2026-05-12", 600],
+      ["2026-05-20", 200],
+    ]);
+    expect(result.every((row) => row.reason.includes("前年同月の日別実績比率"))).toBe(true);
+  });
+
+  it("日別実績がない在庫生産は標準ロット単位で月内へ等間隔に分散する", () => {
+    const result = spreadMonthlyStockSuggestions(
+      [{ ...baseSuggestion, suggestedQuantity: 1500, shortageQuantity: 1500 }],
+      {
+        dateFrom: "2026-05-01",
+        dateTo: "2026-05-31",
+        chunkQuantityByProductId: { p1: 500 },
+      },
+    );
+
+    expect(result.map((row) => [row.scheduleDate, row.suggestedQuantity])).toEqual([
+      ["2026-05-01", 500],
+      ["2026-05-11", 500],
+      ["2026-05-21", 500],
+    ]);
+  });
+
+  it("受注生産は指定日に必要数量を作るため分散しない", () => {
+    const orderSuggestion = {
+      ...baseSuggestion,
+      productId: "p2",
+      productionType: "make_to_order" as const,
+      scheduleDate: "2026-05-10",
+      dueDate: "2026-05-10",
+      suggestedQuantity: 240,
+    };
+
+    const result = spreadMonthlyStockSuggestions([orderSuggestion], {
+      dateFrom: "2026-05-01",
+      dateTo: "2026-05-31",
+      chunkQuantityByProductId: { p2: 500 },
+    });
+
+    expect(result).toEqual([orderSuggestion]);
   });
 });

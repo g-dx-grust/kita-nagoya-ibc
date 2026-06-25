@@ -3,7 +3,6 @@ import { audit } from "@/lib/audit";
 import { assignBalancedRooms } from "@/lib/auto-schedule-allocation";
 import {
   compareAutoScheduleItems,
-  productionTypeScheduleRank,
   sortCapacitiesForProductionType,
   sortUsableCapacitiesForProductionType,
 } from "@/lib/auto-schedule-policy";
@@ -736,20 +735,6 @@ function buildMaxQuantityScheduledPlans({
     ),
   );
 
-  const groupedRefs: (typeof orderedRefs)[] = [];
-  for (const ref of orderedRefs) {
-    const rank = productionTypeScheduleRank(ref.item.productionType);
-    const last = groupedRefs[groupedRefs.length - 1];
-    if (
-      last &&
-      productionTypeScheduleRank(last[0].item.productionType) === rank
-    ) {
-      last.push(ref);
-    } else {
-      groupedRefs.push([ref]);
-    }
-  }
-
   const staff: AllocationStaff[] = staffStates.map((s) => ({
     employeeId: s.employeeId,
     employeeName: s.name,
@@ -759,72 +744,60 @@ function buildMaxQuantityScheduledPlans({
   }));
 
   const plansByTempId = new Map<string, ScheduledPlan>();
-  let phaseStart = scheduleStart;
+  const capacitiesByTempId = new Map(orderedRefs.map((ref) => [ref.tempId, ref.capacities]));
+  const chosen = assignBalancedRooms(
+    orderedRefs.map((ref) => ({ tempId: ref.tempId })),
+    capacitiesByTempId,
+    forcedRoomByTempId,
+  );
 
-  for (const refs of groupedRefs) {
-    const capacitiesByTempId = new Map(refs.map((ref) => [ref.tempId, ref.capacities]));
-    const chosen = assignBalancedRooms(
-      refs.map((ref) => ({ tempId: ref.tempId })),
-      capacitiesByTempId,
-      forcedRoomByTempId,
-    );
-
-    if (phaseStart >= windowEnd) {
-      for (const ref of refs) {
-        const capacity = chosen.get(ref.tempId) ?? pickFallbackCapacity(ref.capacities, forcedRoomByTempId.get(ref.tempId));
-        plansByTempId.set(ref.tempId, buildUnscheduledPlan(ref, capacity, phaseStart));
-      }
-      continue;
+  if (scheduleStart >= windowEnd) {
+    for (const ref of orderedRefs) {
+      const capacity = chosen.get(ref.tempId) ?? pickFallbackCapacity(ref.capacities, forcedRoomByTempId.get(ref.tempId));
+      plansByTempId.set(ref.tempId, buildUnscheduledPlan(ref, capacity, scheduleStart));
     }
+    return orderedRefs.map((ref) => plansByTempId.get(ref.tempId)!);
+  }
 
-    const jobs: AllocationJob[] = refs.map((ref) => {
-      const capacity = chosen.get(ref.tempId)!;
-      const cursor = areaCursor.get(capacity.workAreaId);
-      const roomMaxPeople = Math.max(1, Math.floor(capacity.workArea.maxPeopleCount ?? capacity.standardPeople ?? 1));
-      return {
-        jobId: ref.tempId,
-        productId: ref.product.id,
-        productName: ref.product.officialName,
-        workAreaId: capacity.workAreaId,
-        workAreaName: capacity.workArea.name,
-        workAreaDisplayOrder: capacity.workArea.displayOrder,
-        quantity: ref.item.quantity,
-        unit: ref.product.unit,
-        unitsPerPersonHour: capacity.unitsPerPersonHour,
-        roomMaxPeople,
-        earliestStart: cursor != null && cursor > phaseStart ? formatHM(cursor) : undefined,
-      } satisfies AllocationJob;
+  const jobs: AllocationJob[] = orderedRefs.map((ref) => {
+    const capacity = chosen.get(ref.tempId)!;
+    const cursor = areaCursor.get(capacity.workAreaId);
+    const roomMaxPeople = Math.max(1, Math.floor(capacity.workArea.maxPeopleCount ?? capacity.standardPeople ?? 1));
+    return {
+      jobId: ref.tempId,
+      productId: ref.product.id,
+      productName: ref.product.officialName,
+      workAreaId: capacity.workAreaId,
+      workAreaName: capacity.workArea.name,
+      workAreaDisplayOrder: capacity.workArea.displayOrder,
+      quantity: ref.item.quantity,
+      unit: ref.product.unit,
+      unitsPerPersonHour: capacity.unitsPerPersonHour,
+      roomMaxPeople,
+      earliestStart: cursor != null && cursor > scheduleStart ? formatHM(cursor) : undefined,
+    } satisfies AllocationJob;
+  });
+
+  const allocation = allocateDayStaff({
+    dayStart: formatHM(scheduleStart),
+    dayEnd: formatHM(Math.max(scheduleStart, windowEnd)),
+    breakWindows,
+    staff,
+    jobs,
+  });
+  const jobById = new Map(allocation.jobs.map((job) => [job.jobId, job]));
+
+  for (const ref of orderedRefs) {
+    const capacity = chosen.get(ref.tempId)!;
+    const job = jobById.get(ref.tempId);
+    const plan = buildScheduledPlanFromJob({
+      ref,
+      capacity,
+      job,
+      fallbackStart: scheduleStart,
     });
-
-    const allocation = allocateDayStaff({
-      dayStart: formatHM(phaseStart),
-      dayEnd: formatHM(Math.max(phaseStart, windowEnd)),
-      breakWindows,
-      staff,
-      jobs,
-    });
-    const jobById = new Map(allocation.jobs.map((job) => [job.jobId, job]));
-    const scheduledEnds: number[] = [];
-
-    for (const ref of refs) {
-      const capacity = chosen.get(ref.tempId)!;
-      const job = jobById.get(ref.tempId);
-      const plan = buildScheduledPlanFromJob({
-        ref,
-        capacity,
-        job,
-        fallbackStart: phaseStart,
-      });
-      plansByTempId.set(ref.tempId, plan);
-      areaCursor.set(capacity.workAreaId, Math.max(areaCursor.get(capacity.workAreaId) ?? phaseStart, plan.end));
-      if (plan.quantity > 0 && plan.end > phaseStart) scheduledEnds.push(plan.end);
-    }
-
-    if (scheduledEnds.length > 0) {
-      phaseStart = Math.max(phaseStart, ...scheduledEnds);
-    } else {
-      phaseStart = windowEnd;
-    }
+    plansByTempId.set(ref.tempId, plan);
+    areaCursor.set(capacity.workAreaId, Math.max(areaCursor.get(capacity.workAreaId) ?? scheduleStart, plan.end));
   }
 
   return orderedRefs.map((ref) => plansByTempId.get(ref.tempId)!);

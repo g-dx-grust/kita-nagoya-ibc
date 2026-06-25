@@ -49,6 +49,12 @@ export type MonthlyProductionSuggestion = {
   reason: string;
 };
 
+export type MonthlyProductionHistoricalDailyActual = {
+  productId: string;
+  date: string;
+  quantity: number;
+};
+
 export type MonthlyProductionProductSummary = {
   productId: string;
   productCode: string;
@@ -255,6 +261,169 @@ export function aggregateMonthlySuggestions(suggestions: MonthlyProductionSugges
   );
 }
 
+export function spreadMonthlyStockSuggestions(
+  suggestions: MonthlyProductionSuggestion[],
+  input: {
+    dateFrom: string;
+    dateTo: string;
+    chunkQuantityByProductId?: Record<string, number>;
+    historicalDailyActuals?: MonthlyProductionHistoricalDailyActual[];
+  },
+): MonthlyProductionSuggestion[] {
+  const targetMonth = input.dateFrom.slice(0, 7);
+  const historicalByProductDate = aggregateHistoricalDailyActuals(
+    input.historicalDailyActuals ?? [],
+    targetMonth,
+  );
+
+  return suggestions.flatMap((suggestion) => {
+    if (
+      suggestion.suggestedQuantity <= 0 ||
+      suggestion.productionType === "make_to_order" ||
+      compareDate(suggestion.scheduleDate, input.dateTo) > 0
+    ) {
+      return [suggestion];
+    }
+
+    const startDate = clampDate(suggestion.scheduleDate, input.dateFrom, input.dateTo);
+    const historicalParts = buildHistoricalSpreadParts({
+      productId: suggestion.productId,
+      startDate,
+      dateTo: input.dateTo,
+      totalQuantity: suggestion.suggestedQuantity,
+      historicalByProductDate,
+    });
+    const parts =
+      historicalParts.length > 0
+        ? historicalParts
+        : buildEvenSpreadParts({
+            startDate,
+            dateTo: input.dateTo,
+            totalQuantity: suggestion.suggestedQuantity,
+            chunkQuantity: input.chunkQuantityByProductId?.[suggestion.productId] ?? 0,
+          });
+
+    if (parts.length <= 1) return [suggestion];
+
+    const basis =
+      historicalParts.length > 0
+        ? "前年同月の日別実績比率"
+        : "標準ロットと対象期間";
+
+    let projectedBeforePart = suggestion.projectedOnHandBeforeSuggestion;
+    return parts.map((part) => {
+      const projectedAfterPart = round4(projectedBeforePart + part.quantity);
+      const row = {
+        ...suggestion,
+        dueDate: part.date,
+        scheduleDate: part.date,
+        projectedOnHandBeforeSuggestion: round4(projectedBeforePart),
+        projectedOnHandAfterSuggestion: projectedAfterPart,
+        shortageQuantity: part.quantity,
+        suggestedQuantity: part.quantity,
+        reason: `${suggestion.reason} ${basis}で月内 ${parts.length} 回に分散します。`,
+      };
+      projectedBeforePart = projectedAfterPart;
+      return row;
+    });
+  });
+}
+
+function aggregateHistoricalDailyActuals(
+  rows: MonthlyProductionHistoricalDailyActual[],
+  targetMonth: string,
+) {
+  const map = new Map<string, Map<string, number>>();
+  for (const row of rows) {
+    if (row.quantity <= 0) continue;
+    const date = mapHistoricalDateToTargetMonth(row.date, targetMonth);
+    const byDate = map.get(row.productId) ?? new Map<string, number>();
+    byDate.set(date, round4((byDate.get(date) ?? 0) + row.quantity));
+    map.set(row.productId, byDate);
+  }
+  return map;
+}
+
+function buildHistoricalSpreadParts(input: {
+  productId: string;
+  startDate: string;
+  dateTo: string;
+  totalQuantity: number;
+  historicalByProductDate: Map<string, Map<string, number>>;
+}) {
+  const byDate = input.historicalByProductDate.get(input.productId);
+  if (!byDate) return [];
+  const weights = [...byDate.entries()]
+    .filter(([date, quantity]) => compareDate(date, input.startDate) >= 0 && compareDate(date, input.dateTo) <= 0 && quantity > 0)
+    .sort(([a], [b]) => compareDate(a, b))
+    .map(([date, quantity]) => ({ date, weight: quantity }));
+  return spreadQuantityByWeights(input.totalQuantity, weights);
+}
+
+function buildEvenSpreadParts(input: {
+  startDate: string;
+  dateTo: string;
+  totalQuantity: number;
+  chunkQuantity: number;
+}) {
+  const days = eachDay(input.startDate, input.dateTo);
+  if (days.length === 0 || input.totalQuantity <= 0) return [];
+
+  const chunkQuantity = Math.max(0, input.chunkQuantity);
+  const lotCount = chunkQuantity > 0 ? Math.ceil(input.totalQuantity / chunkQuantity) : 0;
+  const fallbackCount = Math.min(days.length, Math.max(1, Math.ceil(days.length / 7)));
+  const count = Math.max(1, Math.min(days.length, lotCount > 0 ? lotCount : fallbackCount));
+  const dates = pickEvenlySpacedDates(days, count);
+  const evenChunk = round4(input.totalQuantity / dates.length);
+  const chunk =
+    chunkQuantity > 0 && lotCount > 0 && lotCount <= days.length
+      ? chunkQuantity
+      : evenChunk;
+
+  let remaining = input.totalQuantity;
+  return dates
+    .map((date, index) => {
+      const quantity =
+        index === dates.length - 1
+          ? round4(remaining)
+          : round4(Math.min(chunk, remaining));
+      remaining = round4(remaining - quantity);
+      return { date, quantity };
+    })
+    .filter((part) => part.quantity > 0);
+}
+
+function spreadQuantityByWeights(totalQuantity: number, weights: { date: string; weight: number }[]) {
+  const totalWeight = weights.reduce((sum, row) => sum + row.weight, 0);
+  if (totalQuantity <= 0 || totalWeight <= 0) return [];
+
+  let remaining = totalQuantity;
+  return weights
+    .map((row, index) => {
+      const quantity =
+        index === weights.length - 1
+          ? round4(remaining)
+          : round4((totalQuantity * row.weight) / totalWeight);
+      remaining = round4(remaining - quantity);
+      return { date: row.date, quantity };
+    })
+    .filter((part) => part.quantity > 0);
+}
+
+function pickEvenlySpacedDates(days: string[], count: number) {
+  const dates: string[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const index = Math.min(days.length - 1, Math.floor((i * days.length) / count));
+    dates.push(days[index]);
+  }
+  return [...new Set(dates)];
+}
+
+function mapHistoricalDateToTargetMonth(date: string, targetMonth: string) {
+  const day = Math.min(Number(date.slice(8, 10)), lastDayOfMonth(targetMonth));
+  return `${targetMonth}-${String(day).padStart(2, "0")}`;
+}
+
 function aggregateByProductDate(rows: { productId: string; date: string; quantity: number }[]) {
   const map = new Map<string, Map<string, number>>();
   for (const row of rows) {
@@ -320,6 +489,11 @@ function addDays(date: string, days: number) {
   const d = new Date(`${date}T00:00:00.000Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+function lastDayOfMonth(yearMonth: string) {
+  const [year, month] = yearMonth.split("-").map(Number);
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
 function subDays(date: string, days: number) {

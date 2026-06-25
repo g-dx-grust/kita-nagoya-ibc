@@ -6,9 +6,11 @@ import {
 import {
   computeMonthlyProductionSchedule,
   schedulePriorityKey,
+  spreadMonthlyStockSuggestions,
   type MonthlyPlanningDemand,
   type MonthlyPlanningExistingProduction,
   type MonthlyPlanningProduct,
+  type MonthlyProductionHistoricalDailyActual,
   type MonthlyProductionProductSummary,
   type MonthlyProductionSuggestion,
 } from "./monthly-production-schedule";
@@ -121,8 +123,18 @@ export async function loadMonthlyProductionSchedulePreview({
   const targetMonth = yearMonthFromDateInput(dateFromInput);
   const forecastReferenceMonths = getHistoricalForecastReferenceMonths(targetMonth);
   const forecastMonths = Object.values(forecastReferenceMonths);
+  const previousYearTargetMonthStart = monthStart(forecastReferenceMonths.previousYearTargetMonth);
+  const previousYearTargetMonthEnd = nextMonthStart(forecastReferenceMonths.previousYearTargetMonth);
 
-  const [products, planRows, demandRows, monthlyActualRows, confirmedReportRows, specialDemandRows] =
+  const [
+    products,
+    planRows,
+    demandRows,
+    monthlyActualRows,
+    confirmedReportRows,
+    historicalDailyReportRows,
+    specialDemandRows,
+  ] =
     await Promise.all([
     prisma.product.findMany({ where: { active: true }, orderBy: { productCode: "asc" } }),
     prisma.productionPlan.findMany({
@@ -169,6 +181,21 @@ export async function loadMonthlyProductionSchedulePreview({
         productionQty: true,
         productId: true,
       },
+    }),
+    // 月間在庫生産を前年同月の日別実績に寄せて分散するための参照実績。
+    prisma.productionDailyReportEntry.findMany({
+      where: {
+        active: true,
+        approvalStatus: "approved",
+        productId: { not: null },
+        reportDate: { gte: previousYearTargetMonthStart, lt: previousYearTargetMonthEnd },
+      },
+      select: {
+        productionQty: true,
+        productId: true,
+        reportDate: true,
+      },
+      orderBy: [{ reportDate: "asc" }],
     }),
     // 予測の参照月に紐づく特需イベント。通常予測から除外する設定(includeInNormalForecast=false)の
     // ものは、過去実績(YoY基礎)から差し引いてから前年比を計算する。
@@ -251,6 +278,18 @@ export async function loadMonthlyProductionSchedulePreview({
     cumulativeActualByProductId[productId] =
       (cumulativeActualByProductId[productId] ?? 0) + (report.productionQty ?? 0);
   }
+  const historicalDailyActuals: MonthlyProductionHistoricalDailyActual[] = historicalDailyReportRows.flatMap(
+    (report) =>
+      report.productId
+        ? [
+            {
+              productId: report.productId,
+              date: toDateInput(report.reportDate),
+              quantity: report.productionQty ?? 0,
+            },
+          ]
+        : [],
+  );
 
   // 当月の予実・過不足 read-model（予測 + 未完了予定 vs 確定実績累計）。
   const reconciliation: MonthlyVarianceRow[] = computeMonthlyVariance({
@@ -341,14 +380,23 @@ export async function loadMonthlyProductionSchedulePreview({
       });
     }
 
+    const distributedSuggestions = spreadMonthlyStockSuggestions(suggestions, {
+      dateFrom: dateFromInput,
+      dateTo: toDateInput(dateTo),
+      chunkQuantityByProductId: Object.fromEntries(
+        products.map((product) => [product.id, product.standardProductionLotSize]),
+      ),
+      historicalDailyActuals,
+    });
+
     const shortagePreview = buildShortagePreview(
-      suggestions.map<MonthlyPlanningExistingProduction>((suggestion) => ({
+      distributedSuggestions.map<MonthlyPlanningExistingProduction>((suggestion) => ({
         productId: suggestion.productId,
         date: suggestion.scheduleDate,
         quantity: suggestion.suggestedQuantity,
       })),
     );
-    const combinedSuggestions = [...suggestions, ...shortagePreview.suggestions].sort(
+    const combinedSuggestions = [...distributedSuggestions, ...shortagePreview.suggestions].sort(
       (a, b) =>
         a.scheduleDate.localeCompare(b.scheduleDate) ||
         schedulePriorityKey(a.schedulePriority) - schedulePriorityKey(b.schedulePriority) ||
@@ -386,6 +434,15 @@ export async function loadMonthlyProductionSchedulePreview({
 
 function toDateInput(date: Date) {
   return date.toISOString().slice(0, 10);
+}
+
+function monthStart(yearMonth: string) {
+  return new Date(`${yearMonth}-01T00:00:00.000Z`);
+}
+
+function nextMonthStart(yearMonth: string) {
+  const [year, month] = yearMonth.split("-").map(Number);
+  return new Date(Date.UTC(year, month, 1));
 }
 
 function round4(n: number) {
