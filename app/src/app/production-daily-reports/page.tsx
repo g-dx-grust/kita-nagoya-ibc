@@ -55,7 +55,7 @@ export default async function ProductionDailyReportsPage({
         reportDate: { gte: monthStart, lt: monthEnd },
         ...(productId ? { productId } : {}),
       },
-      include: { product: true, laborFeeRate: true, materials: { orderBy: { sortOrder: "asc" } } },
+      include: { product: true, workArea: true, laborFeeRate: true, materials: { orderBy: { sortOrder: "asc" } } },
       orderBy: [{ reportDate: "asc" }, { sourceRowNumber: "asc" }, { createdAt: "asc" }],
     }),
     prisma.product.findMany({
@@ -79,8 +79,8 @@ export default async function ProductionDailyReportsPage({
     }),
     prisma.productMonthlyLaborFee.findMany({
       where: { yearMonth: month },
-      include: { product: true },
-      orderBy: [{ sampleCount: "desc" }],
+      include: { product: true, workArea: true },
+      orderBy: [{ sampleCount: "desc" }, { product: { productCode: "asc" } }],
     }),
   ]);
 
@@ -104,6 +104,7 @@ export default async function ProductionDailyReportsPage({
   const productOptions: ProductDailyReportProductOption[] = products.map((product) => {
     const snapshot = snapshotsByProduct.get(product.id) ?? {
       capacityG: product.packSizeG,
+      lossToleranceRate: product.rawMaterialLossToleranceRate,
       materialUnitCostPerKg: 0,
       packageCostPerUnit: 0,
       unitPrice: 0,
@@ -118,6 +119,7 @@ export default async function ProductionDailyReportsPage({
       brandName: product.brandName,
       unit: product.unit,
       capacityG: snapshot.capacityG,
+      rawMaterialLossToleranceRate: snapshot.lossToleranceRate,
       materialUnitCostPerKg: snapshot.materialUnitCostPerKg,
       packageCostPerUnit: snapshot.packageCostPerUnit,
       unitPrice: snapshot.unitPrice,
@@ -125,6 +127,22 @@ export default async function ProductionDailyReportsPage({
     };
   });
   const unitPriceByProduct = new Map(productOptions.map((p) => [p.id, p.unitPrice]));
+  const currentBillingPrices = monthlyLaborFees.length
+    ? await prisma.billingPrice.findMany({
+        where: {
+          productId: { in: Array.from(new Set(monthlyLaborFees.map((row) => row.productId))) },
+          effectiveFrom: { lte: new Date() },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gte: new Date() } }],
+        },
+        orderBy: [{ productId: "asc" }, { effectiveFrom: "desc" }],
+        select: { productId: true, workAreaId: true, unitPrice: true },
+      })
+    : [];
+  const currentUnitPriceByProductArea = new Map<string, number>();
+  for (const price of currentBillingPrices) {
+    const key = laborFeePriceKey(price.productId, price.workAreaId);
+    if (!currentUnitPriceByProductArea.has(key)) currentUnitPriceByProductArea.set(key, price.unitPrice);
+  }
 
   const materialOptions: ProductDailyReportMaterialOption[] = materialMaster.map((m) => ({
     id: m.id,
@@ -141,6 +159,8 @@ export default async function ProductionDailyReportsPage({
           entry.product?.productCode,
           entry.product?.officialName,
           entry.product?.displayName,
+          entry.workAreaNameSnapshot,
+          entry.workArea?.name,
           entry.note,
         ]),
       )
@@ -150,22 +170,35 @@ export default async function ProductionDailyReportsPage({
     id: entry.id,
     reportDate: formatDate(entry.reportDate),
     productId: entry.productId,
+    productionPlanId: entry.productionPlanId,
+    workAreaId: entry.workAreaId,
+    workAreaName: entry.workAreaNameSnapshot ?? entry.workArea?.name ?? null,
     productName: entry.productName,
     productCode: entry.product?.productCode ?? null,
     displayName: entry.product?.displayName ?? null,
     officialName: entry.product?.officialName ?? null,
     productMatchStatus: entry.productMatchStatus,
     expiryDate: formatDate(entry.expiryDate),
+    pillowManufacturedDate: formatDate(entry.pillowManufacturedDate),
+    pillowExpiryDate: formatDate(entry.pillowExpiryDate),
+    packagingLotNumber: entry.packagingLotNumber,
+    fixedCode: entry.fixedCode,
+    ribbonChangeTime: entry.ribbonChangeTime,
     startTime: entry.startTime,
     endTime: entry.endTime,
     breakMinutes: entry.breakMinutes,
     workerCount: entry.workerCount,
+    staffSealerCount: entry.staffSealerCount,
+    staffSetCount: entry.staffSetCount,
+    staffReportNote: entry.staffReportNote,
     productionQty: entry.productionQty,
     materialUsedKg: entry.materialUsedKg,
     materials: entry.materials.map((m) => ({
       materialId: m.materialId,
       materialName: m.materialName,
       usedKg: m.usedKg,
+      lotNumber: m.lotNumber,
+      expiryDate: formatDate(m.expiryDate),
       unitPriceSnapshot: m.unitPriceSnapshot,
     })),
     laborFeeRateId: entry.laborFeeRateId,
@@ -177,7 +210,15 @@ export default async function ProductionDailyReportsPage({
     approvedAt: entry.approvedAt ? entry.approvedAt.toISOString().slice(0, 16).replace("T", " ") : null,
     approvedBy: entry.approvedBy,
     labelPhotos: parseLabelPhotos(entry.labelPhotosJson),
+    preCheckExpiryOk: entry.preCheckExpiryOk,
+    preCheckSealerPressureOk: entry.preCheckSealerPressureOk,
+    metalDetectorBeforeFe: entry.metalDetectorBeforeFe,
+    metalDetectorBeforeSus: entry.metalDetectorBeforeSus,
+    metalDetectorAfterFe: entry.metalDetectorAfterFe,
+    metalDetectorAfterSus: entry.metalDetectorAfterSus,
+    lossRateReasonNote: entry.lossRateReasonNote,
     capacityGSnapshot: entry.capacityGSnapshot,
+    lossToleranceRateSnapshot: entry.lossToleranceRateSnapshot,
     materialUnitCostSnapshot: entry.materialUnitCostSnapshot,
     packageCostPerUnitSnapshot: entry.packageCostPerUnitSnapshot,
     unitPriceSnapshot: entry.unitPriceSnapshot,
@@ -237,6 +278,8 @@ export default async function ProductionDailyReportsPage({
   const monthlyLaborFeeRows: MonthlyLaborFeeRow[] = monthlyLaborFees.map((row) => ({
     id: row.id,
     productId: row.productId,
+    workAreaId: row.workAreaId,
+    workAreaName: row.workAreaNameSnapshot ?? row.workArea?.name ?? null,
     productName: row.product.displayName || row.product.officialName,
     productCode: row.product.productCode,
     perBagLaborFee: row.perBagLaborFee,
@@ -244,7 +287,11 @@ export default async function ProductionDailyReportsPage({
     sampleCount: row.sampleCount,
     status: row.status,
     appliedAt: row.appliedAt ? row.appliedAt.toISOString().slice(0, 10) : null,
-    currentUnitPrice: unitPriceByProduct.get(row.productId) ?? 0,
+    currentUnitPrice:
+      currentUnitPriceByProductArea.get(laborFeePriceKey(row.productId, row.workAreaId)) ??
+      currentUnitPriceByProductArea.get(laborFeePriceKey(row.productId, null)) ??
+      unitPriceByProduct.get(row.productId) ??
+      0,
   }));
   const pendingLaborFeeCount = monthlyLaborFeeRows.filter((row) => row.status !== "applied").length;
   const inventoryReflectedCount = rows.filter((row) => row.approvalStatus === "approved" && row.inventoryReflected).length;
@@ -452,6 +499,10 @@ function reviewAnchorHref(month: string, productId: string, q: string) {
   if (productId) params.set("productId", productId);
   if (q) params.set("q", q);
   return `${kitagoyaPath("/production-daily-reports")}?${params.toString()}#daily-report-review`;
+}
+
+function laborFeePriceKey(productId: string, workAreaId: string | null) {
+  return `${productId}|${workAreaId ?? "unassigned"}`;
 }
 
 function formatMonthLabel(month: string) {

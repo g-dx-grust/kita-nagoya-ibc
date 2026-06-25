@@ -106,6 +106,7 @@ export default async function StaffDailyReportsPage({
   const productOptions: StaffDailyReportProductOption[] = products.map((product) => {
     const snapshot = snapshotsByProduct.get(product.id) ?? {
       capacityG: product.packSizeG,
+      lossToleranceRate: product.rawMaterialLossToleranceRate,
       materialUnitCostPerKg: 0,
       packageCostPerUnit: 0,
       unitPrice: 0,
@@ -120,6 +121,7 @@ export default async function StaffDailyReportsPage({
       brandName: product.brandName,
       unit: product.unit,
       capacityG: snapshot.capacityG,
+      rawMaterialLossToleranceRate: snapshot.lossToleranceRate,
       materialUnitCostPerKg: snapshot.materialUnitCostPerKg,
       packageCostPerUnit: snapshot.packageCostPerUnit,
       unitPrice: snapshot.unitPrice,
@@ -147,6 +149,7 @@ export default async function StaffDailyReportsPage({
     productCode: plan.product.productCode,
     plannedQuantity: plan.plannedQuantity,
     unit: plan.unit,
+    workAreaId: plan.workAreaId,
     workAreaName: plan.workArea.name,
     plannedStartTime: plan.plannedStartTime,
     plannedEndTime: plan.plannedEndTime,

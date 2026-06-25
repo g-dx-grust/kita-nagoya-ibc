@@ -15,7 +15,7 @@ export default async function ProductDetail({ params }: { params: Promise<{ id: 
         aliases: true,
         bomItems: true,
         capacities: true,
-        billingPrices: { orderBy: { effectiveFrom: "desc" } },
+        billingPrices: { include: { workArea: true }, orderBy: { effectiveFrom: "desc" } },
       },
     }),
     prisma.workArea.findMany({ where: { active: true }, orderBy: { displayOrder: "asc" } }),
@@ -49,6 +49,7 @@ export default async function ProductDetail({ params }: { params: Promise<{ id: 
           forecastMethod: product.forecastMethod,
           safetyStockQuantity: product.safetyStockQuantity,
           standardProductionLotSize: product.standardProductionLotSize,
+          rawMaterialLossToleranceRate: product.rawMaterialLossToleranceRate,
           schedulePriority: product.schedulePriority,
           unit: product.unit,
           packSizeG: product.packSizeG,
@@ -94,6 +95,8 @@ export default async function ProductDetail({ params }: { params: Promise<{ id: 
         }))}
         billingPrices={product.billingPrices.map((price) => ({
           id: price.id,
+          workAreaId: price.workAreaId ?? "",
+          workAreaNameSnapshot: price.workAreaNameSnapshot ?? price.workArea?.name ?? null,
           unitPrice: price.unitPrice,
           unit: price.unit,
           effectiveFrom: price.effectiveFrom.toISOString().slice(0, 10),

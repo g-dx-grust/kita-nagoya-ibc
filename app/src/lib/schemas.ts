@@ -97,11 +97,22 @@ export const ProductDailyReportEntrySchema = z
     reportDate: isoDate,
     productId: z.string().nullish(),
     productName: z.string().nullish(),
+    productionPlanId: z.string().nullish(),
+    workAreaId: z.string().nullish(),
+    workAreaName: z.string().max(120).nullish(),
     expiryDate: isoDate.nullish(),
+    pillowManufacturedDate: isoDate.nullish(),
+    pillowExpiryDate: isoDate.nullish(),
+    packagingLotNumber: z.string().max(120).nullish(),
+    fixedCode: z.string().max(80).nullish(),
+    ribbonChangeTime: hhmm.nullish(),
     startTime: hhmm,
     endTime: hhmm,
     breakMinutes: z.number().int().min(0).default(0),
     workerCount: z.number().positive(),
+    staffSealerCount: z.number().nonnegative().nullish(),
+    staffSetCount: z.number().nonnegative().nullish(),
+    staffReportNote: z.string().max(500).nullish(),
     productionQty: z.number().positive(),
     // 複数原料(2種類以上)。materialUsedKg は materials があればサーバで Σ 再計算する(後方互換のため残す)。
     materials: z
@@ -110,6 +121,8 @@ export const ProductDailyReportEntrySchema = z
           materialId: z.string().nullish(),
           materialName: z.string().min(1, "原料名を入力してください"),
           usedKg: z.number().nonnegative(),
+          lotNumber: z.string().max(120).nullish(),
+          expiryDate: isoDate.nullish(),
           mixRatio: z.number().nullish(),
         }),
       )
@@ -123,6 +136,13 @@ export const ProductDailyReportEntrySchema = z
     approvalStatus: ProductDailyReportApprovalStatusEnum.optional(),
     submittedBy: z.string().max(80).nullish(),
     approvedBy: z.string().max(80).nullish(),
+    preCheckExpiryOk: z.boolean().optional(),
+    preCheckSealerPressureOk: z.boolean().optional(),
+    metalDetectorBeforeFe: z.boolean().optional(),
+    metalDetectorBeforeSus: z.boolean().optional(),
+    metalDetectorAfterFe: z.boolean().optional(),
+    metalDetectorAfterSus: z.boolean().optional(),
+    lossRateReasonNote: z.string().max(1000).nullish(),
     labelPhotos: z
       .array(
         z.object({
@@ -186,6 +206,7 @@ const ProductBaseSchema = z.object({
   equivalenceGroupId: z.string().nullish(),
   safetyStockQuantity: z.number().nonnegative().default(0),
   standardProductionLotSize: z.number().nonnegative().default(0),
+  rawMaterialLossToleranceRate: z.number().min(0).max(1).default(0.05),
   schedulePriority: z.number().int().nullish(),
   unit: z.string().default("袋"),
   packSizeG: z.number().nonnegative().nullish(),
@@ -473,6 +494,8 @@ export const CapacityUpsertSchema = CapacityBaseSchema.refine(validityRange, {
 });
 
 const BillingPriceFieldsSchema = z.object({
+  workAreaId: z.string().nullish(),
+  workAreaNameSnapshot: z.string().max(120).nullish(),
   unitPrice: z.number().nonnegative(),
   unit: z.string().min(1),
   effectiveFrom: isoDate,

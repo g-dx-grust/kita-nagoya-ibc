@@ -16,6 +16,7 @@ type Product = {
   forecastMethod: string;
   safetyStockQuantity: number;
   standardProductionLotSize: number;
+  rawMaterialLossToleranceRate: number;
   schedulePriority: number | null;
   unit: string;
   packSizeG: number | null;
@@ -61,6 +62,8 @@ type CapacityRow = {
 };
 type BillingPriceRow = {
   id?: string;
+  workAreaId: string;
+  workAreaNameSnapshot: string | null;
   unitPrice: number;
   unit: string;
   effectiveFrom: string;
@@ -111,6 +114,9 @@ export default function ProductEditor({
   const [forecastMethod, setForecastMethod] = useState(product.forecastMethod);
   const [safetyStockQuantity, setSafetyStockQuantity] = useState(product.safetyStockQuantity);
   const [standardProductionLotSize, setStandardProductionLotSize] = useState(product.standardProductionLotSize);
+  const [rawMaterialLossTolerancePercent, setRawMaterialLossTolerancePercent] = useState(
+    String(Math.round(product.rawMaterialLossToleranceRate * 1000) / 10),
+  );
   const [schedulePriority, setSchedulePriority] = useState(
     product.schedulePriority != null ? String(product.schedulePriority) : "",
   );
@@ -242,6 +248,7 @@ export default function ProductEditor({
         forecastMethod,
         safetyStockQuantity,
         standardProductionLotSize,
+        rawMaterialLossToleranceRate: Number(rawMaterialLossTolerancePercent || "5") / 100,
         schedulePriority: schedulePriority.trim() === "" ? null : Number(schedulePriority),
         unit,
         packSizeG: packSizeG ? Number(packSizeG) : null,
@@ -326,9 +333,14 @@ export default function ProductEditor({
       setMsg("手間賃単価・単位・適用開始日を確認してください");
       return;
     }
+    const workAreaNameSnapshot = row.workAreaId
+      ? workAreas.find((workArea) => workArea.id === row.workAreaId)?.name ?? row.workAreaNameSnapshot
+      : null;
     setSavingBilling(true);
     const payload = {
       productId: product.id,
+      workAreaId: row.workAreaId || null,
+      workAreaNameSnapshot,
       unitPrice: row.unitPrice,
       unit: row.unit,
       effectiveFrom: row.effectiveFrom,
@@ -348,7 +360,7 @@ export default function ProductEditor({
     setSavingBilling(false);
     if (res.ok) {
       setBillingRows((current) =>
-        current.map((item, i) => (i === index ? { ...row, id: json.id ?? row.id } : item)),
+        current.map((item, i) => (i === index ? { ...row, workAreaNameSnapshot, id: json.id ?? row.id } : item)),
       );
       setMsg("手間賃単価を保存しました");
       router.refresh();
@@ -585,6 +597,20 @@ export default function ProductEditor({
             />
           </label>
           <label>
+            <span className="inline-action">
+              原料ロス率許容(%)
+              <HelpTooltip text="スタッフ日報で原料ロス率がこの値を超えると提出を止めます。個包装もの5%、手詰め3%、NTSするめソーメン10gは8%を目安にします。" />
+            </span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step="0.1"
+              value={rawMaterialLossTolerancePercent}
+              onChange={(e) => setRawMaterialLossTolerancePercent(e.target.value)}
+            />
+          </label>
+          <label>
             <span>生産順(優先度)</span>
             <input
               type="number"
@@ -683,6 +709,7 @@ export default function ProductEditor({
           <thead>
             <tr>
               <th>単価</th>
+              <th>作業場所</th>
               <th>単位</th>
               <th>適用開始</th>
               <th>適用終了</th>
@@ -710,6 +737,27 @@ export default function ProductEditor({
                         setBillingRows(copy);
                       }}
                     />
+                  </td>
+                  <td>
+                    <SearchableCombobox
+                      value={r.workAreaId}
+                      options={workAreaOptions}
+                      emptyOptionLabel="全作業場所"
+                      placeholder="作業場所名で検索"
+                      onChange={(workAreaId) => {
+                        const copy = [...billingRows];
+                        copy[idx] = {
+                          ...r,
+                          workAreaId,
+                          workAreaNameSnapshot:
+                            workAreas.find((workArea) => workArea.id === workAreaId)?.name ?? null,
+                        };
+                        setBillingRows(copy);
+                      }}
+                    />
+                    {r.workAreaNameSnapshot && !r.workAreaId && (
+                      <div className="subtext">反映時: {r.workAreaNameSnapshot}</div>
+                    )}
                   </td>
                   <td>
                     <input
@@ -793,6 +841,8 @@ export default function ProductEditor({
               setBillingRows([
                 ...billingRows,
                 {
+                  workAreaId: "",
+                  workAreaNameSnapshot: null,
                   unitPrice: 0,
                   unit: product.unit || "袋",
                   effectiveFrom: new Date().toISOString().slice(0, 10),

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   aggregateProductDailyReports,
   computeProductDailyReportMetrics,
+  evaluateRawMaterialLossRate,
   summarizeProductDailyReportTotals,
 } from "./product-daily-report-calculations";
 
@@ -163,5 +164,23 @@ describe("product daily report calculations", () => {
     expect(total.totalProductionQty).toBe(260);
     expect(total.totalMaterialUsedKg).toBe(13);
     expect(total.totalSales).toBe(1200);
+  });
+
+  it("checks raw material loss rate against product-specific tolerances", () => {
+    expect(evaluateRawMaterialLossRate(0.049, 0.05)).toMatchObject({
+      status: "ok",
+      toleranceRate: 0.05,
+      exceededBy: 0,
+    });
+    expect(evaluateRawMaterialLossRate(0.031, 0.03)).toMatchObject({
+      status: "abnormal",
+      toleranceRate: 0.03,
+      exceededBy: 0.001,
+    });
+    expect(evaluateRawMaterialLossRate(0.079, 0.08)).toMatchObject({
+      status: "ok",
+      toleranceRate: 0.08,
+      exceededBy: 0,
+    });
   });
 });

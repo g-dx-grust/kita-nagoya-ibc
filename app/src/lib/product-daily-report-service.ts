@@ -2,8 +2,11 @@ import type { Prisma, Product } from "@prisma/client";
 
 import { audit } from "./audit";
 import {
+  DEFAULT_RAW_MATERIAL_LOSS_TOLERANCE_RATE,
   DEFAULT_DAILY_REPORT_LABOR_HOURLY_RATE,
+  STAFF_LOSS_RATE_ABNORMAL_MESSAGE,
   computeProductDailyReportMetrics,
+  evaluateRawMaterialLossRate,
 } from "./product-daily-report-calculations";
 import { recomputeMonthlyLaborFees } from "./product-monthly-labor-fee";
 import { HttpError } from "./http";
@@ -21,6 +24,8 @@ export type ProductDailyReportMaterialInput = {
   materialId?: string | null;
   materialName: string;
   usedKg: number;
+  lotNumber?: string | null;
+  expiryDate?: string | null;
   mixRatio?: number | null;
 };
 
@@ -36,11 +41,22 @@ export type ProductDailyReportInput = {
   reportDate: string;
   productId?: string | null;
   productName?: string | null;
+  productionPlanId?: string | null;
+  workAreaId?: string | null;
+  workAreaName?: string | null;
   expiryDate?: string | null;
+  pillowManufacturedDate?: string | null;
+  pillowExpiryDate?: string | null;
+  packagingLotNumber?: string | null;
+  fixedCode?: string | null;
+  ribbonChangeTime?: string | null;
   startTime: string;
   endTime: string;
   breakMinutes?: number;
   workerCount: number;
+  staffSealerCount?: number | null;
+  staffSetCount?: number | null;
+  staffReportNote?: string | null;
   productionQty: number;
   // 複数原料(2種類以上)。未指定時は materialUsedKg / BOM から1要素を補完する(後方互換)。
   materials?: ProductDailyReportMaterialInput[];
@@ -54,6 +70,13 @@ export type ProductDailyReportInput = {
   inventoryReflected?: boolean;
   submittedBy?: string | null;
   approvedBy?: string | null;
+  preCheckExpiryOk?: boolean;
+  preCheckSealerPressureOk?: boolean;
+  metalDetectorBeforeFe?: boolean;
+  metalDetectorBeforeSus?: boolean;
+  metalDetectorAfterFe?: boolean;
+  metalDetectorAfterSus?: boolean;
+  lossRateReasonNote?: string | null;
   labelPhotos?: ProductDailyReportLabelPhotoInput[];
 };
 
@@ -63,6 +86,8 @@ type ResolvedMaterial = {
   materialName: string;
   materialCode: string | null;
   usedKg: number;
+  lotNumber: string | null;
+  expiryDate: Date | null;
   unitPriceSnapshot: number;
   mixRatio: number | null;
   sortOrder: number;
@@ -90,6 +115,7 @@ type ProductMatch = {
 
 export type ProductDailyReportSnapshots = {
   capacityG: number | null;
+  lossToleranceRate: number;
   materialUnitCostPerKg: number;
   packageCostPerUnit: number;
   unitPrice: number;
@@ -97,6 +123,7 @@ export type ProductDailyReportSnapshots = {
 
 const entryInclude = {
   product: true,
+  workArea: true,
   laborFeeRate: true,
   materials: { orderBy: { sortOrder: "asc" } },
 } satisfies Prisma.ProductionDailyReportEntryInclude;
@@ -126,7 +153,7 @@ export async function createProductDailyReportEntry(input: ProductDailyReportInp
         productId: created.productId,
         yearMonth: yearMonthFromDate(created.reportDate),
       });
-      await completeMatchingPlans(tx, created.productId, created.reportDate);
+      await completeMatchingPlans(tx, created.productId, created.reportDate, created.workAreaId, created.productionPlanId);
     }
     return tx.productionDailyReportEntry.findUnique({ where: { id: created.id }, include: entryInclude });
   });
@@ -155,6 +182,24 @@ export async function updateProductDailyReportEntry(id: string, input: ProductDa
     approvedBy: before.approvedBy,
     inventoryReflected: before.inventoryReflected,
     labelPhotosJson: before.labelPhotosJson,
+    pillowManufacturedDate: before.pillowManufacturedDate,
+    pillowExpiryDate: before.pillowExpiryDate,
+    packagingLotNumber: before.packagingLotNumber,
+    fixedCode: before.fixedCode,
+    ribbonChangeTime: before.ribbonChangeTime,
+    staffSealerCount: before.staffSealerCount,
+    staffSetCount: before.staffSetCount,
+    staffReportNote: before.staffReportNote,
+    preCheckExpiryOk: before.preCheckExpiryOk,
+    preCheckSealerPressureOk: before.preCheckSealerPressureOk,
+    metalDetectorBeforeFe: before.metalDetectorBeforeFe,
+    metalDetectorBeforeSus: before.metalDetectorBeforeSus,
+    metalDetectorAfterFe: before.metalDetectorAfterFe,
+    metalDetectorAfterSus: before.metalDetectorAfterSus,
+    lossRateReasonNote: before.lossRateReasonNote,
+    productionPlanId: before.productionPlanId,
+    workAreaId: before.workAreaId,
+    workAreaNameSnapshot: before.workAreaNameSnapshot,
   });
 
   const row = await prisma.$transaction(async (tx) => {
@@ -181,7 +226,7 @@ export async function updateProductDailyReportEntry(id: string, input: ProductDa
       await syncMonthlyActualFromProductionDailyReports(tx, { productId, yearMonth });
     }
     if (shouldReflectInventoryForEntry(updated) && updated.productId) {
-      await completeMatchingPlans(tx, updated.productId, updated.reportDate);
+      await completeMatchingPlans(tx, updated.productId, updated.reportDate, updated.workAreaId, updated.productionPlanId);
     }
     return tx.productionDailyReportEntry.findUnique({ where: { id }, include: entryInclude });
   });
@@ -221,7 +266,7 @@ export async function approveProductDailyReportEntry(id: string, approvedBy?: st
         productId: updated.productId,
         yearMonth: yearMonthFromDate(updated.reportDate),
       });
-      await completeMatchingPlans(tx, updated.productId, updated.reportDate);
+      await completeMatchingPlans(tx, updated.productId, updated.reportDate, updated.workAreaId, updated.productionPlanId);
     }
     return tx.productionDailyReportEntry.findUnique({ where: { id }, include: entryInclude });
   });
@@ -263,12 +308,31 @@ async function buildProductDailyReportData(
     approvedBy?: string | null;
     inventoryReflected?: boolean;
     labelPhotosJson?: string | null;
+    pillowManufacturedDate?: Date | null;
+    pillowExpiryDate?: Date | null;
+    packagingLotNumber?: string | null;
+    fixedCode?: string | null;
+    ribbonChangeTime?: string | null;
+    staffSealerCount?: number | null;
+    staffSetCount?: number | null;
+    staffReportNote?: string | null;
+    preCheckExpiryOk?: boolean;
+    preCheckSealerPressureOk?: boolean;
+    metalDetectorBeforeFe?: boolean;
+    metalDetectorBeforeSus?: boolean;
+    metalDetectorAfterFe?: boolean;
+    metalDetectorAfterSus?: boolean;
+    lossRateReasonNote?: string | null;
+    productionPlanId?: string | null;
+    workAreaId?: string | null;
+    workAreaNameSnapshot?: string | null;
   },
 ): Promise<BuiltEntry> {
   const reportDate = new Date(`${input.reportDate}T00:00:00.000Z`);
   const productMatch = await resolveProductMatch(input.productId, input.productName);
+  const workArea = await resolveReportWorkArea(input, productMatch.product?.id ?? null, defaults);
   const snapshots = productMatch.product
-    ? await loadProductDailyReportSnapshots(productMatch.product.id, reportDate)
+    ? await loadProductDailyReportSnapshots(productMatch.product.id, reportDate, workArea.workAreaId)
     : emptySnapshots();
   const labor = await resolveLaborFeeRate(input.laborFeeRateId, reportDate);
 
@@ -291,11 +355,15 @@ async function buildProductDailyReportData(
     unitPrice: snapshots.unitPrice,
     laborHourlyRate: labor.hourlyRate,
   });
+  const lossRateCheck = evaluateRawMaterialLossRate(metrics.lossRate, snapshots.lossToleranceRate);
 
   // 表示・後方互換用の親スナップショット。複数原料時は加重平均(原価/総kg)を保持する。
   const blendedMaterialUnitCost =
     totalMaterialKg > 0 ? metrics.materialCost / totalMaterialKg : snapshots.materialUnitCostPerKg;
   const approvalStatus = input.approvalStatus ?? defaults?.approvalStatus ?? "approved";
+  if (input.sourceType === "staff_entry" && approvalStatus === "submitted" && lossRateCheck.status === "abnormal") {
+    throw new HttpError(400, "raw_material_loss_rate_abnormal", STAFF_LOSS_RATE_ABNORMAL_MESSAGE);
+  }
   const approvedAt =
     approvalStatus === "approved" ? (defaults?.approvedAt ?? new Date()) : null;
   const inventoryReflected =
@@ -304,14 +372,25 @@ async function buildProductDailyReportData(
   const data: Prisma.ProductionDailyReportEntryUncheckedCreateInput = {
     reportDate,
     productId: productMatch.product?.id ?? null,
+    productionPlanId: workArea.productionPlanId,
+    workAreaId: workArea.workAreaId,
+    workAreaNameSnapshot: workArea.workAreaNameSnapshot,
     productName: productMatch.productName,
     normalizedProductName: productMatch.normalizedProductName,
     productMatchStatus: productMatch.productMatchStatus,
     expiryDate: input.expiryDate ? new Date(`${input.expiryDate}T00:00:00.000Z`) : null,
+    pillowManufacturedDate: dateInputOrDefault(input.pillowManufacturedDate, defaults?.pillowManufacturedDate),
+    pillowExpiryDate: dateInputOrDefault(input.pillowExpiryDate, defaults?.pillowExpiryDate),
+    packagingLotNumber: textInputOrDefault(input.packagingLotNumber, defaults?.packagingLotNumber),
+    fixedCode: textInputOrDefault(input.fixedCode, defaults?.fixedCode),
+    ribbonChangeTime: textInputOrDefault(input.ribbonChangeTime, defaults?.ribbonChangeTime),
     startTime: input.startTime,
     endTime: input.endTime,
     breakMinutes: input.breakMinutes ?? 0,
     workerCount: input.workerCount,
+    staffSealerCount: input.staffSealerCount ?? defaults?.staffSealerCount ?? 0,
+    staffSetCount: input.staffSetCount ?? defaults?.staffSetCount ?? 0,
+    staffReportNote: textInputOrDefault(input.staffReportNote, defaults?.staffReportNote),
     productionQty: input.productionQty,
     materialUsedKg: totalMaterialKg,
     laborFeeRateId: labor.id,
@@ -328,7 +407,15 @@ async function buildProductDailyReportData(
     labelPhotosJson: input.labelPhotos
       ? serializeLabelPhotos(input.labelPhotos)
       : (defaults?.labelPhotosJson ?? "[]"),
+    preCheckExpiryOk: input.preCheckExpiryOk ?? defaults?.preCheckExpiryOk ?? false,
+    preCheckSealerPressureOk: input.preCheckSealerPressureOk ?? defaults?.preCheckSealerPressureOk ?? false,
+    metalDetectorBeforeFe: input.metalDetectorBeforeFe ?? defaults?.metalDetectorBeforeFe ?? false,
+    metalDetectorBeforeSus: input.metalDetectorBeforeSus ?? defaults?.metalDetectorBeforeSus ?? false,
+    metalDetectorAfterFe: input.metalDetectorAfterFe ?? defaults?.metalDetectorAfterFe ?? false,
+    metalDetectorAfterSus: input.metalDetectorAfterSus ?? defaults?.metalDetectorAfterSus ?? false,
+    lossRateReasonNote: textInputOrDefault(input.lossRateReasonNote, defaults?.lossRateReasonNote),
     capacityGSnapshot: snapshots.capacityG,
+    lossToleranceRateSnapshot: snapshots.lossToleranceRate,
     materialUnitCostSnapshot: blendedMaterialUnitCost,
     packageCostPerUnitSnapshot: snapshots.packageCostPerUnit,
     unitPriceSnapshot: snapshots.unitPrice,
@@ -358,16 +445,29 @@ function entryToInput(
     reportDate: entry.reportDate.toISOString().slice(0, 10),
     productId: entry.productId,
     productName: entry.productId ? null : entry.productName,
+    productionPlanId: entry.productionPlanId,
+    workAreaId: entry.workAreaId,
+    workAreaName: entry.workAreaNameSnapshot ?? entry.workArea?.name ?? null,
     expiryDate: entry.expiryDate?.toISOString().slice(0, 10) ?? null,
+    pillowManufacturedDate: entry.pillowManufacturedDate?.toISOString().slice(0, 10) ?? null,
+    pillowExpiryDate: entry.pillowExpiryDate?.toISOString().slice(0, 10) ?? null,
+    packagingLotNumber: entry.packagingLotNumber,
+    fixedCode: entry.fixedCode,
+    ribbonChangeTime: entry.ribbonChangeTime,
     startTime: entry.startTime,
     endTime: entry.endTime,
     breakMinutes: entry.breakMinutes,
     workerCount: entry.workerCount,
+    staffSealerCount: entry.staffSealerCount,
+    staffSetCount: entry.staffSetCount,
+    staffReportNote: entry.staffReportNote,
     productionQty: entry.productionQty,
     materials: entry.materials.map((m) => ({
       materialId: m.materialId,
       materialName: m.materialName,
       usedKg: m.usedKg,
+      lotNumber: m.lotNumber,
+      expiryDate: m.expiryDate?.toISOString().slice(0, 10) ?? null,
       mixRatio: m.mixRatio,
     })),
     laborFeeRateId: entry.laborFeeRateId,
@@ -377,6 +477,13 @@ function entryToInput(
     sourceRowNumber: entry.sourceRowNumber,
     approvalStatus: "approved",
     inventoryReflected: entry.inventoryReflected,
+    preCheckExpiryOk: entry.preCheckExpiryOk,
+    preCheckSealerPressureOk: entry.preCheckSealerPressureOk,
+    metalDetectorBeforeFe: entry.metalDetectorBeforeFe,
+    metalDetectorBeforeSus: entry.metalDetectorBeforeSus,
+    metalDetectorAfterFe: entry.metalDetectorAfterFe,
+    metalDetectorAfterSus: entry.metalDetectorAfterSus,
+    lossRateReasonNote: entry.lossRateReasonNote,
   };
 }
 
@@ -467,6 +574,8 @@ async function resolveMaterials(
         materialName: m.materialName?.trim() || master?.name || "(未設定)",
         materialCode: master?.materialCode ?? null,
         usedKg: Math.max(0, safeNumber(m.usedKg)),
+        lotNumber: normalizeNullableText(m.lotNumber),
+        expiryDate: m.expiryDate ? new Date(`${m.expiryDate}T00:00:00.000Z`) : null,
         unitPriceSnapshot: master?.standardUnitPrice ?? 0,
         mixRatio: m.mixRatio ?? null,
         sortOrder: index,
@@ -484,6 +593,8 @@ async function resolveMaterials(
           materialName: primary.itemName,
           materialCode: null,
           usedKg: Math.max(0, safeNumber(input.materialUsedKg)),
+          lotNumber: null,
+          expiryDate: null,
           unitPriceSnapshot: primary.unitPrice,
           mixRatio: null,
           sortOrder: 0,
@@ -496,6 +607,8 @@ async function resolveMaterials(
         materialName: "(取込)",
         materialCode: null,
         usedKg: Math.max(0, safeNumber(input.materialUsedKg)),
+        lotNumber: null,
+        expiryDate: null,
         unitPriceSnapshot: fallbackUnitCostPerKg,
         mixRatio: null,
         sortOrder: 0,
@@ -509,6 +622,8 @@ async function resolveMaterials(
     materialName: b.itemName,
     materialCode: null,
     usedKg: Math.max(0, b.quantityPerUnit * (input.productionQty ?? 0)),
+    lotNumber: null,
+    expiryDate: null,
     unitPriceSnapshot: b.unitPrice,
     mixRatio: null,
     sortOrder: index,
@@ -518,12 +633,31 @@ async function resolveMaterials(
 // 日報蓄積(B)が実績の正になったため、A系統(DailyReport)の「予定→完了」を肩代わりする。
 // 同一(商品×生産日)の未完了予定を completed にし、在庫計算層で PLANNED 予約を実績で置換させる
 // (inventory.ts の supersededPlanIds 機構)。これで予定予約と実績の二重計上を防ぐ。
-async function completeMatchingPlans(tx: Prisma.TransactionClient, productId: string, reportDate: Date) {
+async function completeMatchingPlans(
+  tx: Prisma.TransactionClient,
+  productId: string,
+  reportDate: Date,
+  workAreaId?: string | null,
+  productionPlanId?: string | null,
+) {
+  if (productionPlanId) {
+    await tx.productionPlan.updateMany({
+      where: { id: productionPlanId, productId, status: { in: ["draft", "confirmed"] } },
+      data: { status: "completed" },
+    });
+    return;
+  }
+
   // 生産日(同日)で一致させる。plan.date に時刻成分があっても拾えるよう [日始, 翌日) で絞る。
   const dayEnd = new Date(reportDate);
   dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
   await tx.productionPlan.updateMany({
-    where: { productId, date: { gte: reportDate, lt: dayEnd }, status: { in: ["draft", "confirmed"] } },
+    where: {
+      productId,
+      ...(workAreaId ? { workAreaId } : {}),
+      date: { gte: reportDate, lt: dayEnd },
+      status: { in: ["draft", "confirmed"] },
+    },
     data: { status: "completed" },
   });
 }
@@ -534,6 +668,8 @@ function materialChildData(m: ResolvedMaterial) {
     materialName: m.materialName,
     materialCode: m.materialCode,
     usedKg: m.usedKg,
+    lotNumber: m.lotNumber,
+    expiryDate: m.expiryDate,
     unitPriceSnapshot: m.unitPriceSnapshot,
     mixRatio: m.mixRatio,
     sortOrder: m.sortOrder,
@@ -601,25 +737,94 @@ function matchedProduct(
   return { product, productName, normalizedProductName, productMatchStatus };
 }
 
-export async function loadProductDailyReportSnapshots(productId: string, reportDate: Date) {
+async function resolveReportWorkArea(
+  input: ProductDailyReportInput,
+  productId: string | null,
+  defaults?: {
+    productionPlanId?: string | null;
+    workAreaId?: string | null;
+    workAreaNameSnapshot?: string | null;
+  },
+) {
+  const productionPlanId =
+    input.productionPlanId !== undefined
+      ? normalizeNullableText(input.productionPlanId)
+      : (defaults?.productionPlanId ?? null);
+  const requestedWorkAreaId =
+    input.workAreaId !== undefined ? normalizeNullableText(input.workAreaId) : (defaults?.workAreaId ?? null);
+  const requestedWorkAreaName =
+    input.workAreaName !== undefined
+      ? normalizeNullableText(input.workAreaName)
+      : (defaults?.workAreaNameSnapshot ?? null);
+
+  let planWorkAreaId: string | null = null;
+  let planWorkAreaName: string | null = null;
+  if (productionPlanId) {
+    const plan = await prisma.productionPlan.findUnique({
+      where: { id: productionPlanId },
+      select: { productId: true, workAreaId: true, workArea: { select: { name: true } } },
+    });
+    if (!plan) throw new HttpError(400, "production_plan_not_found", "生産予定が見つかりません。");
+    if (productId && plan.productId !== productId) {
+      throw new HttpError(400, "production_plan_product_mismatch", "生産予定と日報の商品が一致しません。");
+    }
+    planWorkAreaId = plan.workAreaId;
+    planWorkAreaName = plan.workArea.name;
+  }
+
+  const workAreaId = requestedWorkAreaId ?? planWorkAreaId;
+  if (workAreaId) {
+    const workArea = await prisma.workArea.findUnique({
+      where: { id: workAreaId },
+      select: { id: true, name: true },
+    });
+    if (!workArea) throw new HttpError(400, "work_area_not_found", "作業場所が見つかりません。");
+    return {
+      productionPlanId,
+      workAreaId: workArea.id,
+      workAreaNameSnapshot: workArea.name,
+    };
+  }
+
+  return {
+    productionPlanId,
+    workAreaId: null,
+    workAreaNameSnapshot: requestedWorkAreaName ?? planWorkAreaName,
+  };
+}
+
+export async function loadProductDailyReportSnapshots(
+  productId: string,
+  reportDate: Date,
+  workAreaId?: string | null,
+) {
   const product = await prisma.product.findUnique({
     where: { id: productId },
-    select: { id: true, packSizeG: true },
+    select: { id: true, packSizeG: true, rawMaterialLossToleranceRate: true },
   });
   if (!product) return emptySnapshots();
 
   const snapshots = await loadProductDailyReportSnapshotsForProducts([product], reportDate);
-  return snapshots.get(productId) ?? emptySnapshots();
+  const base = snapshots.get(productId) ?? emptySnapshots();
+  if (!workAreaId) return base;
+  return {
+    ...base,
+    unitPrice: await loadBillingPriceSnapshot(productId, reportDate, workAreaId),
+  };
 }
 
 export async function loadProductDailyReportSnapshotsForProducts(
-  products: Array<Pick<Product, "id" | "packSizeG">>,
+  products: Array<Pick<Product, "id" | "packSizeG"> & Partial<Pick<Product, "rawMaterialLossToleranceRate">>>,
   reportDate: Date,
 ): Promise<Map<string, ProductDailyReportSnapshots>> {
   const productIds = [...new Set(products.map((product) => product.id))];
   const result = new Map<string, ProductDailyReportSnapshots>();
   for (const product of products) {
-    result.set(product.id, { ...emptySnapshots(), capacityG: product.packSizeG });
+    result.set(product.id, {
+      ...emptySnapshots(),
+      capacityG: product.packSizeG,
+      lossToleranceRate: product.rawMaterialLossToleranceRate ?? DEFAULT_RAW_MATERIAL_LOSS_TOLERANCE_RATE,
+    });
   }
   if (productIds.length === 0) return result;
 
@@ -643,6 +848,7 @@ export async function loadProductDailyReportSnapshotsForProducts(
     prisma.billingPrice.findMany({
       where: {
         productId: { in: productIds },
+        workAreaId: null,
         effectiveFrom: { lte: reportDate },
         OR: [{ effectiveTo: null }, { effectiveTo: { gte: reportDate } }],
       },
@@ -691,6 +897,7 @@ export async function loadProductDailyReportSnapshotsForProducts(
 
     result.set(productId, {
       capacityG: product?.packSizeG ?? null,
+      lossToleranceRate: product?.rawMaterialLossToleranceRate ?? DEFAULT_RAW_MATERIAL_LOSS_TOLERANCE_RATE,
       materialUnitCostPerKg: computeMaterialUnitCostPerKg(
         rawItems.map((item) => ({
           unitPrice: materialPriceMap.get(item.itemId) ?? 0,
@@ -708,6 +915,33 @@ export async function loadProductDailyReportSnapshotsForProducts(
   }
 
   return result;
+}
+
+async function loadBillingPriceSnapshot(productId: string, reportDate: Date, workAreaId?: string | null) {
+  const prices = await prisma.billingPrice.findMany({
+    where: {
+      productId,
+      effectiveFrom: { lte: reportDate },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gte: reportDate } }],
+      ...(workAreaId ? { workAreaId: { in: [workAreaId] } } : { workAreaId: null }),
+    },
+    orderBy: [{ effectiveFrom: "desc" }],
+    select: { workAreaId: true, unitPrice: true },
+  });
+  const exact = workAreaId ? prices.find((price) => price.workAreaId === workAreaId) : null;
+  if (exact) return exact.unitPrice;
+
+  const fallback = await prisma.billingPrice.findFirst({
+    where: {
+      productId,
+      workAreaId: null,
+      effectiveFrom: { lte: reportDate },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gte: reportDate } }],
+    },
+    orderBy: [{ effectiveFrom: "desc" }],
+    select: { unitPrice: true },
+  });
+  return fallback?.unitPrice ?? 0;
 }
 
 function computeMaterialUnitCostPerKg(
@@ -748,6 +982,7 @@ async function resolveLaborFeeRate(laborFeeRateId: string | null | undefined, re
 function emptySnapshots() {
   return {
     capacityG: null,
+    lossToleranceRate: DEFAULT_RAW_MATERIAL_LOSS_TOLERANCE_RATE,
     materialUnitCostPerKg: 0,
     packageCostPerUnit: 0,
     unitPrice: 0,
@@ -764,4 +999,19 @@ function normalizeProductName(value: string | null | undefined) {
 
 function safeNumber(value: number | null | undefined) {
   return Number.isFinite(value) ? (value as number) : 0;
+}
+
+function normalizeNullableText(value: string | null | undefined) {
+  const normalized = (value ?? "").trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function textInputOrDefault(input: string | null | undefined, fallback: string | null | undefined) {
+  if (input !== undefined) return normalizeNullableText(input);
+  return fallback ?? null;
+}
+
+function dateInputOrDefault(input: string | null | undefined, fallback: Date | null | undefined) {
+  if (input === undefined) return fallback ?? null;
+  return input ? new Date(`${input}T00:00:00.000Z`) : null;
 }

@@ -33,6 +33,7 @@ export type ProductRow = {
   category: string | null;
   safetyStockQuantity: number;
   standardProductionLotSize: number;
+  rawMaterialLossToleranceRate: number;
   defaultWorkAreaName: string | null;
   bomItemCount: number;
   capacitySummary: string;
@@ -233,6 +234,7 @@ export default function ProductsMasterTable({ products }: { products: ProductRow
             <col className="product-category-col" />
             <col className="product-number-col" />
             <col className="product-number-col" />
+            <col className="product-number-col" />
             <col className="product-work-area-col" />
             <col className="product-bom-col" />
             <col className="product-capacity-col" />
@@ -255,6 +257,7 @@ export default function ProductsMasterTable({ products }: { products: ProductRow
               <th>カテゴリ</th>
               <th>安全在庫</th>
               <th>標準ロット</th>
+              <th>ロス率許容</th>
               <th>標準作業場所</th>
               <th>BOM</th>
               <th>生産能力 / 人時</th>
@@ -311,6 +314,7 @@ export default function ProductsMasterTable({ products }: { products: ProductRow
                 <td data-label="カテゴリ">{p.category ?? "—"}</td>
                 <td className="right" data-label="安全在庫">{p.safetyStockQuantity}</td>
                 <td className="right" data-label="標準ロット">{p.standardProductionLotSize}</td>
+                <td className="right" data-label="ロス率許容">{formatPercent(p.rawMaterialLossToleranceRate)}</td>
                 <td data-label="標準作業場所">
                   <span className={`badge ${missingWorkArea ? "warn" : p.defaultWorkAreaName ? "info" : "muted"}`}>
                     {p.defaultWorkAreaName ?? "—"}
@@ -377,6 +381,12 @@ function materialSummary(p: ProductRow): string {
     p.sealCount != null ? `シール: ${p.sealCount}` : null,
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(" / ") : "—";
+}
+
+function formatPercent(value: number) {
+  return `${((Number.isFinite(value) ? value : 0) * 100).toLocaleString("ja-JP", {
+    maximumFractionDigits: 1,
+  })}%`;
 }
 
 // 生の文字列に対してベストエフォートでマッチ箇所を <mark> 表示する。

@@ -47,6 +47,9 @@ model WorkArea {
   productsDefault      Product[]            @relation("ProductDefaultWorkArea")
   productionCapacities ProductionCapacity[]
   productionPlans      ProductionPlan[]
+  billingPrices        BillingPrice[]
+  dailyReportEntries   ProductionDailyReportEntry[]
+  monthlyLaborFees     ProductMonthlyLaborFee[]
 }
 
 model Product {
@@ -59,6 +62,7 @@ model Product {
   equivalenceGroupId        String?
   safetyStockQuantity       Float                    @default(0)
   standardProductionLotSize Float                    @default(0)
+  rawMaterialLossToleranceRate Float                  @default(0.05) // スタッフ日報の原料ロス率許容値(0.05=5%)
   schedulePriority          Int? // 生産スケジュール並び順(小さいほど先)。null=従来順(納期→希望日→商品コード)
   unit                      String                   @default("袋") // base counting unit
   packSizeG                 Float? // 入り数g
@@ -224,6 +228,9 @@ model BillingPrice {
   id            String    @id @default(cuid())
   productId     String
   product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  workAreaId    String?
+  workArea      WorkArea? @relation(fields: [workAreaId], references: [id], onDelete: SetNull)
+  workAreaNameSnapshot String?
   unitPrice     Float
   unit          String
   effectiveFrom DateTime
@@ -233,6 +240,7 @@ model BillingPrice {
   note          String?
 
   @@index([productId, effectiveFrom])
+  @@index([productId, workAreaId, effectiveFrom])
 }
 
 model Employee {
@@ -512,14 +520,26 @@ model ProductionDailyReportEntry {
   reportDate            DateTime
   productId             String?
   product               Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productionPlanId      String?
+  workAreaId            String?
+  workArea              WorkArea?     @relation(fields: [workAreaId], references: [id], onDelete: SetNull)
+  workAreaNameSnapshot  String?
   productName           String
   normalizedProductName String
   productMatchStatus    String        @default("unmatched") // product_id | exact | alias | fuzzy | unmatched
   expiryDate            DateTime?
+  pillowManufacturedDate DateTime?
+  pillowExpiryDate       DateTime?
+  packagingLotNumber     String?
+  fixedCode              String?
+  ribbonChangeTime       String?
   startTime             String
   endTime               String
   breakMinutes          Int           @default(0)
   workerCount           Float
+  staffSealerCount       Float         @default(0)
+  staffSetCount          Float         @default(0)
+  staffReportNote        String?
   productionQty         Float
   materialUsedKg        Float
   laborFeeRateId        String?
@@ -535,9 +555,17 @@ model ProductionDailyReportEntry {
   approvedAt            DateTime?
   approvedBy            String?
   labelPhotosJson       String        @default("[]") // [{name,type,dataUrl}] for staff label photo review
+  preCheckExpiryOk       Boolean       @default(false)
+  preCheckSealerPressureOk Boolean     @default(false)
+  metalDetectorBeforeFe  Boolean       @default(false)
+  metalDetectorBeforeSus Boolean       @default(false)
+  metalDetectorAfterFe   Boolean       @default(false)
+  metalDetectorAfterSus  Boolean       @default(false)
+  lossRateReasonNote     String?
 
   // 商品/BOM/単価は日報時点の値をスナップショットする。
   capacityGSnapshot             Float?
+  lossToleranceRateSnapshot      Float @default(0.05)
   materialUnitCostSnapshot      Float @default(0)
   packageCostPerUnitSnapshot    Float @default(0)
   unitPriceSnapshot             Float @default(0)
@@ -565,6 +593,7 @@ model ProductionDailyReportEntry {
 
   @@index([reportDate])
   @@index([productId, reportDate])
+  @@index([workAreaId, reportDate])
   @@index([normalizedProductName])
   @@index([sourceType, sourceSheetName, sourceRowNumber])
 }
@@ -580,6 +609,8 @@ model ProductionDailyReportEntryMaterial {
   materialName      String
   materialCode      String?
   usedKg            Float
+  lotNumber         String?
+  expiryDate        DateTime?
   unitPriceSnapshot Float                      @default(0)
   mixRatio          Float?
   sortOrder         Int                        @default(0)
@@ -594,6 +625,10 @@ model ProductMonthlyLaborFee {
   id                  String    @id @default(cuid())
   productId           String
   product             Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  workAreaId          String?
+  workArea            WorkArea? @relation(fields: [workAreaId], references: [id], onDelete: SetNull)
+  workAreaKey         String    @default("unassigned")
+  workAreaNameSnapshot String?
   yearMonth           String // YYYY-MM
   perBagLaborFee      Float // 対象月の laborFeePerUnit の中央値
   avgPerHourQty       Float     @default(0)
@@ -606,8 +641,9 @@ model ProductMonthlyLaborFee {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  @@unique([productId, yearMonth])
+  @@unique([productId, yearMonth, workAreaKey])
   @@index([yearMonth])
+  @@index([workAreaId, yearMonth])
 }
 
 model ProductEquivalenceGroup {

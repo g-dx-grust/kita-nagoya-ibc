@@ -70,6 +70,16 @@ export type ProductDailyReportSummaryInput = {
 };
 
 export const DEFAULT_DAILY_REPORT_LABOR_HOURLY_RATE = 1200;
+export const DEFAULT_RAW_MATERIAL_LOSS_TOLERANCE_RATE = 0.05;
+export const STAFF_LOSS_RATE_ABNORMAL_MESSAGE =
+  "ロス率異常のため、社員へ確認してから報告してください";
+
+export type RawMaterialLossRateCheck = {
+  status: "ok" | "abnormal";
+  lossRate: number;
+  toleranceRate: number;
+  exceededBy: number;
+};
 
 export function computeProductDailyReportMetrics(
   input: ProductDailyReportCalculationInput,
@@ -136,6 +146,25 @@ export function computeProductDailyReportMetrics(
     sales: round2(sales),
     profitRate: round4(profitRate),
     warnings: uniqueWarnings(warnings),
+  };
+}
+
+export function evaluateRawMaterialLossRate(
+  lossRate: number,
+  toleranceRate: number | null | undefined,
+): RawMaterialLossRateCheck {
+  const safeLossRate = safeNumber(lossRate);
+  const safeTolerance =
+    toleranceRate != null && Number.isFinite(toleranceRate) && toleranceRate >= 0
+      ? toleranceRate
+      : DEFAULT_RAW_MATERIAL_LOSS_TOLERANCE_RATE;
+  const exceededBy = Math.max(0, safeLossRate - safeTolerance);
+
+  return {
+    status: exceededBy > 0 ? "abnormal" : "ok",
+    lossRate: round4(safeLossRate),
+    toleranceRate: round4(safeTolerance),
+    exceededBy: round4(exceededBy),
   };
 }
 

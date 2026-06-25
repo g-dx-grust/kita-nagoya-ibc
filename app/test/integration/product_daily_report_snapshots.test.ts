@@ -98,11 +98,13 @@ describe("日報スナップショット一括取得", () => {
 
     expect(batch.get(product.id)).toEqual(single);
     expect(single.capacityG).toBe(500);
+    expect(single.lossToleranceRate).toBe(0.05);
     expect(single.materialUnitCostPerKg).toBeCloseTo(133.333, 3);
     expect(single.packageCostPerUnit).toBe(16.5);
     expect(single.unitPrice).toBe(15);
     expect(batch.get(productWithoutBom.id)).toEqual({
       capacityG: 250,
+      lossToleranceRate: 0.05,
       materialUnitCostPerKg: 0,
       packageCostPerUnit: 0,
       unitPrice: 0,

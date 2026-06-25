@@ -64,6 +64,7 @@ export default async function ProductsPage() {
     category: p.category,
     safetyStockQuantity: p.safetyStockQuantity,
     standardProductionLotSize: p.standardProductionLotSize,
+    rawMaterialLossToleranceRate: p.rawMaterialLossToleranceRate,
     defaultWorkAreaName: p.defaultWorkArea?.name ?? null,
     bomItemCount: p.bomItems.length,
     capacitySummary: capacitySummary(p.capacities, p.unit),

@@ -319,6 +319,7 @@ async function createProductFromLaborEntry(input: {
       usedAtKitagoya: false,
       safetyStockQuantity: 0,
       standardProductionLotSize: 0,
+      rawMaterialLossToleranceRate: 0.05,
       schedulePriority: null,
       packSizeG: null,
       packCount: null,

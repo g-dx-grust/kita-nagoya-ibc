@@ -51,6 +51,7 @@ export default function ProductCreateForm({
   >("MANUAL");
   const [safetyStockQuantity, setSafetyStockQuantity] = useState(0);
   const [standardProductionLotSize, setStandardProductionLotSize] = useState(0);
+  const [rawMaterialLossTolerancePercent, setRawMaterialLossTolerancePercent] = useState("5");
   const [schedulePriority, setSchedulePriority] = useState("");
   const [validFrom, setValidFrom] = useState("");
   const [validTo, setValidTo] = useState("");
@@ -180,6 +181,7 @@ export default function ProductCreateForm({
     setForecastMethod("MANUAL");
     setSafetyStockQuantity(0);
     setStandardProductionLotSize(0);
+    setRawMaterialLossTolerancePercent("5");
     setSchedulePriority("");
     setValidFrom("");
     setValidTo("");
@@ -240,6 +242,7 @@ export default function ProductCreateForm({
         forecastMethod,
         safetyStockQuantity,
         standardProductionLotSize,
+        rawMaterialLossToleranceRate: Number(rawMaterialLossTolerancePercent || "5") / 100,
         schedulePriority: schedulePriority.trim() === "" ? null : Number(schedulePriority),
         unit,
         packSizeG: packSizeG ? Number(packSizeG) : null,
@@ -602,6 +605,20 @@ export default function ProductCreateForm({
               step={1}
               value={standardProductionLotSize}
               onChange={(e) => setStandardProductionLotSize(Number(e.target.value))}
+            />
+          </label>
+          <label>
+            <span className="inline-action">
+              原料ロス率許容(%)
+              <HelpTooltip text="スタッフ日報の原料ロス率アラートに使います。個包装もの5%、手詰め3%、NTSするめソーメン10gは8%を目安に商品ごとに設定します。" />
+            </span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step="0.1"
+              value={rawMaterialLossTolerancePercent}
+              onChange={(e) => setRawMaterialLossTolerancePercent(e.target.value)}
             />
           </label>
           <label>

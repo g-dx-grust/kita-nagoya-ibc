@@ -7614,6 +7614,11 @@ form.toolbar {
   border-left-color: var(--warn);
 }
 
+.staff-entry-command.danger {
+  border-color: var(--danger-border);
+  border-left-color: var(--danger);
+}
+
 .staff-entry-command.success {
   border-color: var(--success-border);
   border-left-color: var(--success);
@@ -7644,7 +7649,8 @@ form.toolbar {
 
 .staff-entry-command-progress,
 .staff-entry-command-next,
-.staff-entry-command-warnings {
+.staff-entry-command-warnings,
+.staff-loss-alert {
   grid-column: 1 / -1;
 }
 
@@ -7658,7 +7664,7 @@ form.toolbar {
 
 .staff-entry-jumpbar {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 8px;
   margin: 0 0 12px;
 }
@@ -7681,6 +7687,11 @@ form.toolbar {
 .staff-entry-jumpbar button.warn {
   background: var(--warn-soft);
   border-color: var(--warn-border);
+}
+
+.staff-entry-jumpbar button.danger {
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
 }
 
 .staff-entry-jumpbar button.success {
@@ -7729,6 +7740,11 @@ form.toolbar {
 .staff-submit-savebar.warn {
   border-color: var(--warn-border);
   border-left-color: var(--warn);
+}
+
+.staff-submit-savebar.danger {
+  border-color: var(--danger-border);
+  border-left-color: var(--danger);
 }
 
 .staff-submit-savebar.success {
@@ -7820,7 +7836,8 @@ form.toolbar {
 
 .staff-grid label,
 .staff-material-row label,
-.staff-note-field {
+.staff-note-field,
+.staff-check-field {
   font-size: 15px;
 }
 
@@ -7998,13 +8015,61 @@ form.toolbar {
 
 .staff-material-row {
   display: grid;
-  grid-template-columns: minmax(280px, 1.6fr) minmax(130px, 0.8fr) 118px 52px;
+  grid-template-columns:
+    minmax(240px, 1.7fr)
+    minmax(110px, 0.7fr)
+    minmax(150px, 0.9fr)
+    minmax(150px, 0.9fr)
+    118px
+    52px;
   gap: 10px;
   align-items: end;
   padding: 12px;
   background: var(--surface-subtle);
   border: 1px solid var(--border);
   border-radius: 8px;
+}
+
+.staff-check-grid,
+.staff-metal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.staff-metal-grid {
+  padding: 12px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.staff-metal-title {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.staff-check-field {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.staff-check-field input[type="checkbox"] {
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  min-height: 20px;
 }
 
 .staff-unit-toggle {

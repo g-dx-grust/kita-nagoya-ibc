@@ -38,6 +38,7 @@ export type ProductDailyReportBomMaterial = {
 
 export type ProductDailyReportProductOption = ProductComboOption & {
   capacityG: number | null;
+  rawMaterialLossToleranceRate: number;
   materialUnitCostPerKg: number;
   packageCostPerUnit: number;
   unitPrice: number;
@@ -62,6 +63,8 @@ export type ProductDailyReportLaborRateOption = {
 export type MonthlyLaborFeeRow = {
   id: string;
   productId: string;
+  workAreaId: string | null;
+  workAreaName: string | null;
   productName: string;
   productCode: string;
   perBagLaborFee: number;
@@ -76,6 +79,8 @@ export type ProductDailyReportRowMaterial = {
   materialId: string | null;
   materialName: string;
   usedKg: number;
+  lotNumber: string | null;
+  expiryDate: string | null;
   unitPriceSnapshot: number;
 };
 
@@ -89,16 +94,27 @@ export type ProductDailyReportRow = {
   id: string;
   reportDate: string;
   productId: string | null;
+  productionPlanId: string | null;
+  workAreaId: string | null;
+  workAreaName: string | null;
   productName: string;
   productCode: string | null;
   displayName: string | null;
   officialName: string | null;
   productMatchStatus: string;
   expiryDate: string;
+  pillowManufacturedDate: string;
+  pillowExpiryDate: string;
+  packagingLotNumber: string | null;
+  fixedCode: string | null;
+  ribbonChangeTime: string | null;
   startTime: string;
   endTime: string;
   breakMinutes: number;
   workerCount: number;
+  staffSealerCount: number;
+  staffSetCount: number;
+  staffReportNote: string | null;
   productionQty: number;
   materialUsedKg: number;
   materials: ProductDailyReportRowMaterial[];
@@ -111,7 +127,15 @@ export type ProductDailyReportRow = {
   approvedAt: string | null;
   approvedBy: string | null;
   labelPhotos: ProductDailyReportLabelPhoto[];
+  preCheckExpiryOk: boolean;
+  preCheckSealerPressureOk: boolean;
+  metalDetectorBeforeFe: boolean;
+  metalDetectorBeforeSus: boolean;
+  metalDetectorAfterFe: boolean;
+  metalDetectorAfterSus: boolean;
+  lossRateReasonNote: string | null;
   capacityGSnapshot: number | null;
+  lossToleranceRateSnapshot: number;
   materialUnitCostSnapshot: number;
   packageCostPerUnitSnapshot: number;
   unitPriceSnapshot: number;
@@ -131,7 +155,13 @@ export type ProductDailyReportRow = {
   calculationWarnings: string[];
 };
 
-type MaterialFormRow = { materialId: string; materialName: string; usedKg: string };
+type MaterialFormRow = {
+  materialId: string;
+  materialName: string;
+  usedKg: string;
+  lotNumber: string;
+  expiryDate: string;
+};
 type DailyReportColumnMode = "review" | "input" | "cost" | "all";
 type DailyReportQuickFilter = "all" | "submitted" | "attention" | "photos" | "noPhotos";
 type DailyReportTabId = "review" | "entry" | "labor-fee" | "summary";
@@ -145,6 +175,9 @@ const dailyReportColumnModes: { id: DailyReportColumnMode; label: string }[] = [
 
 type EntryFormState = {
   reportDate: string;
+  productionPlanId: string;
+  workAreaId: string;
+  workAreaName: string;
   productId: string;
   productName: string;
   expiryDate: string;
@@ -242,6 +275,7 @@ export default function ProductDailyReportClient({
           row.productCode,
           row.displayName,
           row.officialName,
+          row.workAreaName,
           row.note,
           row.submittedBy,
           ...dailyReportAttentionLabels(row),
@@ -342,12 +376,21 @@ export default function ProductDailyReportClient({
     const product = products.find((p) => p.id === productId);
     setter((prev) => ({
       ...prev,
+      productionPlanId: "",
+      workAreaId: "",
+      workAreaName: "",
       productId,
       productName: "",
       // 商品選択でBOM原料を自動展開(使用量は空欄、現場が実績kgを入力)。
       materials:
         product && product.bomMaterials.length > 0
-          ? product.bomMaterials.map((b) => ({ materialId: b.materialId, materialName: b.materialName, usedKg: "" }))
+          ? product.bomMaterials.map((b) => ({
+              materialId: b.materialId,
+              materialName: b.materialName,
+              usedKg: "",
+              lotNumber: "",
+              expiryDate: "",
+            }))
           : prev.materials.length > 0
             ? prev.materials
             : [emptyMaterialRow()],
@@ -744,6 +787,10 @@ export default function ProductDailyReportClient({
               <Metric label="使用原料" value={`${formatNumber(approvalReviewRow.materialUsedKg)} kg`} />
               <Metric label="稼動時間（M）" value={formatNumber(approvalReviewRow.operatingMinutes, 0)} />
               <Metric label="作業人数" value={formatNumber(approvalReviewRow.workerCount)} />
+              <Metric label="シーラー" value={formatNumber(approvalReviewRow.staffSealerCount)} />
+              <Metric label="セット" value={formatNumber(approvalReviewRow.staffSetCount)} />
+              <Metric label="ロス率" value={formatPercent(approvalReviewRow.lossRate)} />
+              <Metric label="許容ロス率" value={formatPercent(approvalReviewRow.lossToleranceRateSnapshot)} />
               <Metric label="売値" value={formatYen(approvalReviewRow.sales)} />
               <Metric
                 label="利率"
@@ -767,7 +814,14 @@ export default function ProductDailyReportClient({
                   <ul>
                     {approvalReviewRow.materials.map((material, index) => (
                       <li key={`${material.materialId ?? material.materialName}-${index}`}>
-                        <span>{material.materialName}</span>
+                        <span>
+                          {material.materialName}
+                          {(material.lotNumber || material.expiryDate) && (
+                            <small>
+                              ロット {material.lotNumber || "未入力"} / 使用期限 {material.expiryDate || "未入力"}
+                            </small>
+                          )}
+                        </span>
                         <strong>{formatNumber(material.usedKg)} kg</strong>
                       </li>
                     ))}
@@ -775,6 +829,56 @@ export default function ProductDailyReportClient({
                 ) : (
                   <p>原料明細なし</p>
                 )}
+              </div>
+              <div className="daily-report-approve-materials">
+                <h3>紙日報項目</h3>
+                <ul>
+                  <li>
+                    <span>ピロ</span>
+                    <strong>
+                      製造日 {approvalReviewRow.pillowManufacturedDate || "未入力"} / 使用期限{" "}
+                      {approvalReviewRow.pillowExpiryDate || "未入力"}
+                    </strong>
+                  </li>
+                  <li>
+                    <span>包材ロット</span>
+                    <strong>{approvalReviewRow.packagingLotNumber || "未入力"}</strong>
+                  </li>
+                  <li>
+                    <span>固有記号・リボン交換</span>
+                    <strong>
+                      {approvalReviewRow.fixedCode || "未入力"} / {approvalReviewRow.ribbonChangeTime || "未入力"}
+                    </strong>
+                  </li>
+                  <li>
+                    <span>作業前チェック</span>
+                    <strong>
+                      賞味期限 {approvalReviewRow.preCheckExpiryOk ? "OK" : "未"} / シーラー{" "}
+                      {approvalReviewRow.preCheckSealerPressureOk ? "OK" : "未"}
+                    </strong>
+                  </li>
+                  <li>
+                    <span>金属探知機</span>
+                    <strong>
+                      前Fe {approvalReviewRow.metalDetectorBeforeFe ? "OK" : "未"} / 前Sus{" "}
+                      {approvalReviewRow.metalDetectorBeforeSus ? "OK" : "未"} / 後Fe{" "}
+                      {approvalReviewRow.metalDetectorAfterFe ? "OK" : "未"} / 後Sus{" "}
+                      {approvalReviewRow.metalDetectorAfterSus ? "OK" : "未"}
+                    </strong>
+                  </li>
+                  {approvalReviewRow.staffReportNote && (
+                    <li>
+                      <span>人数日報備考</span>
+                      <strong>{approvalReviewRow.staffReportNote}</strong>
+                    </li>
+                  )}
+                  {approvalReviewRow.lossRateReasonNote && (
+                    <li>
+                      <span>ロス率異常理由</span>
+                      <strong>{approvalReviewRow.lossRateReasonNote}</strong>
+                    </li>
+                  )}
+                </ul>
               </div>
             </div>
           </div>
@@ -1225,6 +1329,7 @@ export default function ProductDailyReportClient({
                             <td className="sticky-product product-name-cell">
                               <div>{row.productName}</div>
                               {row.productCode && <div className="subtext">{row.productCode}</div>}
+                              {row.workAreaName && <div className="subtext">作業場所: {row.workAreaName}</div>}
                             </td>
                             <td className="right daily-report-col-cost">{formatOptionalNumber(row.capacityGSnapshot)}</td>
                             <td className="daily-report-col-cost daily-report-col-review">
@@ -1667,6 +1772,8 @@ function MaterialsEditor({
             <tr>
               <th>原料</th>
               <th className="right" style={{ width: 140 }}>使用量(kg)</th>
+              <th style={{ width: 160 }}>ロット番号</th>
+              <th style={{ width: 150 }}>使用期限</th>
               <th style={{ width: 60 }}></th>
             </tr>
           </thead>
@@ -1692,6 +1799,20 @@ function MaterialsEditor({
                   />
                 </td>
                 <td>
+                  <input
+                    type="text"
+                    value={m.lotNumber}
+                    onChange={(e) => update(index, { lotNumber: e.target.value })}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="date"
+                    value={m.expiryDate}
+                    onChange={(e) => update(index, { expiryDate: e.target.value })}
+                  />
+                </td>
+                <td>
                   <button
                     type="button"
                     className="danger"
@@ -1705,7 +1826,7 @@ function MaterialsEditor({
             ))}
             {materials.length === 0 && (
               <tr>
-                <td colSpan={3} className="muted">原料が未設定です。「原料を追加」で行を追加してください。</td>
+                <td colSpan={5} className="muted">原料が未設定です。「原料を追加」で行を追加してください。</td>
               </tr>
             )}
           </tbody>
@@ -1757,7 +1878,7 @@ function MonthlyLaborFeePanel({ selectedMonth, rows }: { selectedMonth: string; 
   async function apply(row: MonthlyLaborFeeRow) {
     if (
       !window.confirm(
-        `${row.productName} の1袋手間賃を ${formatYen(row.perBagLaborFee)} で売値(翌月適用)に反映します。よろしいですか？`,
+        `${monthlyLaborFeeDisplayName(row)} の1袋手間賃を ${formatYen(row.perBagLaborFee)} で売値(翌月適用)に反映します。よろしいですか？`,
       )
     )
       return;
@@ -1775,7 +1896,7 @@ function MonthlyLaborFeePanel({ selectedMonth, rows }: { selectedMonth: string; 
       setErr(`反映できませんでした: ${json.error ?? "unknown"}`);
       return;
     }
-    setMsg(`${row.productName} の売値を更新しました。`);
+    setMsg(`${monthlyLaborFeeDisplayName(row)} の売値を更新しました。`);
     router.refresh();
   }
 
@@ -1785,7 +1906,7 @@ function MonthlyLaborFeePanel({ selectedMonth, rows }: { selectedMonth: string; 
         <div className="daily-report-labor-command-title">
           <div className="row">
             <span className="badge info">対象月 {selectedMonth}</span>
-            <HelpTooltip text="蓄積した日報の実績から1袋手間賃の中央値を商品別に算出します。反映すると売値の手間賃単価を翌月から更新します。" />
+            <HelpTooltip text="蓄積した日報の実績から1袋手間賃の中央値を商品×作業場所別に算出します。反映すると翌月からその作業場所の手間賃単価を更新します。" />
           </div>
           <strong>実績から翌月適用の手間賃を確認</strong>
         </div>
@@ -1806,7 +1927,7 @@ function MonthlyLaborFeePanel({ selectedMonth, rows }: { selectedMonth: string; 
         <Metric
           label="平均1袋手間賃"
           value={rows.length > 0 ? formatYen(stats.averageLaborFee) : "—"}
-          note={stats.highestLaborFeeRow ? `最大 ${stats.highestLaborFeeRow.productName}` : undefined}
+          note={stats.highestLaborFeeRow ? `最大 ${monthlyLaborFeeDisplayName(stats.highestLaborFeeRow)}` : undefined}
         />
       </div>
       {msg && <div className="alert success">{msg}</div>}
@@ -1814,6 +1935,7 @@ function MonthlyLaborFeePanel({ selectedMonth, rows }: { selectedMonth: string; 
       <div className="table-frame monthly-labor-frame">
         <table className="monthly-labor-table">
           <colgroup>
+            <col className="monthly-labor-product-col" />
             <col className="monthly-labor-product-col" />
             <col className="monthly-labor-count-col" />
             <col className="monthly-labor-number-col" />
@@ -1825,6 +1947,7 @@ function MonthlyLaborFeePanel({ selectedMonth, rows }: { selectedMonth: string; 
           <thead>
             <tr>
               <th>商品</th>
+              <th>作業場所</th>
               <th className="right">件数</th>
               <th className="right">平均1人1h</th>
               <th className="right">新1袋手間賃(中央値)</th>
@@ -1840,6 +1963,7 @@ function MonthlyLaborFeePanel({ selectedMonth, rows }: { selectedMonth: string; 
                   <div>{row.productName}</div>
                   <div className="subtext">{row.productCode}</div>
                 </td>
+                <td>{row.workAreaName ?? "未設定"}</td>
                 <td className="right">{row.sampleCount}</td>
                 <td className="right">{formatNumber(row.avgPerHourQty)}</td>
                 <td className="right">{formatYen(row.perBagLaborFee)}</td>
@@ -1866,7 +1990,7 @@ function MonthlyLaborFeePanel({ selectedMonth, rows }: { selectedMonth: string; 
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="muted">
+                <td colSpan={8} className="muted">
                   対象月の月次手間賃はありません。「再計算」で蓄積日報から算出してください。
                 </td>
               </tr>
@@ -2074,7 +2198,7 @@ function usePreview(
 }
 
 function emptyMaterialRow(): MaterialFormRow {
-  return { materialId: "", materialName: "", usedKg: "" };
+  return { materialId: "", materialName: "", usedKg: "", lotNumber: "", expiryDate: "" };
 }
 
 function emptyForm(selectedMonth: string, laborRates: ProductDailyReportLaborRateOption[]): EntryFormState {
@@ -2082,6 +2206,9 @@ function emptyForm(selectedMonth: string, laborRates: ProductDailyReportLaborRat
   const reportDate = today.startsWith(selectedMonth) ? today : `${selectedMonth}-01`;
   return {
     reportDate,
+    productionPlanId: "",
+    workAreaId: "",
+    workAreaName: "",
     productId: "",
     productName: "",
     expiryDate: "",
@@ -2099,6 +2226,9 @@ function emptyForm(selectedMonth: string, laborRates: ProductDailyReportLaborRat
 function formFromRow(row: ProductDailyReportRow): EntryFormState {
   return {
     reportDate: row.reportDate,
+    productionPlanId: row.productionPlanId ?? "",
+    workAreaId: row.workAreaId ?? "",
+    workAreaName: row.workAreaName ?? "",
     productId: row.productId ?? "",
     productName: row.productId ? "" : row.productName,
     expiryDate: row.expiryDate,
@@ -2113,6 +2243,8 @@ function formFromRow(row: ProductDailyReportRow): EntryFormState {
             materialId: m.materialId ?? "",
             materialName: m.materialName,
             usedKg: String(m.usedKg),
+            lotNumber: m.lotNumber ?? "",
+            expiryDate: m.expiryDate ?? "",
           }))
         : [emptyMaterialRow()],
     laborFeeRateId: row.laborFeeRateId ?? "",
@@ -2127,9 +2259,14 @@ function toPayload(form: EntryFormState) {
       materialId: m.materialId || null,
       materialName: m.materialName.trim() || "(未設定)",
       usedKg: toNumber(m.usedKg),
+      lotNumber: m.lotNumber.trim() || null,
+      expiryDate: m.expiryDate || null,
     }));
   return {
     reportDate: form.reportDate,
+    productionPlanId: form.productionPlanId || null,
+    workAreaId: form.workAreaId || null,
+    workAreaName: form.workAreaName || null,
     productId: form.productId || null,
     productName: form.productName || null,
     expiryDate: form.expiryDate || null,
@@ -2155,6 +2292,10 @@ function setFormValue<T extends EntryFormState | null>(
 
 function displayProductName(row: ProductDailyReportRow) {
   return row.displayName || row.officialName || row.productName;
+}
+
+function monthlyLaborFeeDisplayName(row: MonthlyLaborFeeRow) {
+  return row.workAreaName ? `${row.productName} / ${row.workAreaName}` : row.productName;
 }
 
 function consolidatedProductName(row: ProductDailyReportRow) {

@@ -14,11 +14,11 @@ export async function GET(req: Request) {
     const ym = url.searchParams.get("yearMonth") ?? new Date().toISOString().slice(0, 7);
     const parsed = yearMonth.safeParse(ym);
     const rows = parsed.success
-      ? await prisma.productMonthlyLaborFee.findMany({
-          where: { yearMonth: parsed.data },
-          include: { product: true },
-          orderBy: [{ sampleCount: "desc" }],
-        })
+        ? await prisma.productMonthlyLaborFee.findMany({
+            where: { yearMonth: parsed.data },
+            include: { product: true, workArea: true },
+            orderBy: [{ sampleCount: "desc" }, { product: { productCode: "asc" } }],
+          })
       : [];
     return ok(rows);
   } catch (e) {

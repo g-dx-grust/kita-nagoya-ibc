@@ -8,8 +8,9 @@ import type { ProductComboOption } from "@/components/ui/product-combobox";
 import SearchableCombobox from "@/components/ui/searchable-combobox";
 import {
   DEFAULT_DAILY_REPORT_LABOR_HOURLY_RATE,
+  STAFF_LOSS_RATE_ABNORMAL_MESSAGE,
   computeProductDailyReportMetrics,
-  type ProductDailyReportWarning,
+  evaluateRawMaterialLossRate,
 } from "@/lib/product-daily-report-calculations";
 import { kitagoyaApiPath } from "@/lib/paths";
 import { matchesQuery } from "@/lib/search";
@@ -23,6 +24,7 @@ export type StaffDailyReportBomMaterial = {
 
 export type StaffDailyReportProductOption = ProductComboOption & {
   capacityG: number | null;
+  rawMaterialLossToleranceRate: number;
   materialUnitCostPerKg: number;
   packageCostPerUnit: number;
   unitPrice: number;
@@ -51,6 +53,7 @@ export type StaffDailyReportPlanSuggestion = {
   productCode: string;
   plannedQuantity: number;
   unit: string;
+  workAreaId: string;
   workAreaName: string;
   plannedStartTime: string;
   plannedEndTime: string | null;
@@ -70,6 +73,8 @@ type MaterialRow = {
   materialName: string;
   amount: string;
   unitMode: "g" | "kg";
+  lotNumber: string;
+  expiryDate: string;
 };
 
 type LabelPhoto = {
@@ -81,6 +86,9 @@ type LabelPhoto = {
 type FormState = {
   reportDate: string;
   submittedBy: string;
+  productionPlanId: string;
+  workAreaId: string;
+  workAreaName: string;
   productId: string;
   productName: string;
   expiryDate: string;
@@ -88,8 +96,23 @@ type FormState = {
   endTime: string;
   breakMinutes: string;
   workerCount: string;
+  staffSealerCount: string;
+  staffSetCount: string;
+  staffReportNote: string;
   productionQty: string;
   materials: MaterialRow[];
+  pillowManufacturedDate: string;
+  pillowExpiryDate: string;
+  packagingLotNumber: string;
+  fixedCode: string;
+  ribbonChangeTime: string;
+  preCheckExpiryOk: boolean;
+  preCheckSealerPressureOk: boolean;
+  metalDetectorBeforeFe: boolean;
+  metalDetectorBeforeSus: boolean;
+  metalDetectorAfterFe: boolean;
+  metalDetectorAfterSus: boolean;
+  lossRateReasonNote: string;
   laborFeeRateId: string;
   note: string;
 };
@@ -118,6 +141,27 @@ export default function StaffDailyReportForm({
   const [planSearch, setPlanSearch] = useState("");
   const [planWorkArea, setPlanWorkArea] = useState("");
   const preview = usePreview(form, products, materialOptions, laborRates);
+  const selectedProduct = useMemo(
+    () => products.find((product) => product.id === form.productId) ?? null,
+    [form.productId, products],
+  );
+  const lossRateCheck = useMemo(
+    () => evaluateRawMaterialLossRate(preview.lossRate, selectedProduct?.rawMaterialLossToleranceRate),
+    [preview.lossRate, selectedProduct?.rawMaterialLossToleranceRate],
+  );
+  const usedMaterialRows = useMemo(
+    () => form.materials.filter((row) => Boolean(row.materialId) && amountToKg(row) > 0),
+    [form.materials],
+  );
+  const materialLotDone =
+    usedMaterialRows.length > 0 &&
+    usedMaterialRows.every((row) => row.lotNumber.trim() && row.expiryDate);
+  const metalDetectorDone =
+    form.metalDetectorBeforeFe &&
+    form.metalDetectorBeforeSus &&
+    form.metalDetectorAfterFe &&
+    form.metalDetectorAfterSus;
+  const isLossRateAbnormal = Boolean(selectedProduct && lossRateCheck.status === "abnormal");
   const requiredProgress = useMemo(
     () => [
       { label: "入力者", done: Boolean(form.submittedBy.trim()) },
@@ -127,27 +171,31 @@ export default function StaffDailyReportForm({
       { label: "生産数", done: toNumber(form.productionQty) > 0 },
       {
         label: "原料",
-        done: form.materials.some((row) => Boolean(row.materialId) && amountToKg(row) > 0),
+        done: usedMaterialRows.length > 0,
       },
+      { label: "原料ロット", done: materialLotDone },
+      { label: "金属探知機", done: metalDetectorDone },
       { label: "写真", done: photos.length > 0 },
     ],
     [
       form.endTime,
-      form.materials,
       form.productId,
       form.productionQty,
       form.startTime,
       form.submittedBy,
       form.workerCount,
+      materialLotDone,
+      metalDetectorDone,
       photos.length,
       preview.operatingMinutes,
+      usedMaterialRows.length,
     ],
   );
   const completedRequiredCount = requiredProgress.filter((item) => item.done).length;
   const missingRequiredItems = requiredProgress.filter((item) => !item.done);
-  const canSubmit = missingRequiredItems.length === 0;
+  const canSubmit = missingRequiredItems.length === 0 && !isLossRateAbnormal;
   const nextActionLabel =
-    missingRequiredItems[0]?.label ?? (preview.warnings.length > 0 ? "計算確認" : canSubmit ? "提出" : "確認");
+    isLossRateAbnormal ? "社員確認" : missingRequiredItems[0]?.label ?? (canSubmit ? "提出" : "確認");
   const planAreaOptions = useMemo(
     () => Array.from(new Set(plans.map((plan) => plan.workAreaName).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ja")),
     [plans],
@@ -172,24 +220,11 @@ export default function StaffDailyReportForm({
     });
   }, [planSearch, planWorkArea, plans]);
   const selectedPlanId = useMemo(() => {
-    const selected = plans.find((plan) => {
-      const endTimeMatches = plan.plannedEndTime ? form.endTime === plan.plannedEndTime : true;
-      return (
-        form.productId === plan.productId &&
-        form.productionQty === String(plan.plannedQuantity) &&
-        form.startTime === plan.plannedStartTime &&
-        endTimeMatches
-      );
-    });
-    return selected?.id ?? "";
-  }, [form.endTime, form.productId, form.productionQty, form.startTime, plans]);
+    return plans.some((plan) => plan.id === form.productionPlanId) ? form.productionPlanId : "";
+  }, [form.productionPlanId, plans]);
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.id === selectedPlanId) ?? null,
     [plans, selectedPlanId],
-  );
-  const selectedProduct = useMemo(
-    () => products.find((product) => product.id === form.productId) ?? null,
-    [form.productId, products],
   );
   const timeAndQuantityDone =
     Boolean(form.startTime && form.endTime && preview.operatingMinutes > 0) &&
@@ -215,6 +250,9 @@ export default function StaffDailyReportForm({
     const product = products.find((p) => p.id === productId);
     setForm((prev) => ({
       ...prev,
+      productionPlanId: prev.productId === productId ? prev.productionPlanId : "",
+      workAreaId: prev.productId === productId ? prev.workAreaId : "",
+      workAreaName: prev.productId === productId ? prev.workAreaName : "",
       productId,
       productName: "",
       materials:
@@ -224,6 +262,8 @@ export default function StaffDailyReportForm({
               materialName: b.materialName,
               amount: "",
               unitMode: "g",
+              lotNumber: "",
+              expiryDate: "",
             }))
           : prev.materials.length > 0
             ? prev.materials
@@ -235,6 +275,9 @@ export default function StaffDailyReportForm({
     applyProduct(plan.productId);
     setForm((prev) => ({
       ...prev,
+      productionPlanId: plan.id,
+      workAreaId: plan.workAreaId,
+      workAreaName: plan.workAreaName,
       productId: plan.productId,
       productName: "",
       productionQty: String(plan.plannedQuantity),
@@ -272,6 +315,8 @@ export default function StaffDailyReportForm({
         materialName: bom.materialName,
         amount: formatMaterialAmount(bom.quantityPerUnit * productionQty),
         unitMode: "kg",
+        lotNumber: "",
+        expiryDate: "",
       })),
     }));
     setMessage(null);
@@ -329,6 +374,22 @@ export default function StaffDailyReportForm({
       setError("使用した原料と使用量を入力してください。");
       return;
     }
+    if (usedMaterialRows.some((row) => !row.lotNumber.trim())) {
+      setError("使用した原料のロット番号を入力してください。");
+      return;
+    }
+    if (usedMaterialRows.some((row) => !row.expiryDate)) {
+      setError("使用した原料の使用期限を入力してください。");
+      return;
+    }
+    if (!metalDetectorDone) {
+      setError("金属探知機の作業前・作業後チェックを入力してください。");
+      return;
+    }
+    if (isLossRateAbnormal) {
+      setError(STAFF_LOSS_RATE_ABNORMAL_MESSAGE);
+      return;
+    }
     if (photos.length === 0) {
       setError("ラベル写真を1枚以上追加してください。");
       return;
@@ -359,10 +420,10 @@ export default function StaffDailyReportForm({
       {message && <div className="alert success">{message}</div>}
       {error && <div className="alert danger">{error}</div>}
 
-      <div className={`staff-entry-command panel ${canSubmit ? "success" : "warn"}`}>
+      <div className={`staff-entry-command panel ${isLossRateAbnormal ? "danger" : canSubmit ? "success" : "warn"}`}>
         <div className="staff-entry-command-main">
-          <span className={`badge ${canSubmit ? "success" : "warn"}`}>
-            {canSubmit ? "提出準備OK" : `未入力 ${missingRequiredItems.length}`}
+          <span className={`badge ${isLossRateAbnormal ? "danger" : canSubmit ? "success" : "warn"}`}>
+            {isLossRateAbnormal ? "ロス率異常" : canSubmit ? "提出準備OK" : `未入力 ${missingRequiredItems.length}`}
           </span>
           <strong>スタッフ日報入力</strong>
           {selectedPlan ? (
@@ -377,8 +438,8 @@ export default function StaffDailyReportForm({
           <span className="badge info">
             入力 {completedRequiredCount}/{requiredProgress.length}
           </span>
-          <span className={`badge ${preview.warnings.length > 0 ? "warn" : "success"}`}>
-            {preview.warnings.length > 0 ? `計算確認 ${preview.warnings.length}` : "計算OK"}
+          <span className={`badge ${isLossRateAbnormal ? "danger" : "info"}`}>
+            ロス率 {formatPercent(preview.lossRate)} / 許容 {formatPercent(lossRateCheck.toleranceRate)}
           </span>
           <span className="badge muted">
             予定 {filteredPlans.length}/{plans.length}
@@ -400,15 +461,7 @@ export default function StaffDailyReportForm({
             ))}
           </div>
         )}
-        {preview.warnings.length > 0 && (
-          <div className="staff-entry-command-warnings">
-            {preview.warnings.slice(0, 4).map((warning) => (
-              <span key={warning} className="badge warn">
-                {dailyReportWarningLabel(warning)}
-              </span>
-            ))}
-          </div>
-        )}
+        {isLossRateAbnormal && <div className="alert danger staff-loss-alert">{STAFF_LOSS_RATE_ABNORMAL_MESSAGE}</div>}
       </div>
 
       <div className="staff-entry-jumpbar" aria-label="入力セクション移動">
@@ -430,33 +483,49 @@ export default function StaffDailyReportForm({
         </button>
         <button
           type="button"
-          className={materialDone ? "success" : "warn"}
+          className={toNumber(form.workerCount) > 0 ? "success" : "warn"}
+          onClick={() => scrollToSection("staff-section-staff-count")}
+        >
+          <span>3 人数日報</span>
+          <strong>{toNumber(form.workerCount) > 0 ? "OK" : "入力"}</strong>
+        </button>
+        <button
+          type="button"
+          className={materialDone && materialLotDone ? "success" : "warn"}
           onClick={() => scrollToSection("staff-section-materials")}
         >
-          <span>3 原料</span>
-          <strong>{materialDone ? "OK" : "入力"}</strong>
+          <span>4 原料</span>
+          <strong>{materialDone && materialLotDone ? "OK" : "入力"}</strong>
+        </button>
+        <button
+          type="button"
+          className={metalDetectorDone ? "success" : "warn"}
+          onClick={() => scrollToSection("staff-section-paper-checks")}
+        >
+          <span>5 包材・検査</span>
+          <strong>{metalDetectorDone ? "OK" : "入力"}</strong>
         </button>
         <button
           type="button"
           className={photos.length > 0 ? "success" : "warn"}
           onClick={() => scrollToSection("staff-section-photos")}
         >
-          <span>4 写真</span>
+          <span>6 写真</span>
           <strong>{photos.length}/4</strong>
         </button>
         <button
           type="button"
-          className={canSubmit ? "success" : "warn"}
+          className={isLossRateAbnormal ? "danger" : canSubmit ? "success" : "warn"}
           onClick={() => scrollToSection("staff-section-confirm")}
         >
-          <span>5 確認</span>
-          <strong>{canSubmit ? "提出" : `残り${missingRequiredItems.length}`}</strong>
+          <span>7 確認</span>
+          <strong>{isLossRateAbnormal ? "停止" : canSubmit ? "提出" : `残り${missingRequiredItems.length}`}</strong>
         </button>
       </div>
 
-      <div className={`staff-submit-savebar ${canSubmit ? "success" : "warn"}`}>
+      <div className={`staff-submit-savebar ${isLossRateAbnormal ? "danger" : canSubmit ? "success" : "warn"}`}>
         <div className="staff-submit-savebar-status">
-          <strong>{canSubmit ? "提出準備OK" : `次: ${nextActionLabel}`}</strong>
+          <strong>{isLossRateAbnormal ? STAFF_LOSS_RATE_ABNORMAL_MESSAGE : canSubmit ? "提出準備OK" : `次: ${nextActionLabel}`}</strong>
           <span>
             {selectedPlan
               ? `${selectedPlan.workAreaName} / ${selectedPlan.plannedStartTime}〜${selectedPlan.plannedEndTime ?? "--:--"}`
@@ -565,7 +634,7 @@ export default function StaffDailyReportForm({
       <section id="staff-section-basic" className="panel staff-panel anchor-offset">
         <div className="staff-section-title">
           <span>2</span>
-          <h2>作った商品</h2>
+          <h2>作った商品・時間</h2>
         </div>
         <div className="staff-grid">
           <label>
@@ -607,6 +676,10 @@ export default function StaffDailyReportForm({
               ]}
               onChange={applyProduct}
             />
+          </label>
+          <label>
+            <span>作業場所</span>
+            <input value={form.workAreaName || "予定未選択"} readOnly />
           </label>
           <label>
             <span>生産数</span>
@@ -657,6 +730,15 @@ export default function StaffDailyReportForm({
               onChange={(e) => setFormValue(setForm, "breakMinutes", e.target.value)}
             />
           </label>
+        </div>
+      </section>
+
+      <section id="staff-section-staff-count" className="panel staff-panel anchor-offset">
+        <div className="staff-section-title">
+          <span>3</span>
+          <h2>人数日報</h2>
+        </div>
+        <div className="staff-grid">
           <label>
             <span>作業人数</span>
             <input
@@ -669,12 +751,42 @@ export default function StaffDailyReportForm({
               onChange={(e) => setFormValue(setForm, "workerCount", e.target.value)}
             />
           </label>
+          <label>
+            <span>シーラー</span>
+            <input
+              type="number"
+              min={0}
+              step={0.1}
+              inputMode="decimal"
+              value={form.staffSealerCount}
+              onChange={(e) => setFormValue(setForm, "staffSealerCount", e.target.value)}
+            />
+          </label>
+          <label>
+            <span>セット</span>
+            <input
+              type="number"
+              min={0}
+              step={0.1}
+              inputMode="decimal"
+              value={form.staffSetCount}
+              onChange={(e) => setFormValue(setForm, "staffSetCount", e.target.value)}
+            />
+          </label>
+          <label className="full-field">
+            <span>備考</span>
+            <textarea
+              rows={3}
+              value={form.staffReportNote}
+              onChange={(e) => setFormValue(setForm, "staffReportNote", e.target.value)}
+            />
+          </label>
         </div>
       </section>
 
       <section id="staff-section-materials" className="panel staff-panel anchor-offset">
         <div className="staff-section-title">
-          <span>3</span>
+          <span>4</span>
           <h2>使った原料</h2>
           <div className="staff-section-actions">
             <button type="button" className="secondary" onClick={fillMaterialsFromBom} disabled={!bomFillAvailable}>
@@ -718,6 +830,24 @@ export default function StaffDailyReportForm({
                   required
                 />
               </label>
+              <label>
+                <span>原料ロット</span>
+                <input
+                  type="text"
+                  value={row.lotNumber}
+                  onChange={(e) => updateMaterial(index, { lotNumber: e.target.value })}
+                  required={amountToKg(row) > 0}
+                />
+              </label>
+              <label>
+                <span>使用期限</span>
+                <input
+                  type="date"
+                  value={row.expiryDate}
+                  onChange={(e) => updateMaterial(index, { expiryDate: e.target.value })}
+                  required={amountToKg(row) > 0}
+                />
+              </label>
               <div className="staff-unit-toggle" role="group" aria-label="使用量の単位">
                 <button
                   type="button"
@@ -755,9 +885,111 @@ export default function StaffDailyReportForm({
         </button>
       </section>
 
+      <section id="staff-section-paper-checks" className="panel staff-panel anchor-offset">
+        <div className="staff-section-title">
+          <span>5</span>
+          <h2>包材・検査</h2>
+        </div>
+        <div className="staff-grid">
+          <label>
+            <span>ピロ製造日</span>
+            <input
+              type="date"
+              value={form.pillowManufacturedDate}
+              onChange={(e) => setFormValue(setForm, "pillowManufacturedDate", e.target.value)}
+            />
+          </label>
+          <label>
+            <span>ピロ使用期限</span>
+            <input
+              type="date"
+              value={form.pillowExpiryDate}
+              onChange={(e) => setFormValue(setForm, "pillowExpiryDate", e.target.value)}
+            />
+          </label>
+          <label>
+            <span>包材ロット番号</span>
+            <input
+              type="text"
+              value={form.packagingLotNumber}
+              onChange={(e) => setFormValue(setForm, "packagingLotNumber", e.target.value)}
+            />
+          </label>
+          <label>
+            <span>固有記号</span>
+            <input
+              type="text"
+              value={form.fixedCode}
+              onChange={(e) => setFormValue(setForm, "fixedCode", e.target.value)}
+            />
+          </label>
+          <label>
+            <span>リボン交換時間</span>
+            <input
+              type="time"
+              value={form.ribbonChangeTime}
+              onChange={(e) => setFormValue(setForm, "ribbonChangeTime", e.target.value)}
+            />
+          </label>
+        </div>
+        <div className="staff-check-grid">
+          <label className="staff-check-field">
+            <input
+              type="checkbox"
+              checked={form.preCheckExpiryOk}
+              onChange={(e) => setFormChecked(setForm, "preCheckExpiryOk", e.target.checked)}
+            />
+            <span>製品・箱の賞味期限は正しい</span>
+          </label>
+          <label className="staff-check-field">
+            <input
+              type="checkbox"
+              checked={form.preCheckSealerPressureOk}
+              onChange={(e) => setFormChecked(setForm, "preCheckSealerPressureOk", e.target.checked)}
+            />
+            <span>シーラー部分の圧着は適切</span>
+          </label>
+        </div>
+        <div className="staff-metal-grid" aria-label="金属探知機チェック">
+          <div className="staff-metal-title">金属探知機</div>
+          <label className="staff-check-field">
+            <input
+              type="checkbox"
+              checked={form.metalDetectorBeforeFe}
+              onChange={(e) => setFormChecked(setForm, "metalDetectorBeforeFe", e.target.checked)}
+            />
+            <span>作業前 Fe反応</span>
+          </label>
+          <label className="staff-check-field">
+            <input
+              type="checkbox"
+              checked={form.metalDetectorBeforeSus}
+              onChange={(e) => setFormChecked(setForm, "metalDetectorBeforeSus", e.target.checked)}
+            />
+            <span>作業前 Sus反応</span>
+          </label>
+          <label className="staff-check-field">
+            <input
+              type="checkbox"
+              checked={form.metalDetectorAfterFe}
+              onChange={(e) => setFormChecked(setForm, "metalDetectorAfterFe", e.target.checked)}
+            />
+            <span>作業後 Fe反応</span>
+          </label>
+          <label className="staff-check-field">
+            <input
+              type="checkbox"
+              checked={form.metalDetectorAfterSus}
+              onChange={(e) => setFormChecked(setForm, "metalDetectorAfterSus", e.target.checked)}
+            />
+            <span>作業後 Sus反応</span>
+          </label>
+        </div>
+      </section>
+
       <section id="staff-section-photos" className="panel staff-panel anchor-offset">
         <div className="staff-section-title">
-          <span>4</span>
+          <span>6</span>
           <h2>ラベル写真</h2>
         </div>
         <label className="staff-photo-button">
@@ -792,7 +1024,7 @@ export default function StaffDailyReportForm({
 
       <section id="staff-section-confirm" className="panel staff-panel anchor-offset">
         <div className="staff-section-title">
-          <span>5</span>
+          <span>7</span>
           <h2>確認</h2>
         </div>
         <div className="stat-grid">
@@ -800,9 +1032,19 @@ export default function StaffDailyReportForm({
           <Metric label="稼動時間" value={`${formatNumber(preview.operatingMinutes)} 分`} />
           <Metric label="1人1h生産数" value={formatNumber(preview.perHourQty)} />
           <Metric label="ロス率" value={formatPercent(preview.lossRate)} />
+          <Metric label="許容ロス率" value={formatPercent(lossRateCheck.toleranceRate)} />
         </div>
-        {preview.warnings.length > 0 && (
-          <div className="alert warn">時間・人数・数量・単価のどれかに確認が必要です。入力値を見直してください。</div>
+        {isLossRateAbnormal && (
+          <>
+            <div className="alert danger">{STAFF_LOSS_RATE_ABNORMAL_MESSAGE}</div>
+            <label className="staff-note-field">
+              <span>ロス率異常理由</span>
+              <textarea
+                value={form.lossRateReasonNote}
+                onChange={(e) => setFormValue(setForm, "lossRateReasonNote", e.target.value)}
+              />
+            </label>
+          </>
         )}
         <label className="staff-note-field">
           <span>備考</span>
@@ -859,6 +1101,9 @@ function toPayload(form: FormState, photos: LabelPhoto[]) {
     reportDate: form.reportDate,
     productId: form.productId || null,
     productName: form.productId ? null : form.productName || null,
+    productionPlanId: form.productionPlanId || null,
+    workAreaId: form.workAreaId || null,
+    workAreaName: form.workAreaName || null,
     expiryDate: form.expiryDate || null,
     startTime: form.startTime,
     endTime: form.endTime,
@@ -871,7 +1116,24 @@ function toPayload(form: FormState, photos: LabelPhoto[]) {
         materialId: row.materialId || null,
         materialName: row.materialName.trim() || "(未設定)",
         usedKg: amountToKg(row),
+        lotNumber: row.lotNumber.trim() || null,
+        expiryDate: row.expiryDate || null,
       })),
+    pillowManufacturedDate: form.pillowManufacturedDate || null,
+    pillowExpiryDate: form.pillowExpiryDate || null,
+    packagingLotNumber: form.packagingLotNumber.trim() || null,
+    fixedCode: form.fixedCode.trim() || null,
+    ribbonChangeTime: form.ribbonChangeTime || null,
+    staffSealerCount: toNumber(form.staffSealerCount),
+    staffSetCount: toNumber(form.staffSetCount),
+    staffReportNote: form.staffReportNote.trim() || null,
+    preCheckExpiryOk: form.preCheckExpiryOk,
+    preCheckSealerPressureOk: form.preCheckSealerPressureOk,
+    metalDetectorBeforeFe: form.metalDetectorBeforeFe,
+    metalDetectorBeforeSus: form.metalDetectorBeforeSus,
+    metalDetectorAfterFe: form.metalDetectorAfterFe,
+    metalDetectorAfterSus: form.metalDetectorAfterSus,
+    lossRateReasonNote: form.lossRateReasonNote.trim() || null,
     laborFeeRateId: form.laborFeeRateId || null,
     note: form.note || null,
     sourceType: "staff_entry",
@@ -885,6 +1147,9 @@ function emptyForm(date: string, laborRates: StaffDailyReportLaborRateOption[]):
   return {
     reportDate: date,
     submittedBy: "",
+    productionPlanId: "",
+    workAreaId: "",
+    workAreaName: "",
     productId: "",
     productName: "",
     expiryDate: "",
@@ -892,15 +1157,30 @@ function emptyForm(date: string, laborRates: StaffDailyReportLaborRateOption[]):
     endTime: "17:00",
     breakMinutes: "60",
     workerCount: "1",
+    staffSealerCount: "",
+    staffSetCount: "",
+    staffReportNote: "",
     productionQty: "",
     materials: [emptyMaterialRow()],
+    pillowManufacturedDate: "",
+    pillowExpiryDate: "",
+    packagingLotNumber: "",
+    fixedCode: "",
+    ribbonChangeTime: "",
+    preCheckExpiryOk: false,
+    preCheckSealerPressureOk: false,
+    metalDetectorBeforeFe: false,
+    metalDetectorBeforeSus: false,
+    metalDetectorAfterFe: false,
+    metalDetectorAfterSus: false,
+    lossRateReasonNote: "",
     laborFeeRateId: laborRates.find((rate) => rate.code === "standard_1200")?.id ?? laborRates[0]?.id ?? "",
     note: "",
   };
 }
 
 function emptyMaterialRow(): MaterialRow {
-  return { materialId: "", materialName: "", amount: "", unitMode: "g" };
+  return { materialId: "", materialName: "", amount: "", unitMode: "g", lotNumber: "", expiryDate: "" };
 }
 
 function amountToKg(row: MaterialRow) {
@@ -1028,6 +1308,20 @@ function setFormValue(
   setter((prev) => ({ ...prev, [key]: value }));
 }
 
+function setFormChecked(
+  setter: React.Dispatch<React.SetStateAction<FormState>>,
+  key:
+    | "preCheckExpiryOk"
+    | "preCheckSealerPressureOk"
+    | "metalDetectorBeforeFe"
+    | "metalDetectorBeforeSus"
+    | "metalDetectorAfterFe"
+    | "metalDetectorAfterSus",
+  value: boolean,
+) {
+  setter((prev) => ({ ...prev, [key]: value }));
+}
+
 async function resizePhoto(file: File): Promise<LabelPhoto> {
   const dataUrl = await readFileAsDataUrl(file);
   const image = await loadImage(dataUrl);
@@ -1089,25 +1383,4 @@ function formatPercent(value: number) {
   return `${((Number.isFinite(value) ? value : 0) * 100).toLocaleString("ja-JP", {
     maximumFractionDigits: 1,
   })}%`;
-}
-
-function dailyReportWarningLabel(warning: ProductDailyReportWarning) {
-  switch (warning) {
-    case "invalid_time_range":
-      return "時間";
-    case "non_positive_worker_count":
-      return "人数";
-    case "non_positive_production_qty":
-      return "生産数";
-    case "missing_capacity_g":
-      return "内容量";
-    case "missing_unit_price":
-      return "売価";
-    case "missing_material_unit_cost":
-      return "原料単価";
-    case "missing_package_cost":
-      return "包材単価";
-    default:
-      return "確認";
-  }
 }

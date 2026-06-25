@@ -4,19 +4,24 @@ import { audit } from "./audit";
 import { HttpError } from "./http";
 import { prisma } from "./prisma";
 
-// 蓄積日報(ProductionDailyReportEntry)から、商品別・月次の「1袋手間賃」を算出し、
+// 蓄積日報(ProductionDailyReportEntry)から、商品×作業場所別・月次の「1袋手間賃」を算出し、
 // ProductMonthlyLaborFee に保存する。手動 apply で BillingPrice(売値=手間賃単価)へ反映する。
 
 type Client = PrismaClient | Prisma.TransactionClient;
 
 export type MonthlyLaborFeeSampleInput = {
   productId: string | null;
+  workAreaId?: string | null;
+  workAreaName?: string | null;
   laborFeePerUnit: number;
   perHourQty: number;
 };
 
 export type MonthlyLaborFeeRow = {
   productId: string;
+  workAreaId: string | null;
+  workAreaKey: string;
+  workAreaNameSnapshot: string | null;
   perBagLaborFee: number;
   avgPerHourQty: number;
   sampleCount: number;
@@ -31,47 +36,87 @@ export function median(values: number[]): number {
 }
 
 /**
- * 日報サンプルを商品別に集計し、laborFeePerUnit の中央値を 1袋手間賃 とする純関数。
+ * 日報サンプルを商品×作業場所別に集計し、laborFeePerUnit の中央値を 1袋手間賃 とする純関数。
  * laborFeePerUnit <= 0 のサンプル(時間不正等)は中央値の母集団から除外する。
  */
 export function computeMonthlyLaborFees(samples: MonthlyLaborFeeSampleInput[]): MonthlyLaborFeeRow[] {
-  const groups = new Map<string, { fees: number[]; perHour: number[] }>();
+  const groups = new Map<
+    string,
+    {
+      productId: string;
+      workAreaId: string | null;
+      workAreaKey: string;
+      workAreaNameSnapshot: string | null;
+      fees: number[];
+      perHour: number[];
+    }
+  >();
   for (const s of samples) {
     if (!s.productId || !(s.laborFeePerUnit > 0)) continue;
-    const g = groups.get(s.productId) ?? { fees: [], perHour: [] };
+    const workAreaId = s.workAreaId ?? null;
+    const workAreaKey = monthlyLaborFeeWorkAreaKey(workAreaId);
+    const groupKey = `${s.productId}|${workAreaKey}`;
+    const g = groups.get(groupKey) ?? {
+      productId: s.productId,
+      workAreaId,
+      workAreaKey,
+      workAreaNameSnapshot: normalizeNullableText(s.workAreaName),
+      fees: [],
+      perHour: [],
+    };
+    if (!g.workAreaNameSnapshot) g.workAreaNameSnapshot = normalizeNullableText(s.workAreaName);
     g.fees.push(s.laborFeePerUnit);
     if (s.perHourQty > 0) g.perHour.push(s.perHourQty);
-    groups.set(s.productId, g);
+    groups.set(groupKey, g);
   }
 
-  return Array.from(groups, ([productId, g]) => ({
-    productId,
+  return Array.from(groups.values(), (g) => ({
+    productId: g.productId,
+    workAreaId: g.workAreaId,
+    workAreaKey: g.workAreaKey,
+    workAreaNameSnapshot: g.workAreaNameSnapshot,
     perBagLaborFee: round2(median(g.fees)),
     avgPerHourQty: round4(g.perHour.length ? g.perHour.reduce((a, b) => a + b, 0) / g.perHour.length : 0),
     sampleCount: g.fees.length,
-  })).sort((a, b) => b.sampleCount - a.sampleCount);
+  })).sort((a, b) => b.sampleCount - a.sampleCount || a.productId.localeCompare(b.productId));
 }
 
-/** 対象月の active 日報を読み、商品別 1袋手間賃を draft で upsert する。 */
+/** 対象月の active 日報を読み、商品×作業場所別 1袋手間賃を draft で upsert する。 */
 export async function recomputeMonthlyLaborFees(yearMonth: string, client: Client = prisma) {
   assertYearMonth(yearMonth);
   const { gte, lt } = monthRange(yearMonth);
   const entries = await client.productionDailyReportEntry.findMany({
     where: { active: true, approvalStatus: "approved", productId: { not: null }, reportDate: { gte, lt } },
-    select: { productId: true, laborFeePerUnit: true, perHourQty: true },
+    select: {
+      productId: true,
+      workAreaId: true,
+      workAreaNameSnapshot: true,
+      workArea: { select: { name: true } },
+      laborFeePerUnit: true,
+      perHourQty: true,
+    },
   });
 
   const rows = computeMonthlyLaborFees(
-    entries.map((e) => ({ productId: e.productId, laborFeePerUnit: e.laborFeePerUnit, perHourQty: e.perHourQty })),
+    entries.map((e) => ({
+      productId: e.productId,
+      workAreaId: e.workAreaId,
+      workAreaName: e.workAreaNameSnapshot ?? e.workArea?.name ?? null,
+      laborFeePerUnit: e.laborFeePerUnit,
+      perHourQty: e.perHourQty,
+    })),
   );
 
   const now = new Date();
-  const productIdsWithSamples = new Set(rows.map((row) => row.productId));
+  const sampleKeys = new Set(rows.map((row) => monthlyLaborFeeGroupKey(row.productId, row.workAreaKey)));
   for (const row of rows) {
     await client.productMonthlyLaborFee.upsert({
-      where: { productId_yearMonth: { productId: row.productId, yearMonth } },
+      where: { productId_yearMonth_workAreaKey: { productId: row.productId, yearMonth, workAreaKey: row.workAreaKey } },
       // 再計算したら draft に戻し、レビュー→再反映できるようにする。
       update: {
+        workAreaId: row.workAreaId,
+        workAreaKey: row.workAreaKey,
+        workAreaNameSnapshot: row.workAreaNameSnapshot,
         perBagLaborFee: row.perBagLaborFee,
         avgPerHourQty: row.avgPerHourQty,
         sampleCount: row.sampleCount,
@@ -82,6 +127,9 @@ export async function recomputeMonthlyLaborFees(yearMonth: string, client: Clien
       },
       create: {
         productId: row.productId,
+        workAreaId: row.workAreaId,
+        workAreaKey: row.workAreaKey,
+        workAreaNameSnapshot: row.workAreaNameSnapshot,
         yearMonth,
         perBagLaborFee: row.perBagLaborFee,
         avgPerHourQty: row.avgPerHourQty,
@@ -91,40 +139,43 @@ export async function recomputeMonthlyLaborFees(yearMonth: string, client: Clien
       },
     });
   }
-  const staleWhere: Prisma.ProductMonthlyLaborFeeWhereInput = { yearMonth };
-  if (productIdsWithSamples.size > 0) {
-    staleWhere.productId = { notIn: Array.from(productIdsWithSamples) };
-  }
-  const stale = await client.productMonthlyLaborFee.updateMany({
-    where: staleWhere,
-    data: {
-      perBagLaborFee: 0,
-      avgPerHourQty: 0,
-      sampleCount: 0,
-      status: "draft",
-      appliedAt: null,
-      appliedBillingPriceId: null,
-      computedAt: now,
-    },
+  const existing = await client.productMonthlyLaborFee.findMany({
+    where: { yearMonth },
+    select: { id: true, productId: true, workAreaKey: true },
   });
+  const stale = existing.filter((row) => !sampleKeys.has(monthlyLaborFeeGroupKey(row.productId, row.workAreaKey)));
+  for (const row of stale) {
+    await client.productMonthlyLaborFee.update({
+      where: { id: row.id },
+      data: {
+        perBagLaborFee: 0,
+        avgPerHourQty: 0,
+        sampleCount: 0,
+        status: "draft",
+        appliedAt: null,
+        appliedBillingPriceId: null,
+        computedAt: now,
+      },
+    });
+  }
 
   await audit({
     action: "recompute_monthly_labor_fee",
     entityType: "ProductMonthlyLaborFee",
     entityId: yearMonth,
-    after: { yearMonth, productCount: rows.length, staleCount: stale.count },
+    after: { yearMonth, groupCount: rows.length, staleCount: stale.length },
   });
 
   return client.productMonthlyLaborFee.findMany({
     where: { yearMonth },
-    include: { product: true },
-    orderBy: [{ sampleCount: "desc" }],
+    include: { product: true, workArea: true },
+    orderBy: [{ sampleCount: "desc" }, { product: { productCode: "asc" } }],
   });
 }
 
 /** draft の月次手間賃を BillingPrice(売値) へ反映する。既定の適用開始日は対象月の翌月1日。 */
 export async function applyMonthlyLaborFee(id: string, effectiveFrom?: string) {
-  const row = await prisma.productMonthlyLaborFee.findUnique({ where: { id }, include: { product: true } });
+  const row = await prisma.productMonthlyLaborFee.findUnique({ where: { id }, include: { product: true, workArea: true } });
   if (!row) throw new HttpError(404, "not_found");
   if (!(row.perBagLaborFee > 0)) throw new HttpError(400, "no_labor_fee", "手間賃が算出されていません。");
 
@@ -136,11 +187,13 @@ export async function applyMonthlyLaborFee(id: string, effectiveFrom?: string) {
     const price = await tx.billingPrice.create({
       data: {
         productId: row.productId,
+        workAreaId: row.workAreaId,
+        workAreaNameSnapshot: row.workAreaNameSnapshot ?? row.workArea?.name ?? null,
         unitPrice: row.perBagLaborFee,
         unit: row.product.unit,
         effectiveFrom: effectiveDate,
         billingTarget: true,
-        note: `月次手間賃(${row.yearMonth}) 中央値 n=${row.sampleCount} を反映`,
+        note: `月次手間賃(${row.yearMonth}${row.workAreaNameSnapshot ? `/${row.workAreaNameSnapshot}` : ""}) 中央値 n=${row.sampleCount} を反映`,
       },
     });
     return tx.productMonthlyLaborFee.update({
@@ -186,4 +239,17 @@ function round2(n: number) {
 
 function round4(n: number) {
   return Math.round((Number.isFinite(n) ? n : 0) * 10000) / 10000;
+}
+
+function monthlyLaborFeeWorkAreaKey(workAreaId: string | null | undefined) {
+  return workAreaId ?? "unassigned";
+}
+
+function monthlyLaborFeeGroupKey(productId: string, workAreaKey: string) {
+  return `${productId}|${workAreaKey}`;
+}
+
+function normalizeNullableText(value: string | null | undefined) {
+  const normalized = (value ?? "").trim();
+  return normalized.length > 0 ? normalized : null;
 }

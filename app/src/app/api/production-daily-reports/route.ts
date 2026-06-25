@@ -20,7 +20,7 @@ export async function GET(req: Request) {
         ...(productId ? { productId } : {}),
         ...(range ? { reportDate: range } : {}),
       },
-      include: { product: true, laborFeeRate: true },
+      include: { product: true, workArea: true, laborFeeRate: true },
       orderBy: [{ reportDate: "desc" }, { createdAt: "desc" }],
     });
     const filtered = q

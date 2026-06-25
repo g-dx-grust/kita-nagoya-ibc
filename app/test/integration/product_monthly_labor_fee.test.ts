@@ -32,6 +32,7 @@ describe("月次手間賃 (ProductMonthlyLaborFee)", () => {
     await createProductDailyReportEntry({
       reportDate: "2026-05-10",
       productId: product.id,
+      workAreaId: workArea.id,
       startTime: "09:00",
       endTime: "11:00",
       breakMinutes: 0,
@@ -43,6 +44,7 @@ describe("月次手間賃 (ProductMonthlyLaborFee)", () => {
     await createProductDailyReportEntry({
       reportDate: "2026-05-12",
       productId: product.id,
+      workAreaId: workArea.id,
       startTime: "09:00",
       endTime: "11:00",
       breakMinutes: 0,
@@ -68,6 +70,7 @@ describe("月次手間賃 (ProductMonthlyLaborFee)", () => {
     });
     expect(price.unitPrice).toBe(15);
     expect(price.productId).toBe(product.id);
+    expect(price.workAreaId).toBe(workArea.id);
     expect(price.billingTarget).toBe(true);
     // 既定の適用開始日は対象月の翌月1日。
     expect(price.effectiveFrom.toISOString().slice(0, 10)).toBe("2026-06-01");
@@ -83,6 +86,7 @@ describe("月次手間賃 (ProductMonthlyLaborFee)", () => {
     const submitted = await createProductDailyReportEntry({
       reportDate: "2026-05-20",
       productId: product.id,
+      workAreaId: workArea.id,
       startTime: "09:00",
       endTime: "11:00",
       breakMinutes: 0,
@@ -95,17 +99,69 @@ describe("月次手間賃 (ProductMonthlyLaborFee)", () => {
     expect(submitted).toBeTruthy();
     await expect(
       prisma.productMonthlyLaborFee.findUnique({
-        where: { productId_yearMonth: { productId: product.id, yearMonth: "2026-05" } },
+        where: {
+          productId_yearMonth_workAreaKey: {
+            productId: product.id,
+            yearMonth: "2026-05",
+            workAreaKey: workArea.id,
+          },
+        },
       }),
     ).resolves.toBeNull();
 
     await approveProductDailyReportEntry(submitted!.id, "管理者");
 
     const row = await prisma.productMonthlyLaborFee.findUniqueOrThrow({
-      where: { productId_yearMonth: { productId: product.id, yearMonth: "2026-05" } },
+      where: {
+        productId_yearMonth_workAreaKey: {
+          productId: product.id,
+          yearMonth: "2026-05",
+          workAreaKey: workArea.id,
+        },
+      },
     });
     expect(row.perBagLaborFee).toBe(20);
     expect(row.sampleCount).toBe(1);
     expect(row.status).toBe("draft");
+  });
+
+  it("同じ商品でも作業場所ごとに月次手間賃を分けて保存する", async () => {
+    const generalArea = await createTestWorkArea(prisma, { name: "一般部屋" });
+    const machineArea = await createTestWorkArea(prisma, { name: "機械部屋" });
+    const product = await createTestProduct(prisma, { defaultWorkAreaId: generalArea.id });
+    const { createProductDailyReportEntry } = await import("@/lib/product-daily-report-service");
+    const { recomputeMonthlyLaborFees } = await import("@/lib/product-monthly-labor-fee");
+
+    await createProductDailyReportEntry({
+      reportDate: "2026-05-10",
+      productId: product.id,
+      workAreaId: generalArea.id,
+      startTime: "09:00",
+      endTime: "11:00",
+      breakMinutes: 0,
+      workerCount: 1,
+      productionQty: 120,
+      materials: [],
+    });
+    await createProductDailyReportEntry({
+      reportDate: "2026-05-11",
+      productId: product.id,
+      workAreaId: machineArea.id,
+      startTime: "09:00",
+      endTime: "11:00",
+      breakMinutes: 0,
+      workerCount: 1,
+      productionQty: 300,
+      materials: [],
+    });
+
+    const rows = await recomputeMonthlyLaborFees("2026-05");
+    const general = rows.find((row) => row.productId === product.id && row.workAreaId === generalArea.id);
+    const machine = rows.find((row) => row.productId === product.id && row.workAreaId === machineArea.id);
+
+    expect(general?.perBagLaborFee).toBe(20);
+    expect(general?.workAreaNameSnapshot).toBe("一般部屋");
+    expect(machine?.perBagLaborFee).toBe(8);
+    expect(machine?.workAreaNameSnapshot).toBe("機械部屋");
   });
 });
