@@ -8,16 +8,31 @@ import { kitagoyaApiPath, kitagoyaPath } from "@/lib/paths";
 export default function PlanActions({ planId, status }: { planId: string; status: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function call(path: string, method = "POST") {
     setBusy(true);
+    setMessage(null);
+    setError(null);
     try {
-      await fetch(kitagoyaApiPath(`/production-plans/${planId}${path}`), { method });
+      const res = await fetch(kitagoyaApiPath(`/production-plans/${planId}${path}`), { method });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(String(json.error ?? "処理に失敗しました。"));
+        return;
+      }
+      if (path === "/tentative-confirm") setMessage("仮確定しました。");
+      else if (path === "/confirm") setMessage("確定しました。");
+      else if (path === "/recalculate") setMessage("再計算しました。");
       router.refresh();
     } finally {
       setBusy(false);
     }
   }
+
+  const showTentativeConfirm = status === "draft";
+  const showConfirm = status === "tentative_confirmed";
 
   return (
     <div className="production-plan-actions">
@@ -30,12 +45,19 @@ export default function PlanActions({ planId, status }: { planId: string; status
         <RefreshCw size={16} aria-hidden="true" />
         {busy ? "処理中..." : "再計算"}
       </button>
-      {status !== "confirmed" && status !== "completed" && (
+      {showTentativeConfirm && (
+        <button type="button" disabled={busy} onClick={() => call("/tentative-confirm")}>
+          <CheckCircle2 size={16} aria-hidden="true" />
+          仮確定する
+        </button>
+      )}
+      {showConfirm && (
         <button type="button" disabled={busy} onClick={() => call("/confirm")}>
           <CheckCircle2 size={16} aria-hidden="true" />
           確定する
         </button>
       )}
+      {status === "confirmed" && <span className="badge success">確定済み</span>}
       {status !== "cancelled" && status !== "completed" && (
         <button
           type="button"
@@ -60,6 +82,8 @@ export default function PlanActions({ planId, status }: { planId: string; status
         <Trash2 size={16} aria-hidden="true" />
         削除
       </button>
+      {message && <span className="badge success">{message}</span>}
+      {error && <span className="badge danger">{error}</span>}
     </div>
   );
 }

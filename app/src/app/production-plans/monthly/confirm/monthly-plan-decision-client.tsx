@@ -34,8 +34,14 @@ type DecisionPlan = {
   plannedEndTime: string | null;
   plannedPeopleCount: number;
   status: string;
+  requirementCount: number;
   hardShortage: boolean;
   unconfirmedDependency: boolean;
+  belowSafety: boolean;
+  canTentativeConfirm: boolean;
+  canConfirm: boolean;
+  backingPurchaseOrderIds: string[];
+  blockingRequirementReasons: string[];
   note: string | null;
 };
 
@@ -91,6 +97,7 @@ export default function MonthlyPlanDecisionClient({
   demands: DemandRow[];
   summary: {
     draftCount: number;
+    tentativeConfirmedCount: number;
     confirmedCount: number;
     stockDraftCount: number;
     orderDraftCount: number;
@@ -109,10 +116,13 @@ export default function MonthlyPlanDecisionClient({
     Object.fromEntries(demands.map((demand) => [demand.id, draftFromDemand(demand, initialDateFrom, initialDateTo)])),
   );
 
-  const draftPlanIds = useMemo(() => plans.filter((plan) => plan.status === "draft").map((plan) => plan.id), [plans]);
-  const selectedDraftIds = useMemo(
-    () => draftPlanIds.filter((id) => selected.has(id)),
-    [draftPlanIds, selected],
+  const tentativeConfirmablePlanIds = useMemo(
+    () => plans.filter((plan) => isTentativeConfirmable(plan)).map((plan) => plan.id),
+    [plans],
+  );
+  const selectedTentativeConfirmableIds = useMemo(
+    () => tentativeConfirmablePlanIds.filter((id) => selected.has(id)),
+    [tentativeConfirmablePlanIds, selected],
   );
   const stockPlans = plans.filter((plan) => plan.productionType === "stock");
   const orderPlans = plans.filter((plan) => plan.productionType !== "stock");
@@ -126,10 +136,10 @@ export default function MonthlyPlanDecisionClient({
     });
   }
 
-  function selectDrafts(rows: DecisionPlan[]) {
+  function selectTentativeConfirmable(rows: DecisionPlan[]) {
     setSelected((current) => {
       const next = new Set(current);
-      const ids = rows.filter((row) => row.status === "draft").map((row) => row.id);
+      const ids = rows.filter(isTentativeConfirmable).map((row) => row.id);
       const allSelected = ids.length > 0 && ids.every((id) => next.has(id));
       for (const id of ids) {
         if (allSelected) next.delete(id);
@@ -151,7 +161,7 @@ export default function MonthlyPlanDecisionClient({
     const edit = planEdits[plan.id] ?? editFromPlan(plan);
     const quantity = ceilDisplayQuantity(Number(edit.plannedQuantity)) ?? 0;
     if (plan.status !== "draft") {
-      setError("本決定済みの予定はこの画面では変更できません。");
+      setError("仮確定済み・確定済みの予定はこの画面では変更できません。");
       return;
     }
     if (!edit.date || !edit.workAreaId || !edit.plannedStartTime || quantity <= 0 || Number(edit.plannedPeopleCount) <= 0) {
@@ -184,29 +194,30 @@ export default function MonthlyPlanDecisionClient({
     router.refresh();
   }
 
-  async function confirmSelected() {
-    if (selectedDraftIds.length === 0) {
-      setError("本決定できる下書き予定が選択されていません。");
+  async function tentativeConfirmSelected() {
+    if (selectedTentativeConfirmableIds.length === 0) {
+      setError("仮確定できる仮予定が選択されていません。");
       return;
     }
-    if (!confirm(`選択中の下書き ${selectedDraftIds.length}件を本決定します。よろしいですか？`)) return;
+    if (!confirm(`選択中の仮予定 ${selectedTentativeConfirmableIds.length}件を仮確定します。よろしいですか？`)) return;
 
     setBusy(true);
     setError(null);
     setMessage(null);
-    const res = await fetch(kitagoyaApiPath("/production-plans/bulk-confirm"), {
+    const res = await fetch(kitagoyaApiPath("/production-plans/bulk-tentative-confirm"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: selectedDraftIds }),
+      body: JSON.stringify({ ids: selectedTentativeConfirmableIds }),
     });
     const json = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setError(`本決定に失敗しました: ${json.error ?? "unknown"}`);
+      setError(`仮確定に失敗しました: ${json.error ?? "unknown"}`);
       return;
     }
     setSelected(new Set());
-    setMessage(`${json.confirmed ?? 0}件を本決定しました。`);
+    const skipped = json.skipped ? ` / 見送り ${json.skipped}件` : "";
+    setMessage(`${json.tentativeConfirmed ?? 0}件を仮確定しました${skipped}。`);
     router.refresh();
   }
 
@@ -221,22 +232,17 @@ export default function MonthlyPlanDecisionClient({
     setBusy(true);
     setError(null);
     setMessage(null);
-    const res = await fetch(kitagoyaApiPath("/production-plans"), {
+    const res = await fetch(kitagoyaApiPath(`/product-demands/${demand.id}/schedule`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         date: draft.date,
-        productId: demand.product.id,
-        productionType: productionTypeForDemand(demand.product.productionType),
-        plannedQuantity: quantity,
-        unit: demand.product.unit,
+        quantity,
         workAreaId: draft.workAreaId,
         plannedStartTime: draft.plannedStartTime,
-        breakMinutes: 0,
         plannedPeopleCount: Number(draft.plannedPeopleCount),
-        status: "draft",
         baselineEndTime: "17:00",
-        note: `受注予定から本決定画面で作成 / 必要日 ${demand.dueDate} / ${demand.customerName ?? "得意先未指定"}`,
+        note: `受注予定から仮確定画面で作成 / 必要日 ${demand.dueDate} / ${demand.customerName ?? "得意先未指定"}`,
       }),
     });
     const json = await res.json().catch(() => ({}));
@@ -245,7 +251,7 @@ export default function MonthlyPlanDecisionClient({
       setError(`受注予定の予定化に失敗しました: ${json.error ?? "unknown"}`);
       return;
     }
-    setMessage("受注/出荷予定から下書き生産予定を作成しました。");
+    setMessage(json.created ? "受注/出荷予定から仮予定を作成し、需要へ紐づけました。" : "既に紐づく製造予定があります。");
     router.refresh();
   }
 
@@ -254,23 +260,24 @@ export default function MonthlyPlanDecisionClient({
       <div className="monthly-decision-command panel">
         <div className="monthly-decision-command-title">
           <span className={`badge ${summary.draftCount > 0 ? "warn" : "success"}`}>
-            {summary.draftCount > 0 ? `本決定待ち ${summary.draftCount}` : "本決定待ちなし"}
+            {summary.draftCount > 0 ? `仮確定待ち ${summary.draftCount}` : "仮確定待ちなし"}
           </span>
-          <strong>社員確認で本決定</strong>
+          <strong>入荷裏付けで仮確定</strong>
           <span className="subtext">
             {initialDateFrom} - {initialDateTo}
           </span>
         </div>
         <div className="monthly-decision-checks">
-          <span className="badge muted">本決定済 {summary.confirmedCount}</span>
-          <span className={`badge ${summary.stockDraftCount > 0 ? "warn" : "success"}`}>在庫品下書き {summary.stockDraftCount}</span>
-          <span className={`badge ${summary.orderDraftCount > 0 ? "warn" : "success"}`}>受注品下書き {summary.orderDraftCount}</span>
+          <span className="badge muted">確定済 {summary.confirmedCount}</span>
+          <span className="badge warn">仮確定 {summary.tentativeConfirmedCount}</span>
+          <span className={`badge ${summary.stockDraftCount > 0 ? "warn" : "success"}`}>在庫品仮予定 {summary.stockDraftCount}</span>
+          <span className={`badge ${summary.orderDraftCount > 0 ? "warn" : "success"}`}>受注品仮予定 {summary.orderDraftCount}</span>
           <span className={`badge ${summary.uncoveredDemandCount > 0 ? "warn" : "success"}`}>未予定受注 {summary.uncoveredDemandCount}</span>
         </div>
         <div className="monthly-decision-actions">
-          <button type="button" onClick={confirmSelected} disabled={busy || selectedDraftIds.length === 0}>
+          <button type="button" onClick={tentativeConfirmSelected} disabled={busy || selectedTentativeConfirmableIds.length === 0}>
             <ClipboardCheck size={16} aria-hidden="true" />
-            {busy ? "処理中..." : `選択を本決定 (${selectedDraftIds.length})`}
+            {busy ? "処理中..." : `選択を仮確定 (${selectedTentativeConfirmableIds.length})`}
           </button>
           <Link className="button-link secondary-link" href={kitagoyaPath(`/production-plans?dateFrom=${initialDateFrom}&dateTo=${initialDateTo}&status=draft`)}>
             <ExternalLink size={15} aria-hidden="true" />
@@ -283,25 +290,25 @@ export default function MonthlyPlanDecisionClient({
       {error && <div className="alert danger">{error}</div>}
 
       <DecisionPlanTable
-        title="在庫商品の本決定"
+        title="在庫商品の仮確定"
         rows={stockPlans}
         selected={selected}
         planEdits={planEdits}
         busy={busy}
         onTogglePlan={togglePlan}
-        onSelectDrafts={selectDrafts}
+        onSelectDrafts={selectTentativeConfirmable}
         onUpdatePlanEdit={updatePlanEdit}
         onSavePlan={savePlan}
       />
 
       <DecisionPlanTable
-        title="受注商品の本決定"
+        title="受注商品の仮確定"
         rows={orderPlans}
         selected={selected}
         planEdits={planEdits}
         busy={busy}
         onTogglePlan={togglePlan}
-        onSelectDrafts={selectDrafts}
+        onSelectDrafts={selectTentativeConfirmable}
         onUpdatePlanEdit={updatePlanEdit}
         onSavePlan={savePlan}
       />
@@ -338,8 +345,8 @@ function DecisionPlanTable({
   onUpdatePlanEdit: (id: string, patch: Partial<PlanEdit>) => void;
   onSavePlan: (plan: DecisionPlan) => void;
 }) {
-  const draftRows = rows.filter((row) => row.status === "draft");
-  const allDraftSelected = draftRows.length > 0 && draftRows.every((row) => selected.has(row.id));
+  const selectableRows = rows.filter(isTentativeConfirmable);
+  const allDraftSelected = selectableRows.length > 0 && selectableRows.every((row) => selected.has(row.id));
 
   return (
     <section className="monthly-decision-section">
@@ -347,8 +354,8 @@ function DecisionPlanTable({
         <h2>{title}</h2>
         <div className="section-heading-actions">
           <span className="badge muted">表示 {rows.length}</span>
-          <button type="button" className="secondary" onClick={() => onSelectDrafts(rows)} disabled={draftRows.length === 0}>
-            {allDraftSelected ? "選択解除" : "下書きを選択"}
+          <button type="button" className="secondary" onClick={() => onSelectDrafts(rows)} disabled={selectableRows.length === 0}>
+            {allDraftSelected ? "選択解除" : "仮確定可を選択"}
           </button>
         </div>
       </div>
@@ -375,15 +382,16 @@ function DecisionPlanTable({
               {rows.map((plan) => {
                 const edit = planEdits[plan.id] ?? editFromPlan(plan);
                 const editable = plan.status === "draft";
+                const tentativeSelectable = isTentativeConfirmable(plan);
                 return (
-                  <tr key={plan.id} className={plan.hardShortage || plan.unconfirmedDependency ? "row-needs-action" : ""}>
+                  <tr key={plan.id} className={plan.hardShortage || plan.unconfirmedDependency || plan.belowSafety ? "row-needs-action" : ""}>
                     <td className="select-cell">
                       <input
                         type="checkbox"
                         checked={selected.has(plan.id)}
-                        disabled={!editable}
+                        disabled={!tentativeSelectable}
                         onChange={() => onTogglePlan(plan.id)}
-                        aria-label={`${plan.productName} を本決定対象に選択`}
+                        aria-label={`${plan.productName} を仮確定対象に選択`}
                       />
                     </td>
                     <td>
@@ -471,13 +479,22 @@ function DecisionPlanTable({
                       )}
                     </td>
                     <td>
-                      <span className={`badge ${planStatusClass(plan.status)}`}>{plan.status === "draft" ? "本決定待ち" : planStatusLabel(plan.status)}</span>
+                      <span className={`badge ${planStatusClass(plan.status)}`}>{plan.status === "draft" ? "仮予定" : planStatusLabel(plan.status)}</span>
                     </td>
                     <td>
                       <span className="badge-list">
+                        {plan.requirementCount === 0 && <span className="badge danger">BOM未登録</span>}
                         {plan.hardShortage && <span className="badge danger">資材不足</span>}
-                        {plan.unconfirmedDependency && <span className="badge warn">入荷確認</span>}
-                        {!plan.hardShortage && !plan.unconfirmedDependency && <span className="badge success">なし</span>}
+                        {plan.unconfirmedDependency && (
+                          <span className={`badge ${plan.canTentativeConfirm ? "info" : "warn"}`}>
+                            {plan.canTentativeConfirm ? "入荷予定で仮確定可" : "入荷予定不足"}
+                          </span>
+                        )}
+                        {plan.belowSafety && <span className="badge info">安全在庫割れ</span>}
+                        {plan.status === "tentative_confirmed" && !plan.canConfirm && <span className="badge warn">確定不可</span>}
+                        {plan.status === "tentative_confirmed" && plan.canConfirm && <span className="badge success">確定可</span>}
+                        {plan.backingPurchaseOrderIds.length > 0 && <span className="badge muted">発注裏付け {plan.backingPurchaseOrderIds.length}</span>}
+                        {!plan.hardShortage && !plan.unconfirmedDependency && !plan.belowSafety && plan.requirementCount > 0 && <span className="badge success">なし</span>}
                       </span>
                     </td>
                     <td>
@@ -633,7 +650,7 @@ function DemandPlanningTable({
                         disabled={busy || covered || demand.product.workAreaOptions.length === 0}
                       >
                         <PlusCircle size={15} aria-hidden="true" />
-                        下書き予定化
+                        仮予定化
                       </button>
                     </td>
                   </tr>
@@ -690,8 +707,8 @@ function emptyDemandDraft(): DemandDraft {
   };
 }
 
-function productionTypeForDemand(productProductionType: string): PlanProductionType {
-  return productProductionType === "stock" ? "stock" : "make_to_order";
+function isTentativeConfirmable(plan: DecisionPlan) {
+  return plan.status === "draft" && plan.canTentativeConfirm;
 }
 
 function productProductionTypeLabel(value: string) {

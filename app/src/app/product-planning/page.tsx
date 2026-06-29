@@ -37,8 +37,8 @@ export default async function ProductPlanningPage({
       _sum: { quantity: true },
     }),
     prisma.productDemand.findMany({
-      where: { status: "open", dueDate: { lte: new Date(dateTo) }, product: { active: true } },
-      include: { product: true },
+      where: { status: { in: ["open", "tentative"] }, dueDate: { lte: new Date(dateTo) }, product: { active: true } },
+      include: { product: true, productionPlan: { include: { workArea: true } } },
       orderBy: [{ dueDate: "asc" }, { product: { productCode: "asc" } }],
     }),
     loadProductPlanningSuggestions({ dateFrom: new Date(dateFrom), dateTo: new Date(dateTo) }),
@@ -59,7 +59,7 @@ export default async function ProductPlanningPage({
         <div className="page-title-actions">
           <Link className="button-link secondary-link" href={kitagoyaPath(`/production-plans/monthly/confirm?dateFrom=${dateFrom}&dateTo=${dateTo}`)}>
             <ClipboardCheck size={16} aria-hidden="true" />
-            本決定へ
+            仮確定へ
           </Link>
           <Link className="button-link secondary-link" href={kitagoyaPath(`/production-plans/monthly?dateFrom=${dateFrom}&dateTo=${dateTo}`)}>
             <ClipboardList size={16} aria-hidden="true" />
@@ -111,12 +111,23 @@ export default async function ProductPlanningPage({
         demands={demands.map((demand) => ({
           id: demand.id,
           dueDate: demand.dueDate.toISOString().slice(0, 10),
+          productionDueDate: demand.productionDueDate?.toISOString().slice(0, 10) ?? null,
           demandType: demand.demandType,
           quantity: demand.quantity,
           status: demand.status,
           customerName: demand.customerName,
           externalRef: demand.externalRef,
           note: demand.note,
+          productionPlanId: demand.productionPlanId,
+          productionPlan: demand.productionPlan
+            ? {
+                id: demand.productionPlan.id,
+                date: demand.productionPlan.date.toISOString().slice(0, 10),
+                status: demand.productionPlan.status,
+                productionType: demand.productionPlan.productionType,
+                workAreaName: demand.productionPlan.workArea.name,
+              }
+            : null,
           product: {
             id: demand.product.id,
             productCode: demand.product.productCode,

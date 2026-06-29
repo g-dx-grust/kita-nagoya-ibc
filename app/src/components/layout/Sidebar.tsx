@@ -12,6 +12,7 @@ import {
   FileSpreadsheet,
   Gauge,
   Home,
+  ListChecks,
   Package,
   Printer,
   ReceiptText,
@@ -38,7 +39,7 @@ type MenuSection = {
   items: MenuItem[];
 };
 
-const menuSections: MenuSection[] = [
+export const menuSections: MenuSection[] = [
   {
     items: [{ href: kitagoyaPath("/"), label: "ホーム", icon: Home, iconColor: "text-blue-600" }],
   },
@@ -56,6 +57,7 @@ const menuSections: MenuSection[] = [
   {
     label: "計画・確認",
     items: [
+      { href: kitagoyaPath("/planning/monthly"), label: "月次計画ハブ", icon: ListChecks, iconColor: "text-blue-700" },
       { href: kitagoyaPath("/production-plans/monthly"), label: "月間予定", icon: CalendarDays, iconColor: "text-purple-600" },
       { href: kitagoyaPath("/product-planning"), label: "製品計画", icon: Gauge, iconColor: "text-indigo-600" },
       { href: kitagoyaPath("/capacity-review"), label: "能力確認", icon: FileSpreadsheet, iconColor: "text-amber-700" },

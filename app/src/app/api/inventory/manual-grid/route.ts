@@ -9,6 +9,7 @@ import {
 import { openingEffectiveDate } from "@/lib/inventory-editable-grid";
 import { refreshCumulativeMaterialRequirements } from "@/lib/material-forecast";
 import { prisma } from "@/lib/prisma";
+import { enqueueStockAdjustedReplanEvent } from "@/lib/replan-service";
 import { ManualGridSaveSchema } from "@/lib/schemas";
 
 // 在庫表のExcelライク・セル編集をまとめて確定する。
@@ -108,7 +109,35 @@ export async function PUT(req: Request) {
       await refreshCumulativeMaterialRequirements({ dateFrom, dateTo: horizonEnd });
     }
 
-    return ok({ ok: true, openings: body.openings.length, cells: body.cells.length });
+    const sorted = [...touchedDates].sort();
+    const eventDate = sorted[0] ? new Date(`${sorted[0]}T00:00:00.000Z`) : new Date(`${body.month}-01T00:00:00.000Z`);
+    const replanEvent = await enqueueStockAdjustedReplanEvent({
+      movement: {
+        id: null,
+        itemType,
+        itemId: `${itemType}:${body.month}`,
+        effectiveDate: eventDate,
+        sourceType: MANUAL_INVENTORY_SOURCE_TYPE,
+        sourceId: `grid:${itemType}:${body.month}`,
+        movementType: "manual_grid_save",
+      },
+      action: "grid_save",
+      payload: {
+        itemType,
+        month: body.month,
+        openings: body.openings.length,
+        cells: body.cells.length,
+        touchedDates,
+      },
+    });
+
+    return ok({
+      ok: true,
+      openings: body.openings.length,
+      cells: body.cells.length,
+      replanEventId: replanEvent?.id ?? null,
+      replanJobId: replanEvent?.jobs[0]?.id ?? null,
+    });
   } catch (e) {
     return handleError(e);
   }

@@ -1,6 +1,7 @@
 import { audit } from "@/lib/audit";
 import { created, handleError, ok, parseJson } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
+import { enqueueDemandReplanEvent } from "@/lib/replan-service";
 import { ProductDemandCreateSchema } from "@/lib/schemas";
 
 export async function GET(req: Request) {
@@ -30,11 +31,17 @@ export async function POST(req: Request) {
       data: {
         ...body,
         dueDate: new Date(body.dueDate),
+        productionDueDate: body.productionDueDate ? new Date(body.productionDueDate) : null,
       },
       include: { product: true },
     });
     await audit({ action: "create", entityType: "ProductDemand", entityId: row.id, after: row });
-    return created(row);
+    const replanEvent = await enqueueDemandReplanEvent({
+      eventType: "demand_created",
+      demand: row,
+      action: "create",
+    });
+    return created({ ...row, replanEventId: replanEvent?.id ?? null, replanJobId: replanEvent?.jobs[0]?.id ?? null });
   } catch (e) {
     return handleError(e);
   }

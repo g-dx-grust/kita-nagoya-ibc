@@ -30,7 +30,7 @@ export const PlanProductionTypeEnum = z.enum([
   "trial",
   "other",
 ]);
-export const PlanStatusEnum = z.enum(["draft", "confirmed", "cancelled", "completed"]);
+export const PlanStatusEnum = z.enum(["draft", "tentative_confirmed", "confirmed", "cancelled", "completed"]);
 export const ItemTypeEnum = z.enum(["raw_material", "packaging"]);
 export const InventoryLedgerStatusEnum = z.enum(["PLANNED", "CONFIRMED", "CANCELLED"]);
 export const ProductDailyReportApprovalStatusEnum = z.enum(["submitted", "approved", "rejected"]);
@@ -517,15 +517,27 @@ export const BillingPriceUpdateSchema = BillingPriceFieldsSchema.refine(isoDateR
 
 export const ProductDemandCreateSchema = z.object({
   productId: z.string().min(1),
+  productionPlanId: z.string().min(1).nullish(),
   dueDate: isoDate,
+  productionDueDate: isoDate.nullish(),
   demandType: z.enum(["order", "shipment", "forecast"]).default("order"),
   quantity: z.number().positive(),
-  status: z.enum(["open", "fulfilled", "cancelled"]).default("open"),
+  status: z.enum(["open", "tentative", "fulfilled", "cancelled"]).default("open"),
   customerName: z.string().nullish(),
   externalRef: z.string().nullish(),
   note: z.string().nullish(),
 });
 export const ProductDemandUpdateSchema = ProductDemandCreateSchema.partial();
+
+export const ProductDemandScheduleSchema = z.object({
+  date: isoDate.optional(),
+  quantity: z.number().positive().optional(),
+  workAreaId: z.string().min(1).optional(),
+  plannedStartTime: hhmm.optional(),
+  plannedPeopleCount: z.number().positive().optional(),
+  baselineEndTime: hhmm.optional(),
+  note: z.string().nullish(),
+});
 
 export const ProductMonthlyActualUpsertSchema = z.object({
   productId: z.string().min(1),
@@ -644,11 +656,11 @@ export const ProductionPlanCreateSchema = z.object({
   desiredEndTime: hhmm.nullish(),
   breakMinutes: z.number().int().min(0).default(0),
   plannedPeopleCount: z.number().positive(),
-  status: PlanStatusEnum.default("draft"),
+  status: z.literal("draft").default("draft"),
   baselineEndTime: hhmm.default("17:00"),
   note: z.string().nullish(),
 });
-export const ProductionPlanUpdateSchema = ProductionPlanCreateSchema.partial();
+export const ProductionPlanUpdateSchema = ProductionPlanCreateSchema.omit({ status: true }).partial();
 
 // 一括削除。`ids` か `filter` のどちらかを指定する。両方あれば ids を優先。
 // filter は dateFrom と dateTo の両方必須 (期間指定なしの一括削除は誤操作リスクが高いため禁止)。
@@ -690,7 +702,7 @@ export const AutoScheduleCreateSchema = z.object({
   desiredEndTime: hhmm.default("17:00"),
   baselineEndTime: hhmm.default("17:00"),
   breakMinutes: z.number().int().min(0).default(0),
-  status: PlanStatusEnum.default("draft"),
+  status: z.literal("draft").default("draft"),
   replaceExistingDrafts: z.boolean().default(false),
   persist: z.boolean().default(false),
   overrides: z
@@ -720,7 +732,7 @@ export const DayAllocationSchema = z.object({
   dayEnd: hhmm.default("17:00"),
   stepMinutes: z.number().int().min(1).max(60).default(5),
   /** 対象とする生産予定のステータス */
-  planStatuses: z.array(PlanStatusEnum).default(["draft", "confirmed"]),
+  planStatuses: z.array(PlanStatusEnum).default(["draft", "tentative_confirmed", "confirmed"]),
   /** true なら割り当て結果を ProductionPlanAssignment に保存する */
   persist: z.boolean().default(false),
   /** 手動ピン留め（ドラッグ微調整）。指定の人・時間帯を固定配置する。 */
@@ -754,6 +766,12 @@ export const MonthlyProductionScheduleCreateSchema = z.object({
   baselineEndTime: hhmm.default("17:00"),
   replaceExistingDrafts: z.boolean().default(false),
   replaceGeneratedDraftsOnly: z.boolean().default(false),
+});
+
+export const MonthlyPlanningRunAdoptSchema = z.object({
+  adoptedById: z.string().min(1).nullish(),
+  replaceExistingDrafts: z.boolean().optional(),
+  replaceGeneratedDraftsOnly: z.boolean().optional(),
 });
 
 // --- Calculation requests ---

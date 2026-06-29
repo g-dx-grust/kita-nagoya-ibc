@@ -4,7 +4,8 @@ import { AlertTriangle, CalendarDays, ClipboardCheck, FileText, PackageCheck, Pr
 import SectionTabs from "@/components/ui/section-tabs";
 import { prisma } from "@/lib/prisma";
 import { kitagoyaPath } from "@/lib/paths";
-import { planStatusClass, planStatusLabel } from "@/lib/labels";
+import { planStatusClass, planStatusLabel, purchaseOrderStatusLabel } from "@/lib/labels";
+import { evaluatePlanBacking } from "@/lib/plan-backing";
 import { formatCases } from "@/lib/units";
 import PlanForm from "../plan-form";
 import AssignmentEditor from "./assignment-editor";
@@ -30,7 +31,7 @@ export default async function ProductionPlanDetail({
   });
   if (!plan) notFound();
 
-  const [products, workAreas, employees, dailyReport] = await Promise.all([
+  const [products, workAreas, employees, dailyReport, backingResult] = await Promise.all([
     prisma.product.findMany({
       where: { OR: [{ active: true }, { id: plan.productId }] },
       include: { capacities: true },
@@ -39,7 +40,14 @@ export default async function ProductionPlanDetail({
     prisma.workArea.findMany({ where: { active: true }, orderBy: { displayOrder: "asc" } }),
     prisma.employee.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     prisma.dailyReport.findUnique({ where: { productionPlanId: id }, include: { consumptions: true } }),
+    evaluatePlanBacking([id]).then((results) => results[0] ?? null),
   ]);
+  const backingPurchaseOrders = backingResult?.backingPurchaseOrderIds.length
+    ? await prisma.purchaseOrder.findMany({
+        where: { id: { in: backingResult.backingPurchaseOrderIds } },
+        orderBy: [{ expectedArrivalDate: "asc" }, { id: "asc" }],
+      })
+    : [];
 
   const productOptions = products.map((p) => ({
     id: p.id,
@@ -66,19 +74,28 @@ export default async function ProductionPlanDetail({
   const shortageDep = plan.requirements.filter(
     (r) => r.shortageType === "unconfirmed_dependency",
   );
+  const shortageSafety = plan.requirements.filter((r) => r.shortageType === "below_safety");
   const planDate = plan.date.toISOString().slice(0, 10);
-  const requirementAlertCount = shortageHard.length + shortageDep.length;
+  const requirementAlertCount = shortageHard.length + shortageDep.length + shortageSafety.length;
   const needsRequirementReview = requirementAlertCount > 0 || plan.requirements.length === 0;
   const requirementsBadgeClass =
-    shortageHard.length > 0 || plan.requirements.length === 0 ? "danger" : shortageDep.length > 0 ? "warn" : "success";
+    shortageHard.length > 0 || plan.requirements.length === 0
+      ? "danger"
+      : shortageDep.length > 0
+        ? "warn"
+        : shortageSafety.length > 0
+          ? "info"
+          : "success";
   const requirementsLabel =
     shortageHard.length > 0
       ? `不足 ${shortageHard.length}件`
       : shortageDep.length > 0
         ? `未確定依存 ${shortageDep.length}件`
-        : plan.requirements.length > 0
-          ? "使用量OK"
-          : "BOM未登録";
+        : shortageSafety.length > 0
+          ? `安全在庫割れ ${shortageSafety.length}件`
+          : plan.requirements.length > 0
+            ? "使用量OK"
+            : "BOM未登録";
   const dailyReportLabel =
     dailyReport?.status === "confirmed" ? "日報確定" : dailyReport ? "日報下書き" : "日報未入力";
   const dailyReportBadgeClass = dailyReport?.status === "confirmed" ? "success" : dailyReport ? "warn" : "muted";
@@ -98,8 +115,15 @@ export default async function ProductionPlanDetail({
                 ? `実不足 ${shortageHard.length}件`
                 : shortageDep.length > 0
                   ? `未確定依存 ${shortageDep.length}件`
-                  : "BOM未登録",
-            tone: shortageHard.length > 0 || plan.requirements.length === 0 ? ("danger" as const) : ("warn" as const),
+                  : shortageSafety.length > 0
+                    ? `安全在庫割れ ${shortageSafety.length}件`
+                    : "BOM未登録",
+            tone:
+              shortageHard.length > 0 || plan.requirements.length === 0
+                ? ("danger" as const)
+                : shortageDep.length > 0
+                  ? ("warn" as const)
+                  : ("info" as const),
             tabId: "requirements",
           },
         ]
@@ -292,54 +316,72 @@ export default async function ProductionPlanDetail({
             label: "原料・資材",
             heading: "原料・資材の予定使用量",
             count:
-              shortageHard.length + shortageDep.length > 0
-                ? `警告 ${shortageHard.length + shortageDep.length}`
+              requirementAlertCount > 0
+                ? `警告 ${requirementAlertCount}`
                 : plan.requirements.length,
             content: (
               <>
                 {plan.requirements.length === 0 ? (
                   <div className="empty-state">この商品にはBOMが登録されていません。</div>
                 ) : (
-                  <div className="table-frame">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>区分</th>
-                          <th>名称</th>
-                          <th>予定使用量</th>
-                          <th>使用前見込み</th>
-                          <th>確定入荷見込み</th>
-                          <th>未確定入荷見込み</th>
-                          <th>不足</th>
-                          <th>状態</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {plan.requirements.map((r) => (
-                          <tr key={r.id}>
-                            <td>{r.itemType === "raw_material" ? "原料" : "資材"}</td>
-                            <td>{r.itemName}</td>
-                            <td className="right">
-                              {r.plannedQuantity} {r.unit}
-                            </td>
-                            <td className="right">{r.onHandQuantity}</td>
-                            <td className="right">{r.confirmedInbound}</td>
-                            <td className="right">{r.unconfirmedInbound}</td>
-                            <td className="right">
-                              {r.shortageQuantity > 0 ? `${r.shortageQuantity} ${r.unit}` : "—"}
-                            </td>
-                            <td>
-                              {r.shortageType === "hard_shortage" && <span className="badge danger">不足</span>}
-                              {r.shortageType === "unconfirmed_dependency" && (
-                                <span className="badge warn">未確定依存</span>
-                              )}
-                              {r.shortageType === "none" && <span className="badge success">OK</span>}
-                            </td>
-                          </tr>
+                  <>
+                    {backingPurchaseOrders.length > 0 && (
+                      <div className="alert info">
+                        <strong>裏付け発注</strong>{" "}
+                        {backingPurchaseOrders.map((order) => (
+                          <Link key={order.id} href={kitagoyaPath(`/purchases#po-${order.id}`)}>
+                            {purchaseOrderStatusLabel(order.status)}
+                            {order.expectedArrivalDate
+                              ? ` ${order.expectedArrivalDate.toISOString().slice(0, 10)}`
+                              : " 入荷予定日未入力"}
+                          </Link>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
+                      </div>
+                    )}
+                    <div className="table-frame">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>区分</th>
+                            <th>名称</th>
+                            <th>予定使用量</th>
+                            <th>使用前見込み</th>
+                            <th>確定入荷見込み</th>
+                            <th>未確定入荷見込み</th>
+                            <th>不足</th>
+                            <th>状態</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {plan.requirements.map((r) => (
+                            <tr key={r.id}>
+                              <td>{r.itemType === "raw_material" ? "原料" : "資材"}</td>
+                              <td>{r.itemName}</td>
+                              <td className="right">
+                                {r.plannedQuantity} {r.unit}
+                              </td>
+                              <td className="right">{r.onHandQuantity}</td>
+                              <td className="right">{r.confirmedInbound}</td>
+                              <td className="right">{r.unconfirmedInbound}</td>
+                              <td className="right">
+                                {r.shortageQuantity > 0 ? `${r.shortageQuantity} ${r.unit}` : "—"}
+                              </td>
+                              <td>
+                                {r.shortageType === "hard_shortage" && <span className="badge danger">不足</span>}
+                                {r.shortageType === "unconfirmed_dependency" && (
+                                  <span className="badge warn">未確定依存</span>
+                                )}
+                                {r.shortageType === "below_safety" && (
+                                  <span className="badge info">安全在庫割れ</span>
+                                )}
+                                {r.shortageType === "none" && <span className="badge success">OK</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 )}
 
                 {shortageHard.length > 0 && (
@@ -352,6 +394,12 @@ export default async function ProductionPlanDetail({
                   <div className="alert warn">
                     未確定発注の入荷に依存しています:{" "}
                     {shortageDep.map((s) => `${s.itemName} ${s.shortageQuantity}${s.unit}`).join(", ")}
+                  </div>
+                )}
+                {shortageSafety.length > 0 && (
+                  <div className="alert info">
+                    所要量は賄えますが安全在庫を割り込みます:{" "}
+                    {shortageSafety.map((s) => `${s.itemName} ${s.shortageQuantity}${s.unit}`).join(", ")}
                   </div>
                 )}
               </>

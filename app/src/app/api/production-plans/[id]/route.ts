@@ -1,5 +1,5 @@
 import { audit } from "@/lib/audit";
-import { badRequest, handleError, notFound, ok, parseJson } from "@/lib/http";
+import { badRequest, handleError, HttpError, notFound, ok } from "@/lib/http";
 import { cancelProductionPlanPlannedMovements } from "@/lib/inventory-ledger";
 import { recalculateProductionPlan } from "@/lib/plan-engine";
 import { prisma } from "@/lib/prisma";
@@ -19,7 +19,17 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     const { id } = await ctx.params;
     const before = await prisma.productionPlan.findUnique({ where: { id } });
     if (!before) return notFound();
-    const body = await parseJson(req, ProductionPlanUpdateSchema);
+    const rawBody = await req.json().catch(() => undefined);
+    if (rawBody === undefined) throw new HttpError(400, "invalid_json");
+    if (hasStatusField(rawBody)) {
+      throw new HttpError(400, "production_plan_status_transition_requires_dedicated_api", {
+        currentStatus: before.status,
+        requestedStatus: (rawBody as { status?: unknown }).status,
+      });
+    }
+    const parsed = ProductionPlanUpdateSchema.safeParse(rawBody);
+    if (!parsed.success) throw new HttpError(400, "validation_error", parsed.error.flatten());
+    const body = parsed.data;
     const updated = await prisma.productionPlan.update({
       where: { id },
       data: {
@@ -65,4 +75,13 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   });
   await audit({ action: "delete", entityType: "ProductionPlan", entityId: id, before });
   return ok({ deleted: id });
+}
+
+function hasStatusField(body: unknown) {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    !Array.isArray(body) &&
+    "status" in body
+  );
 }

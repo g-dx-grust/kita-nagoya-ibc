@@ -39,7 +39,7 @@ export function computeDemandPlanCoverage({
         plan.plannedQuantity > 0 &&
         plan.date >= dateFrom &&
         plan.date <= dateTo &&
-        (plan.status === "draft" || plan.status === "confirmed") &&
+        (plan.status === "draft" || plan.status === "tentative_confirmed" || plan.status === "confirmed") &&
         plan.productionType !== "stock",
     )
     .sort((a, b) => a.productId.localeCompare(b.productId) || a.date.localeCompare(b.date) || a.id.localeCompare(b.id))

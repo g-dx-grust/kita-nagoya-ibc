@@ -11,7 +11,9 @@ import {
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { planStatusClass, planStatusLabel } from "@/lib/labels";
+import { loadMonthlyLoopProgress, normalizeYearMonth } from "@/lib/monthly-flow-progress";
 import { kitagoyaPath } from "@/lib/paths";
+import { PLANNED_PRODUCTION_PLAN_STATUSES } from "@/lib/plan-status";
 import { computeUrgency } from "@/lib/purchase-order-urgency";
 import { formatCases } from "@/lib/units";
 import { MenuCard } from "@/components/ui/menu-card";
@@ -24,6 +26,7 @@ export default async function HomePage() {
   // 期限間近(CRITICAL=発注期限が明日以内/超過)のものだけを並べる。
   const now = new Date();
   const today = toDateInputValue(now);
+  const targetMonth = normalizeYearMonth(null, now);
   const [todayStart, todayEnd] = dayRange(today);
   const [
     shortageCount,
@@ -33,6 +36,7 @@ export default async function HomePage() {
     upcoming,
     todayPlans,
     todayProductReportCount,
+    monthlyProgress,
   ] = await Promise.all([
     prisma.productionPlanRequirement.count({
       where: { shortageType: { in: ["hard_shortage", "unconfirmed_dependency", "below_safety"] } },
@@ -47,7 +51,7 @@ export default async function HomePage() {
     prisma.material.findMany(),
     prisma.packagingMaterial.findMany(),
     prisma.productionPlan.findMany({
-      where: { status: { in: ["draft", "confirmed"] } },
+      where: { status: { in: [...PLANNED_PRODUCTION_PLAN_STATUSES] } },
       orderBy: [{ date: "asc" }, { plannedStartTime: "asc" }],
       take: 8,
       include: { product: true, workArea: true },
@@ -60,6 +64,7 @@ export default async function HomePage() {
     prisma.productionDailyReportEntry.count({
       where: { active: true, reportDate: { gte: todayStart, lt: todayEnd } },
     }),
+    loadMonthlyLoopProgress(targetMonth),
   ]);
   const orderItemMap = new Map<
     string,
@@ -199,6 +204,40 @@ export default async function HomePage() {
         </div>
       </section>
 
+      <section className="home-operations-panel" aria-label="月次計画ループ">
+        <div className="home-section-heading">
+          <CalendarDays size={18} aria-hidden="true" />
+          <h2>月次計画ループ</h2>
+        </div>
+        <div className="home-operations-command info">
+          <div className="home-operations-status">
+            <span className={`badge ${monthlyProgress.completedCount === monthlyProgress.totalCount ? "success" : "info"}`}>
+              {monthlyProgress.yearMonth}
+            </span>
+            <strong>計画進捗 {monthlyProgress.completedCount} / {monthlyProgress.totalCount}</strong>
+            <span className="subtext">
+              候補 {monthlyProgress.metrics.candidateCount}件 / 仮確定 {monthlyProgress.metrics.tentativePlanCount}件 / 再計画待ち {monthlyProgress.metrics.pendingReplanJobCount}件
+            </span>
+          </div>
+          <Link className="home-operations-next" href={monthlyProgress.monthlyNextAction.href}>
+            次: {monthlyProgress.monthlyNextAction.label}
+          </Link>
+        </div>
+        <div className="home-operations-grid">
+          {monthlyProgress.steps.map((step) => (
+            <Link
+              key={step.key}
+              className={`home-operations-card ${step.completed ? "success" : "warn"}`}
+              href={step.href}
+            >
+              <span>{step.label}</span>
+              <strong>{step.completed ? "済" : "未"}</strong>
+              <small>{step.detail}</small>
+            </Link>
+          ))}
+        </div>
+      </section>
+
       <section id="home-menu" className="home-menu-section anchor-offset">
         <div className="home-section-heading">
           <ClipboardList size={18} aria-hidden="true" />
@@ -210,6 +249,12 @@ export default async function HomePage() {
             buttonText="生産予定へ"
             href={kitagoyaPath("/production-plans")}
             helpText="日別の生産予定を検索・登録します"
+          />
+          <MenuCard
+            title="月次計画ハブ"
+            buttonText="月次計画へ"
+            href={kitagoyaPath(`/planning/monthly?ym=${targetMonth}`)}
+            helpText="シフト、需要、候補、発注、日報、在庫を一筆書きで確認します"
           />
           <MenuCard
             title="製品計画"

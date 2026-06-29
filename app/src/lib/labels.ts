@@ -20,7 +20,9 @@ export function productionTypeLabel(value: string | null | undefined) {
 export function planStatusLabel(value: string | null | undefined) {
   switch (value) {
     case "draft":
-      return "仮";
+      return "仮予定";
+    case "tentative_confirmed":
+      return "仮確定";
     case "confirmed":
       return "確定";
     case "completed":
@@ -34,6 +36,8 @@ export function planStatusLabel(value: string | null | undefined) {
 
 export function planStatusClass(value: string | null | undefined) {
   switch (value) {
+    case "tentative_confirmed":
+      return "warn";
     case "confirmed":
       return "success";
     case "completed":

@@ -26,7 +26,22 @@ type Plan = {
   overtimeMinutes: number;
   hardShortage: boolean;
   unconfirmedDep: boolean;
+  belowSafety: boolean;
 };
+
+export type PlanBulkActionInput = Pick<Plan, "id" | "status">;
+
+export function getPlanListBulkActionState<T extends PlanBulkActionInput>(plans: T[], selectedIds: Iterable<string>) {
+  const selectedSet = new Set(selectedIds);
+  const selectedPlans = plans.filter((plan) => selectedSet.has(plan.id));
+  return {
+    selectedPlans,
+    draftIds: selectedPlans.filter((plan) => plan.status === "draft").map((plan) => plan.id),
+    tentativeConfirmedIds: selectedPlans
+      .filter((plan) => plan.status === "tentative_confirmed")
+      .map((plan) => plan.id),
+  };
+}
 
 type Filter = {
   dateFrom?: string;
@@ -77,6 +92,7 @@ export default function PlanListTable({
     [filter.dateFrom, filter.dateTo],
   );
   const visibleDraftCount = visiblePlans.filter((plan) => plan.status === "draft").length;
+  const visibleTentativeConfirmedCount = visiblePlans.filter((plan) => plan.status === "tentative_confirmed").length;
   const visibleConfirmedCount = visiblePlans.filter((plan) => plan.status === "confirmed").length;
   const visibleCompletedCount = visiblePlans.filter((plan) => plan.status === "completed").length;
   const visibleAlertCount = visiblePlans.filter(needsPlanAction).length;
@@ -85,7 +101,7 @@ export default function PlanListTable({
       all: searchedPlans.length,
       needs_action: searchedPlans.filter(needsPlanAction).length,
       draft: searchedPlans.filter((plan) => plan.status === "draft").length,
-      shortage: searchedPlans.filter((plan) => plan.hardShortage).length,
+      shortage: searchedPlans.filter((plan) => plan.hardShortage || plan.belowSafety).length,
       overtime: searchedPlans.filter((plan) => plan.overtimeMinutes > 0).length,
       unconfirmed: searchedPlans.filter((plan) => plan.unconfirmedDep).length,
       report_waiting: searchedPlans.filter(needsDailyReport).length,
@@ -93,27 +109,32 @@ export default function PlanListTable({
     [searchedPlans],
   );
   const selectedPlans = useMemo(
-    () => plans.filter((plan) => selected.has(plan.id)),
+    () => getPlanListBulkActionState(plans, selected),
     [plans, selected],
   );
-  const selectedDraftIds = selectedPlans.filter((plan) => plan.status === "draft").map((plan) => plan.id);
-  const selectedAlertCount = selectedPlans.filter(needsPlanAction).length;
+  const selectedDraftIds = selectedPlans.draftIds;
+  const selectedTentativeConfirmedIds = selectedPlans.tentativeConfirmedIds;
+  const selectedAlertCount = selectedPlans.selectedPlans.filter(needsPlanAction).length;
   const hasQuery = query.trim().length > 0;
   const firstDraftPlan = searchedPlans.find((plan) => plan.status === "draft");
-  const firstShortagePlan = searchedPlans.find((plan) => plan.hardShortage);
+  const firstTentativeConfirmedPlan = searchedPlans.find((plan) => plan.status === "tentative_confirmed");
+  const firstShortagePlan = searchedPlans.find((plan) => plan.hardShortage || plan.belowSafety);
   const firstReportWaitingPlan = searchedPlans.find(needsDailyReport);
-  const firstActionPlan = firstDraftPlan ?? firstShortagePlan ?? searchedPlans.find(hasPlanAlert) ?? firstReportWaitingPlan;
+  const firstActionPlan =
+    firstDraftPlan ?? firstTentativeConfirmedPlan ?? firstShortagePlan ?? searchedPlans.find(hasPlanAlert) ?? firstReportWaitingPlan;
   const commandTone = quickCounts.needs_action > 0 ? "warn" : "success";
   const nextActionLabel = firstDraftPlan
-    ? `下書き ${quickCounts.draft}件を確定`
-    : firstShortagePlan
+    ? `仮予定 ${quickCounts.draft}件を仮確定`
+    : firstTentativeConfirmedPlan
+      ? "仮確定を確定"
+      : firstShortagePlan
       ? "不足予定を確認"
       : firstReportWaitingPlan
         ? "日報入力へ進む"
         : "予定確認OK";
   const quickFilterOptions: { key: PlanQuickFilter; label: string; count: number; tone?: "danger" | "warn" | "info" }[] = [
     { key: "needs_action", label: "要対応", count: quickCounts.needs_action, tone: quickCounts.needs_action > 0 ? "warn" : "info" },
-    { key: "draft", label: "下書き", count: quickCounts.draft, tone: quickCounts.draft > 0 ? "warn" : "info" },
+    { key: "draft", label: "仮予定", count: quickCounts.draft, tone: quickCounts.draft > 0 ? "warn" : "info" },
     { key: "shortage", label: "不足", count: quickCounts.shortage, tone: quickCounts.shortage > 0 ? "danger" : "info" },
     { key: "overtime", label: "17時超", count: quickCounts.overtime, tone: quickCounts.overtime > 0 ? "warn" : "info" },
     { key: "unconfirmed", label: "未確定依存", count: quickCounts.unconfirmed, tone: quickCounts.unconfirmed > 0 ? "warn" : "info" },
@@ -151,18 +172,18 @@ export default function PlanListTable({
   }
 
   async function confirmSelected() {
-    if (selectedDraftIds.length === 0) {
-      setError("確定できる下書き予定が選択されていません。");
+    if (selectedTentativeConfirmedIds.length === 0) {
+      setError("確定できる仮確定の予定が選択されていません。");
       return;
     }
-    if (!confirm(`選択中の下書き ${selectedDraftIds.length} 件を確定します。よろしいですか？`)) return;
+    if (!confirm(`選択中の仮確定 ${selectedTentativeConfirmedIds.length} 件を確定します。よろしいですか？`)) return;
     setBusy(true);
     setMessage(null);
     setError(null);
     const res = await fetch(kitagoyaApiPath("/production-plans/bulk-confirm"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: selectedDraftIds }),
+      body: JSON.stringify({ ids: selectedTentativeConfirmedIds }),
     });
     const json = await res.json().catch(() => ({}));
     setBusy(false);
@@ -171,6 +192,31 @@ export default function PlanListTable({
       return;
     }
     setMessage(`${json.confirmed ?? 0}件を確定しました。`);
+    setSelected(new Set());
+    router.refresh();
+  }
+
+  async function tentativeConfirmSelected() {
+    if (selectedDraftIds.length === 0) {
+      setError("仮確定できる仮予定が選択されていません。");
+      return;
+    }
+    if (!confirm(`選択中の仮予定 ${selectedDraftIds.length} 件を仮確定します。よろしいですか？`)) return;
+    setBusy(true);
+    setMessage(null);
+    setError(null);
+    const res = await fetch(kitagoyaApiPath("/production-plans/bulk-tentative-confirm"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: selectedDraftIds }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) {
+      setError(`仮確定に失敗しました: ${json.error ?? "unknown"}`);
+      return;
+    }
+    setMessage(`${json.tentativeConfirmed ?? 0}件を仮確定しました。`);
     setSelected(new Set());
     router.refresh();
   }
@@ -228,7 +274,7 @@ export default function PlanListTable({
           <strong>{nextActionLabel}</strong>
         </div>
         <div className="plan-list-command-checks">
-          <span className={`badge ${quickCounts.draft > 0 ? "warn" : "success"}`}>下書き {quickCounts.draft}件</span>
+          <span className={`badge ${quickCounts.draft > 0 ? "warn" : "success"}`}>仮予定 {quickCounts.draft}件</span>
           <span className={`badge ${quickCounts.shortage > 0 ? "danger" : "success"}`}>不足 {quickCounts.shortage}件</span>
           <span className={`badge ${quickCounts.overtime > 0 ? "warn" : "success"}`}>17時超 {quickCounts.overtime}件</span>
           <span className={`badge ${quickCounts.report_waiting > 0 ? "warn" : "success"}`}>
@@ -264,8 +310,12 @@ export default function PlanListTable({
         </div>
         <div className="plan-list-summary-grid">
           <div className="metric">
-            <span className="metric-label">下書き</span>
+            <span className="metric-label">仮予定</span>
             <strong className="metric-value">{visibleDraftCount}件</strong>
+          </div>
+          <div className="metric">
+            <span className="metric-label">仮確定</span>
+            <strong className="metric-value">{visibleTentativeConfirmedCount}件</strong>
           </div>
           <div className="metric">
             <span className="metric-label">確定</span>
@@ -279,7 +329,7 @@ export default function PlanListTable({
             <span className="metric-label">選択中</span>
             <strong className="metric-value">{selected.size}件</strong>
             <span className="metric-note">
-              下書き {selectedDraftIds.length}件 / 確認 {selectedAlertCount}件
+              仮予定 {selectedDraftIds.length}件 / 仮確定 {selectedTentativeConfirmedIds.length}件 / 確認 {selectedAlertCount}件
             </span>
           </div>
         </div>
@@ -314,11 +364,19 @@ export default function PlanListTable({
           <div className="list-control-actions" aria-label="生産予定の一括操作">
             <button
               type="button"
-              onClick={confirmSelected}
+              onClick={tentativeConfirmSelected}
               disabled={busy || selectedDraftIds.length === 0}
             >
               <ClipboardCheck size={16} aria-hidden="true" />
-              {busy ? "処理中..." : `下書きを確定 (${selectedDraftIds.length})`}
+              {busy ? "処理中..." : `仮確定する (${selectedDraftIds.length})`}
+            </button>
+            <button
+              type="button"
+              onClick={confirmSelected}
+              disabled={busy || selectedTentativeConfirmedIds.length === 0}
+            >
+              <ClipboardCheck size={16} aria-hidden="true" />
+              {busy ? "処理中..." : `確定する (${selectedTentativeConfirmedIds.length})`}
             </button>
             <button
               type="button"
@@ -345,7 +403,7 @@ export default function PlanListTable({
           <div className="plan-list-selection-bar">
             <CheckCircle2 size={16} aria-hidden="true" />
             <span>
-              {selected.size}件を選択中。確定対象は下書き {selectedDraftIds.length}件です。
+              {selected.size}件を選択中。仮確定対象は仮予定 {selectedDraftIds.length}件、確定対象は仮確定 {selectedTentativeConfirmedIds.length}件です。
             </span>
           </div>
         )}
@@ -439,6 +497,7 @@ export default function PlanListTable({
                       )}
                       {p.hardShortage && <span className="badge danger">不足</span>}
                       {p.unconfirmedDep && <span className="badge warn">未確定依存</span>}
+                      {p.belowSafety && <span className="badge info">安全在庫割れ</span>}
                     </span>
                   </td>
                   <td className="action-cell">
@@ -455,7 +514,7 @@ export default function PlanListTable({
 }
 
 function hasPlanAlert(plan: Plan) {
-  return plan.overtimeMinutes > 0 || plan.hardShortage || plan.unconfirmedDep;
+  return plan.overtimeMinutes > 0 || plan.hardShortage || plan.unconfirmedDep || plan.belowSafety;
 }
 
 function needsDailyReport(plan: Plan) {
@@ -463,7 +522,7 @@ function needsDailyReport(plan: Plan) {
 }
 
 function needsPlanAction(plan: Plan) {
-  return plan.status === "draft" || hasPlanAlert(plan) || needsDailyReport(plan);
+  return plan.status === "draft" || plan.status === "tentative_confirmed" || hasPlanAlert(plan) || needsDailyReport(plan);
 }
 
 function planMatchesQuickFilter(plan: Plan, filter: PlanQuickFilter) {
@@ -473,7 +532,7 @@ function planMatchesQuickFilter(plan: Plan, filter: PlanQuickFilter) {
     case "draft":
       return plan.status === "draft";
     case "shortage":
-      return plan.hardShortage;
+      return plan.hardShortage || plan.belowSafety;
     case "overtime":
       return plan.overtimeMinutes > 0;
     case "unconfirmed":
@@ -488,7 +547,8 @@ function planMatchesQuickFilter(plan: Plan, filter: PlanQuickFilter) {
 
 function reportStatusLabel(plan: Plan) {
   if (plan.status === "cancelled") return "対象外";
-  if (plan.status === "draft") return "予定未確定";
+  if (plan.status === "draft") return "仮予定";
+  if (plan.status === "tentative_confirmed") return "仮確定";
   if (plan.reportStatus === "confirmed") return "日報確定";
   if (plan.reportStatus === "draft") return "日報下書き";
   return "日報待ち";

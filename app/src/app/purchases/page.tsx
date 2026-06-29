@@ -22,6 +22,7 @@ export default async function PurchasesPage({
   const today = new Date().toISOString().slice(0, 10);
   const dateFrom = sp.dateFrom ?? today;
   const dateTo = sp.dateTo ?? addDays(new Date(dateFrom), 30);
+  const targetMonth = sp.targetMonth ?? dateFrom.slice(0, 7);
   const [purchaseOrders, materials, packaging, suppliers, forecast] = await Promise.all([
     prisma.purchaseOrder.findMany({
       orderBy: [{ status: "asc" }, { shortageDate: "asc" }, { createdAt: "desc" }],
@@ -176,7 +177,7 @@ export default async function PurchasesPage({
       </div>
       <CollapsiblePanel
         title="確認・操作"
-        summary={`${hardShortageCount > 0 || criticalOrderCount > 0 ? "確認が必要" : "不足なし"} / ${dateFrom} 〜 ${dateTo}`}
+        summary={`${hardShortageCount > 0 || criticalOrderCount > 0 ? "確認が必要" : "不足なし"} / ${dateFrom} 〜 ${dateTo} / 月末予測 ${targetMonth}`}
         className="top-flow-accordion"
       >
         <div className="purchase-command">
@@ -200,7 +201,7 @@ export default async function PurchasesPage({
             <span className="badge info">入荷待ち {waitingArrivalCount}</span>
           </div>
           <div className="purchase-command-actions">
-            <GeneratePurchaseCandidatesButton dateFrom={dateFrom} dateTo={dateTo} />
+            <GeneratePurchaseCandidatesButton dateFrom={dateFrom} dateTo={dateTo} targetMonth={targetMonth} />
           </div>
         </div>
         <div className="purchase-flow-queue" aria-label="購買確認フロー">
@@ -261,6 +262,13 @@ export default async function PurchasesPage({
                   不足確認期限
                 </span>
                 <input name="dateTo" type="date" defaultValue={dateTo} />
+              </label>
+              <label>
+                <span>
+                  <CalendarDays size={14} aria-hidden="true" />
+                  月末予測対象月
+                </span>
+                <input name="targetMonth" type="month" defaultValue={targetMonth} />
               </label>
               <button type="submit" className="secondary">
                 <Search size={15} aria-hidden="true" />

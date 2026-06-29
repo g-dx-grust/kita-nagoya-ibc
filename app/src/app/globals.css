@@ -26,49 +26,81 @@
 }
 
 :root {
+  /* =====================================================================
+     Design tokens — generated from Figma (北名古屋 製造管理システム UI).
+     Palette: ティール × クールグレー (Japanese SaaS).
+     NOTE: variable names are kept stable; only values changed (+ added
+     --text-subtle / --info-* / --warn-solid / --success-solid).
+     Figma token ↔ CSS var mapping: docs/21_ui_implementation_spec.md
+     ===================================================================== */
   --radius: 0.5rem;
+
+  /* surfaces (color/bg/*) */
   --background: #ffffff;
-  --foreground: #1f2329;
+  --foreground: #0f172a;
   --card: #ffffff;
-  --card-foreground: #1f2329;
+  --card-foreground: #0f172a;
   --popover: #ffffff;
-  --popover-foreground: #1f2329;
-  --primary: #1f56d2;
-  --primary-foreground: #ffffff;
-  --secondary: #eef2f7;
-  --secondary-foreground: #1f2329;
-  --muted-bg: #f5f7fa;
-  --accent-bg: #f2f6fb;
-  --destructive: #c62621;
-  --input: #d5dce6;
-  --ring: #1f56d2;
-  --bg: #f3f6fa;
-  --surface: #ffffff;
+  --popover-foreground: #0f172a;
+  --bg: #f8fafc;          /* color/bg/canvas */
+  --surface: #ffffff;     /* color/bg/surface */
   --panel: #ffffff;
-  --surface-subtle: #f7f9fc;
-  --surface-strong: #eef3f8;
-  --border: #d8e0ea;
-  --border-strong: #a8b3c2;
-  --text: #1f2329;
-  --muted: #4e5969;
-  --primary-hover: #1745a8;
-  --primary-soft: #e8f0ff;
-  --accent: #0f766e;
-  --warn: #8f4f00;
-  --warn-soft: #fff3df;
-  --warn-border: #bd7b1f;
-  --danger: #c62621;
-  --danger-hover: #a11e1a;
-  --danger-soft: #fff0ee;
-  --danger-border: #de7269;
-  --success: #04724d;
-  --success-hover: #035c3f;
-  --success-soft: #e4f6ef;
-  --success-border: #5fb895;
-  --info-border: #86a8ec;
-  --shadow: 0 1px 2px rgba(31, 35, 41, 0.06);
-  --shadow-panel: 0 8px 22px rgba(31, 35, 41, 0.07);
-  --focus-soft: 0 0 0 3px rgba(31, 86, 210, 0.18);
+  --surface-subtle: #f1f5f9; /* color/bg/subtle */
+  --surface-strong: #e8eef4; /* color/bg/hover */
+  --secondary: #f1f5f9;
+  --secondary-foreground: #0f172a;
+  --muted-bg: #f1f5f9;
+  --accent-bg: #e6f4f3;
+
+  /* text (color/text/*) */
+  --text: #0f172a;        /* color/text/primary */
+  --muted: #475569;       /* color/text/secondary */
+  --text-subtle: #64748b; /* color/text/muted (tertiary) */
+
+  /* borders & focus (color/border/*) */
+  --border: #e2e8f0;        /* color/border/default */
+  --border-strong: #cbd5e1; /* color/border/strong */
+  --input: #cbd5e1;
+  --ring: #0e8e8a;          /* color/border/focus */
+
+  /* brand = teal / 実績 (color/brand/*) */
+  --primary: #0e8e8a;       /* color/brand/solid */
+  --primary-hover: #0b7370; /* color/brand/hover */
+  --primary-foreground: #ffffff;
+  --primary-soft: #e6f4f3;  /* color/brand/subtle */
+  --accent: #0b7370;        /* color/brand/text */
+
+  /* info = blue / 予定 (color/info/*) */
+  --info: #2563eb;          /* color/info/solid */
+  --info-hover: #1d4ed8;
+  --info-text: #1d4ed8;     /* color/info/text */
+  --info-soft: #eff4ff;     /* color/info/subtle */
+  --info-border: #c7d9fd;   /* color/info/border */
+
+  /* warning = amber / 注意 (color/warning/*) */
+  --warn: #b45309;          /* color/warning/text */
+  --warn-solid: #d97706;    /* color/warning/solid */
+  --warn-soft: #fef3e2;     /* color/warning/subtle */
+  --warn-border: #facc7a;   /* color/warning/border */
+
+  /* danger = red / 不足・エラー (color/danger/*) */
+  --danger: #dc2626;        /* color/danger/solid */
+  --danger-hover: #b91c1c;
+  --destructive: #dc2626;
+  --danger-soft: #fdecec;   /* color/danger/subtle */
+  --danger-border: #f4b4b4; /* color/danger/border */
+
+  /* success = green / 完了・確定 (color/success/*) */
+  --success: #15803d;       /* color/success/text */
+  --success-solid: #16a34a; /* color/success/solid */
+  --success-hover: #166534;
+  --success-soft: #e7f6ec;  /* color/success/subtle */
+  --success-border: #9fd9b4;/* color/success/border */
+
+  /* effects */
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-panel: 0 8px 22px rgba(15, 23, 42, 0.08);
+  --focus-soft: 0 0 0 3px rgba(14, 142, 138, 0.18);
 }
 
 * {
@@ -11186,7 +11218,7 @@ tr.row-selected td {
   }
 }
 
-/* --- 月間生産予定の本決定 --- */
+/* --- 月間生産予定の仮確定 --- */
 .monthly-decision-command {
   display: grid;
   grid-template-columns: minmax(240px, 1fr) minmax(260px, 1.4fr) auto;

@@ -67,6 +67,7 @@ export default async function ProductionPlansPage({
     overtimeMinutes: p.overtimeMinutes,
     hardShortage: p.requirements.some((r) => r.shortageType === "hard_shortage"),
     unconfirmedDep: p.requirements.some((r) => r.shortageType === "unconfirmed_dependency"),
+    belowSafety: p.requirements.some((r) => r.shortageType === "below_safety"),
   }));
   const displayScope = dateFrom && dateTo
     ? `${dateFrom} 〜 ${dateTo}`
@@ -79,7 +80,8 @@ export default async function ProductionPlansPage({
   const draftCount = tableRows.filter((row) => row.status === "draft").length;
   const hardShortageCount = tableRows.filter((row) => row.hardShortage).length;
   const unconfirmedDependencyCount = tableRows.filter((row) => row.unconfirmedDep).length;
-  const shortageReviewCount = hardShortageCount + unconfirmedDependencyCount;
+  const belowSafetyCount = tableRows.filter((row) => row.belowSafety).length;
+  const shortageReviewCount = hardShortageCount + unconfirmedDependencyCount + belowSafetyCount;
   const reportWaitingCount = tableRows.filter(
     (row) => row.status === "confirmed" && row.reportStatus !== "confirmed",
   ).length;
@@ -95,7 +97,7 @@ export default async function ProductionPlansPage({
         href: productionPlansHref({ dateFrom: today, dateTo: today }),
       }
     : draftCount > 0
-      ? { label: "下書きを確認", href: "#plan-list-review" }
+      ? { label: "仮予定を確認", href: "#plan-list-review" }
       : shortageReviewCount > 0
         ? { label: "不足を確認", href: "#plan-list-review" }
         : reportWaitingCount > 0 && firstReportWaitingPlan
@@ -126,7 +128,7 @@ export default async function ProductionPlansPage({
       Icon: CalendarDays,
     },
     {
-      label: "下書き",
+      label: "仮予定",
       count: draftCount,
       detail: "確定前",
       href: productionPlansHref({ dateFrom, dateTo, status: "draft", workAreaId }),
@@ -136,7 +138,7 @@ export default async function ProductionPlansPage({
     {
       label: "不足",
       count: shortageReviewCount,
-      detail: `実不足 ${hardShortageCount} / 未確定 ${unconfirmedDependencyCount}`,
+      detail: `実不足 ${hardShortageCount} / 未確定 ${unconfirmedDependencyCount} / 安全在庫 ${belowSafetyCount}`,
       href: "#plan-list-review",
       tone: hardShortageCount > 0 ? "danger" : shortageReviewCount > 0 ? "warn" : "success",
       Icon: AlertTriangle,
@@ -231,7 +233,8 @@ export default async function ProductionPlansPage({
             <span>状態</span>
             <select name="status" defaultValue={status}>
               <option value="">すべて</option>
-              <option value="draft">仮</option>
+              <option value="draft">仮予定</option>
+              <option value="tentative_confirmed">仮確定</option>
               <option value="confirmed">確定</option>
               <option value="completed">完了</option>
               <option value="cancelled">取消</option>

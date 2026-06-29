@@ -70,6 +70,8 @@ type ServiceResult = {
   allocation: AllocationResult;
   skippedPlans: { planId: string; productName: string; reason: string }[];
   workAreaCapacities: { workAreaId: string; workAreaName: string; maxPeopleCount: number }[];
+  replanEventId?: string | null;
+  replanJobId?: string | null;
 };
 
 type Pin = {
@@ -178,6 +180,7 @@ export default function DayAllocationClient({
   const [dragOverZone, setDragOverZone] = useState<string | null>(null);
   const [view, setView] = useState<View>("room");
   const [persisted, setPersisted] = useState(false);
+  const [replanSignal, setReplanSignal] = useState<{ eventId: string | null; jobId: string | null } | null>(null);
   const [openCardKey, setOpenCardKey] = useState<string | null>(null);
   // ガントのテキスト途切れ対策: 時間スケール(0=画面幅に合わせる, >0=px/時で横に広げる)とラベル折返し
   const [pxPerHour, setPxPerHour] = useState(0);
@@ -227,6 +230,10 @@ export default function DayAllocationClient({
       if (effectivePins.length !== activePins.length) setPins(effectivePins);
       if (persist) {
         setPersisted(true);
+        setReplanSignal({
+          eventId: (data as ServiceResult).replanEventId ?? null,
+          jobId: (data as ServiceResult).replanJobId ?? null,
+        });
         const adjustmentLabels = [
           effectivePins.length > 0 ? `手動微調整${effectivePins.length}件` : null,
           activeWorkAreaOverrides.length > 0 ? `商品部屋変更${activeWorkAreaOverrides.length}件` : null,
@@ -252,6 +259,7 @@ export default function DayAllocationClient({
     setWorkAreaOverrides([]);
     setPersisted(false);
     setSavedMessage(null);
+    setReplanSignal(null);
   }
 
   // 対象日/時間窓を変えたら、前回の保存成功バナー・印刷導線を消す（未保存の別条件を印刷誘導しない）
@@ -259,11 +267,13 @@ export default function DayAllocationClient({
     setDayStart(value);
     setPersisted(false);
     setSavedMessage(null);
+    setReplanSignal(null);
   }
   function changeDayEnd(value: string) {
     setDayEnd(value);
     setPersisted(false);
     setSavedMessage(null);
+    setReplanSignal(null);
   }
 
   function dropChipOnZone(chip: DragChip, zoneWorkAreaId: string, zoneWorkAreaName: string) {
@@ -510,7 +520,7 @@ export default function DayAllocationClient({
             受注登録
           </Link>
           <Link className="button-link secondary-link" href={monthlyDecisionHref}>
-            本決定
+            仮確定
           </Link>
           <Link className="button-link secondary-link" href={shiftsHref}>
             シフトを確認
@@ -747,6 +757,12 @@ export default function DayAllocationClient({
             <Link className="button-link secondary-link" href={schedulePrintHref}>
               作業日報を印刷
             </Link>
+            <Link className="button-link" href={kitagoyaPath(`/planning/monthly?ym=${date.slice(0, 7)}#replan`)}>
+              翌日以降の在庫予定を再編成
+            </Link>
+          </div>
+          <div className="subtext">
+            再計画待ち {replanSignal?.jobId ?? "登録済み"}。受注生産・確定・完了済み予定は自動で動かさず、在庫生産の未着手分だけを確認対象にします。
           </div>
         </div>
       )}

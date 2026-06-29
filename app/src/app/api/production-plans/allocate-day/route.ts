@@ -1,6 +1,8 @@
 import { audit } from "@/lib/audit";
 import { runDayAllocation } from "@/lib/day-allocation-service";
 import { handleError, ok, parseJson } from "@/lib/http";
+import { PLANNED_PRODUCTION_PLAN_STATUSES } from "@/lib/plan-status";
+import { enqueueDayAllocationReplanEvent } from "@/lib/replan-service";
 import { DayAllocationSchema } from "@/lib/schemas";
 
 // 当日の生産予定 + 出勤シフトから、出勤者を遊休ゼロで作業場所へ割り当てる。
@@ -13,7 +15,7 @@ export async function POST(req: Request) {
       dayStart: body.dayStart ?? "09:00",
       dayEnd: body.dayEnd ?? "17:00",
       stepMinutes: body.stepMinutes ?? 5,
-      planStatuses: body.planStatuses ?? ["draft", "confirmed"],
+      planStatuses: body.planStatuses ?? [...PLANNED_PRODUCTION_PLAN_STATUSES],
       persist: body.persist ?? false,
       pinnedAssignments: body.pinnedAssignments ?? [],
       planWorkAreaOverrides: body.planWorkAreaOverrides ?? [],
@@ -40,6 +42,21 @@ export async function POST(req: Request) {
             assignedCount: job.assignments.length,
           })),
         },
+      });
+      const replanEvent = await enqueueDayAllocationReplanEvent({
+        date: body.date,
+        payload: {
+          summary: result.allocation.summary,
+          manualPinCount: (body.pinnedAssignments ?? []).length,
+          planWorkAreaOverrideCount: (body.planWorkAreaOverrides ?? []).length,
+          planIds: result.allocation.jobs.map((job) => job.jobId),
+          skippedPlans: result.skippedPlans,
+        },
+      });
+      return ok({
+        ...result,
+        replanEventId: replanEvent?.id ?? null,
+        replanJobId: replanEvent?.jobs[0]?.id ?? null,
       });
     }
 

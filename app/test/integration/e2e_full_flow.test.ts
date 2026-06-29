@@ -7,7 +7,7 @@
 // 恒久的なリグレッションガードになる。
 //
 // フロー:
-//   1+2. 前年比予測 → 月間ドラフト生産予定の自動生成
+//   1+2. 前年比予測 → 月間候補生成 → 採用 → ドラフト生産予定の作成
 //   3.   当日割り当て (出勤者を作業場所へ配置)
 //   4.   日報ドラフト作成 → 確定 (実績在庫・実績原価へ反映)
 //   5.   確定日報 → 月次実績 (ProductMonthlyActual) への自動集計
@@ -239,11 +239,11 @@ describe("E2E フルフロー: 予測→予定→割当→日報→月次実績�
     });
   }
 
-  // ステップ 1+2: 前年比予測 → 月間ドラフト生産予定の自動生成。
+  // ステップ 1+2: 前年比予測 → 月間候補生成 → 採用 → 月間ドラフト生産予定。
   // POST /api/product-planning/monthly-schedule
-  // 継ぎ目: 予測 (YoY) → ProductionPlan(draft) の生成。createdCount>0 かつ
-  //         生成された予定の plannedQuantity>0 を確認する。
-  it("ステップ1+2: 月間スケジュールが前年比予測からドラフト予定を生成する", async () => {
+  // POST /api/planning/monthly-runs/[id]/adopt
+  // 継ぎ目: 予測 (YoY) → ProductionPlanCandidate → ProductionPlan(draft)。
+  it("ステップ1+2: 月間スケジュールが前年比予測から候補を保存し、採用でドラフト予定を生成する", async () => {
     const { POST } = await import("@/app/api/product-planning/monthly-schedule/route");
     const response = await POST(
       new Request("http://test.local/api/product-planning/monthly-schedule", {
@@ -262,11 +262,36 @@ describe("E2E フルフロー: 予測→予定→割当→日報→月次実績�
     const json = await response.json();
 
     expect(response.status).toBe(201);
-    expect(json.createdCount).toBeGreaterThan(0);
+    expect(json.runId).toBeTruthy();
+    expect(json.createdCount).toBe(0);
+    expect(json.candidateCount).toBeGreaterThan(0);
+
+    const candidateCountBeforeAdoption = await prisma.productionPlanCandidate.count({
+      where: { planningRunId: json.runId },
+    });
+    expect(candidateCountBeforeAdoption).toBeGreaterThan(0);
+
+    const plansBeforeAdoption = await prisma.productionPlan.count({
+      where: { planningRunId: json.runId },
+    });
+    expect(plansBeforeAdoption).toBe(0);
+
+    const { POST: ADOPT } = await import("@/app/api/planning/monthly-runs/[id]/adopt/route");
+    const adoptResponse = await ADOPT(
+      new Request("http://test.local/api/planning/monthly-runs/run/adopt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: json.runId }) },
+    );
+    const adoptJson = await adoptResponse.json();
+    expect(adoptResponse.status).toBe(200);
+    expect(adoptJson.createdCount).toBeGreaterThan(0);
 
     // 実 DB のドラフト予定を確認 (予測 → 予定の継ぎ目)。
     const draftPlans = await prisma.productionPlan.findMany({
-      where: { productId, status: "draft" },
+      where: { productId, status: "draft", planningRunId: json.runId },
       orderBy: { date: "asc" },
     });
     expect(draftPlans.length).toBeGreaterThan(0);
@@ -277,6 +302,7 @@ describe("E2E フルフロー: 予測→予定→割当→日報→月次実績�
     );
     expect(planOnScheduleDate).toBeDefined();
     expect(planOnScheduleDate!.plannedQuantity).toBeGreaterThan(0);
+    expect(planOnScheduleDate!.planningBatchId).toBe(adoptJson.batchId);
 
     generatedPlanId = planOnScheduleDate!.id;
     generatedPlanQty = planOnScheduleDate!.plannedQuantity;
@@ -488,6 +514,17 @@ describe("E2E フルフロー: 予測→予定→割当→日報→月次実績�
     expect(orderRes.status).toBe(200);
     expect(ordered.status).toBe("ordered_unconfirmed");
 
+    const { PUT } = await import("@/app/api/purchase-orders/[id]/route");
+    const updateRes = await PUT(
+      new Request(`http://test.local/api/purchase-orders/${purchaseOrderId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedArrivalDate: "2026-06-19" }),
+      }),
+      { params: Promise.resolve({ id: purchaseOrderId }) },
+    );
+    expect(updateRes.status).toBe(200);
+
     const { GET: DOCUMENT } = await import("@/app/api/purchase-orders/[id]/document/route");
 
     // PDF ドキュメント。先頭バイトが "%PDF"。
@@ -511,5 +548,30 @@ describe("E2E フルフロー: 予測→予定→割当→日報→月次実績�
     expect(xlsxRes.status).toBe(200);
     const xlsxBytes = Buffer.from(await xlsxRes.arrayBuffer());
     expect(xlsxBytes.subarray(0, 2).toString("utf8")).toBe("PK");
+  });
+
+  // スプリント0-1追加: 月次計画の主要導線を、状態機械の読み取りAPIまで通す。
+  // 継ぎ目: 月間ドラフト予定 → 材料不足 → 発注候補 → 入荷予定付き未確定発注 →
+  //         PO更新フックで自動仮確定され、GET /api/production-plans/promotable でも状態が見える。
+  it("ステップ7.5: 入荷予定がある未確定発注で月次仮予定が仮確定候補に出る", async () => {
+    expect(shortagePlanId).toBeDefined();
+    expect(purchaseOrderId).toBeDefined();
+
+    const { GET } = await import("@/app/api/production-plans/promotable/route");
+    const response = await GET(
+      new Request(`http://test.local/api/production-plans/promotable?ym=${TARGET}`),
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    const row = json.results.find((result: { id: string }) => result.id === shortagePlanId);
+    expect(row).toMatchObject({
+      id: shortagePlanId,
+      status: "tentative_confirmed",
+      canTentativeConfirm: true,
+      canConfirm: false,
+    });
+    expect(row.backingPurchaseOrderIds).toContain(purchaseOrderId);
+    expect(json.demotionWarnings.map((result: { id: string }) => result.id)).not.toContain(shortagePlanId);
   });
 });

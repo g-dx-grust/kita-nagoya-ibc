@@ -485,7 +485,7 @@ export default function PurchaseOrderTable({ rows, today }: { rows: PurchaseOrde
               review?.isOverdueArrival ? "is-overdue" : "",
             ].filter(Boolean).join(" ");
             return (
-              <tr key={row.id} className={rowClass}>
+              <tr key={row.id} id={`po-${row.id}`} className={rowClass}>
                 {editing ? (
                   <>
                     <td data-label="状態">

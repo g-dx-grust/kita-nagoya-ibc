@@ -19,6 +19,10 @@ import { ceilDisplayQuantity, formatCases } from "@/lib/units";
 import CollapsiblePanel from "@/components/ui/collapsible-panel";
 import ProductCombobox from "@/components/ui/product-combobox";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import {
+  regenerateAndAdoptMonthlyDrafts,
+  type MonthlyScheduleRegenerateResult,
+} from "./monthly-reschedule";
 
 type ProductOption = {
   id: string;
@@ -34,18 +38,28 @@ type ProductOption = {
 type DemandRow = {
   id: string;
   dueDate: string;
+  productionDueDate: string | null;
   demandType: string;
   quantity: number;
   status: string;
   customerName: string | null;
   externalRef: string | null;
   note: string | null;
+  productionPlanId: string | null;
+  productionPlan: {
+    id: string;
+    date: string;
+    status: string;
+    productionType: string;
+    workAreaName: string;
+  } | null;
   product: ProductOption;
 };
 
 type DemandDraft = {
   productId: string;
   dueDate: string;
+  productionDueDate: string;
   demandType: string;
   quantity: number;
   status: string;
@@ -86,11 +100,13 @@ type MonthlyActualDraft = {
   sourceType: string;
   note: string;
 };
-type MonthlyScheduleRegenerateResult = {
-  createdCount?: number;
-  replacedDraftCount?: number;
-  skipped?: { reason?: string }[];
-  message?: string;
+type LastDemandAction = {
+  demandId: string;
+  productionPlanId: string | null;
+  replanEventId: string | null;
+  replanJobId: string | null;
+  productionDueDate: string;
+  dueDate: string;
 };
 type SuggestionQuickFilter = "all" | "hard" | "dependency" | "suggested" | "stock" | "order";
 
@@ -123,9 +139,13 @@ export default function ProductPlanningClient({
   const [stockDate, setStockDate] = useState(initialDateFrom);
   const [demandProductId, setDemandProductId] = useState(products[0]?.id ?? "");
   const [demandDate, setDemandDate] = useState(initialDateTo);
+  const [demandProductionDate, setDemandProductionDate] = useState(initialDateFrom);
   const [demandQuantity, setDemandQuantity] = useState(100);
   const [demandType, setDemandType] = useState<"order" | "shipment" | "forecast">("order");
+  const [demandStatus, setDemandStatus] = useState<"open" | "tentative">("open");
   const [customerName, setCustomerName] = useState("");
+  const [demandExternalRef, setDemandExternalRef] = useState("");
+  const [demandNote, setDemandNote] = useState("");
   const [actualProductId, setActualProductId] = useState(products[0]?.id ?? "");
   const [actualYearMonth, setActualYearMonth] = useState(initialTargetMonth);
   const [actualQuantity, setActualQuantity] = useState(0);
@@ -137,7 +157,8 @@ export default function ProductPlanningClient({
   const [actualDraft, setActualDraft] = useState<MonthlyActualDraft | null>(null);
   const [showInputPanel, setShowInputPanel] = useState(false);
   const [suggestionFilter, setSuggestionFilter] = useState<SuggestionQuickFilter>("all");
-  const [rescheduleAfterDemandChange, setRescheduleAfterDemandChange] = useState(true);
+  const [rescheduleAfterDemandChange, setRescheduleAfterDemandChange] = useState(false);
+  const [lastDemandAction, setLastDemandAction] = useState<LastDemandAction | null>(null);
 
   useEffect(() => {
     if (window.location.hash === "#product-planning-inputs") {
@@ -301,9 +322,13 @@ export default function ProductPlanningClient({
       body: JSON.stringify({
         productId: demandProductId,
         dueDate: demandDate,
+        productionDueDate: demandProductionDate || null,
         demandType,
+        status: demandStatus,
         quantity: ceilDisplayQuantity(demandQuantity) ?? 0,
         customerName: customerName || null,
+        externalRef: demandExternalRef || null,
+        note: demandNote || null,
       }),
     });
     const json = await res.json().catch(() => ({}));
@@ -313,6 +338,14 @@ export default function ProductPlanningClient({
       return;
     }
     const rescheduleMessage = await maybeRegenerateMonthlyDrafts();
+    setLastDemandAction({
+      demandId: String(json.id ?? ""),
+      productionPlanId: json.productionPlanId ?? null,
+      replanEventId: json.replanEventId ?? null,
+      replanJobId: json.replanJobId ?? null,
+      productionDueDate: demandProductionDate || demandDate,
+      dueDate: demandDate,
+    });
     setBusy(false);
     setMessage(`受注/出荷予定を登録しました${rescheduleMessage}`);
     router.refresh();
@@ -365,6 +398,7 @@ export default function ProductPlanningClient({
     setDemandDraft({
       productId: demand.product.id,
       dueDate: demand.dueDate,
+      productionDueDate: demand.productionDueDate ?? "",
       demandType: demand.demandType,
       quantity: demand.quantity,
       status: demand.status,
@@ -384,6 +418,7 @@ export default function ProductPlanningClient({
       body: JSON.stringify({
         ...demandDraft,
         quantity: ceilDisplayQuantity(Number(demandDraft.quantity)) ?? 0,
+        productionDueDate: demandDraft.productionDueDate || null,
         customerName: demandDraft.customerName || null,
         externalRef: demandDraft.externalRef || null,
         note: demandDraft.note || null,
@@ -419,37 +454,58 @@ export default function ProductPlanningClient({
     router.refresh();
   }
 
+  async function scheduleDemand(demand: DemandRow) {
+    setBusy(true);
+    setMessage(null);
+    const res = await fetch(kitagoyaApiPath(`/product-demands/${demand.id}/schedule`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const json = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) {
+      setMessage(`受注の予定化に失敗しました: ${json.error ?? "unknown"}`);
+      return;
+    }
+    const productionPlanId = json.productionPlan?.id ?? json.demand?.productionPlanId ?? null;
+    const productionDueDate = dateOnly(json.demand?.productionDueDate) ?? demand.productionDueDate ?? demand.dueDate;
+    setLastDemandAction({
+      demandId: demand.id,
+      productionPlanId,
+      replanEventId: json.replanEventId ?? null,
+      replanJobId: json.replanJobId ?? null,
+      productionDueDate,
+      dueDate: demand.dueDate,
+    });
+    setMessage(json.created ? "受注を受注生産の仮予定へ予定化しました" : "既に紐づく製造予定があります");
+    router.refresh();
+  }
+
   async function maybeRegenerateMonthlyDrafts() {
-    if (!rescheduleAfterDemandChange) return "。月間予定の再判定は未実行です";
+    if (!rescheduleAfterDemandChange) return "。在庫生産の再判定は再計画キューで確認してください";
     try {
       const result = await regenerateMonthlyDrafts();
       const created = result.createdCount ?? 0;
       const replaced = result.replacedDraftCount ?? 0;
       const skipped = result.skipped?.length ?? 0;
-      return `。在庫生産の自動スケジュールを再判定しました（自動生成draft置換 ${replaced}件 / 作成 ${created}件 / 未配置 ${skipped}件）`;
+      return `。在庫生産の自動スケジュールを再判定し、仮予定へ採用しました（自動生成draft置換 ${replaced}件 / 作成 ${created}件 / 未配置 ${skipped}件）`;
     } catch (error) {
       return `。ただし在庫生産の再判定に失敗しました: ${error instanceof Error ? error.message : "unknown"}`;
     }
   }
 
   async function regenerateMonthlyDrafts(): Promise<MonthlyScheduleRegenerateResult> {
-    const res = await fetch(kitagoyaApiPath("/product-planning/monthly-schedule"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        dateFrom: initialDateFrom,
-        dateTo: initialDateTo,
-        productionLeadDays: 1,
-        planningBasis: "historical_actual",
-        defaultStartTime: "09:00",
-        baselineEndTime: "17:00",
-        replaceExistingDrafts: true,
-        replaceGeneratedDraftsOnly: true,
-      }),
+    return regenerateAndAdoptMonthlyDrafts({
+      dateFrom: initialDateFrom,
+      dateTo: initialDateTo,
+      productionLeadDays: 1,
+      planningBasis: "historical_actual",
+      defaultStartTime: "09:00",
+      baselineEndTime: "17:00",
+      replaceExistingDrafts: true,
+      replaceGeneratedDraftsOnly: true,
     });
-    const json = (await res.json().catch(() => ({}))) as MonthlyScheduleRegenerateResult & { error?: string };
-    if (!res.ok) throw new Error(json.error ?? "unknown");
-    return json;
   }
 
   function beginActualEdit(actual: MonthlyActualRow) {
@@ -500,6 +556,21 @@ export default function ProductPlanningClient({
   return (
     <>
       {message && <div className="alert info">{message}</div>}
+      {lastDemandAction && (
+        <div className="alert success">
+          受注登録後の次アクション:{" "}
+          {lastDemandAction.productionPlanId ? (
+            <Link href={kitagoyaPath(`/production-plans/${lastDemandAction.productionPlanId}`)}>紐づく製造予定を開く</Link>
+          ) : (
+            <Link href="#product-planning-demands">受注一覧で予定化</Link>
+          )}
+          {" / "}
+          <Link href={kitagoyaPath(`/planning/monthly?ym=${monthFromDate(lastDemandAction.productionDueDate)}#replan`)}>
+            再計画差分を見る
+          </Link>
+          {lastDemandAction.replanJobId && <span className="subtext"> / 再計画待ち {lastDemandAction.replanJobId}</span>}
+        </div>
+      )}
 
       <CollapsiblePanel
         title="生産判断・通知"
@@ -650,14 +721,14 @@ export default function ProductPlanningClient({
 
         <form className="panel product-planning-demand-panel" onSubmit={submitDemand}>
           <div className="toolbar product-planning-demand-head">
-            <h2>受注/出荷予定を登録</h2>
+            <h2>受注/仮受注を登録</h2>
             <label className="inline-check product-planning-reschedule-toggle">
               <input
                 type="checkbox"
                 checked={rescheduleAfterDemandChange}
                 onChange={(e) => setRescheduleAfterDemandChange(e.target.checked)}
               />
-              <span>登録後に在庫生産の自動スケジュールを再判定</span>
+              <span>登録後に在庫生産の自動スケジュールを再判定して採用（暫定）</span>
             </label>
           </div>
           <div className="product-planning-demand-fields">
@@ -674,7 +745,14 @@ export default function ProductPlanningClient({
               />
             </label>
             <label>
-              <span>種別</span>
+              <span>受注区分</span>
+              <select value={demandStatus} onChange={(e) => setDemandStatus(e.target.value as typeof demandStatus)}>
+                <option value="open">受注</option>
+                <option value="tentative">仮受注</option>
+              </select>
+            </label>
+            <label>
+              <span>需要種別</span>
               <select value={demandType} onChange={(e) => setDemandType(e.target.value as typeof demandType)}>
                 <option value="order">受注</option>
                 <option value="shipment">出荷予定</option>
@@ -682,8 +760,12 @@ export default function ProductPlanningClient({
               </select>
             </label>
             <label>
-              <span>必要日</span>
+              <span>出荷予定日</span>
               <input type="date" value={demandDate} onChange={(e) => setDemandDate(e.target.value)} />
+            </label>
+            <label>
+              <span>製造予定日</span>
+              <input type="date" value={demandProductionDate} onChange={(e) => setDemandProductionDate(e.target.value)} />
             </label>
             <label>
               <span>数量</span>
@@ -696,12 +778,20 @@ export default function ProductPlanningClient({
               />
             </label>
             <label>
-              <span>得意先/メモ</span>
+              <span>得意先</span>
               <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+            </label>
+            <label>
+              <span>参照番号</span>
+              <input value={demandExternalRef} onChange={(e) => setDemandExternalRef(e.target.value)} />
+            </label>
+            <label>
+              <span>メモ</span>
+              <input value={demandNote} onChange={(e) => setDemandNote(e.target.value)} />
             </label>
           </div>
           <div className="alert info product-planning-reschedule-note">
-            受注を登録すると、確定済み・手入力の予定は残したまま、月間シフト連動で自動生成した在庫生産 draft だけを再計算します。
+            受注を登録すると再計画待ちを作成します。受注生産・確定・完了済み予定は固定し、翌日以降の在庫生産だけを再編成対象にします。
           </div>
           <div className="form-actions">
             <button type="submit" disabled={busy || !demandProductId}>
@@ -1004,20 +1094,23 @@ export default function ProductPlanningClient({
       </section>
 
       <section id="product-planning-demands" className="anchor-offset">
-      <h2>未処理の受注/出荷予定</h2>
+      <h2>未処理の受注/仮受注</h2>
       {demands.length === 0 ? (
-        <div className="empty-state">未処理の受注/出荷予定はありません。</div>
+        <div className="empty-state">未処理の受注/仮受注はありません。</div>
       ) : (
         <div className="table-frame">
           <table>
             <thead>
               <tr>
-                <th>必要日</th>
+                <th>出荷予定日</th>
+                <th>製造予定日</th>
                 <th>種別</th>
                 <th>商品</th>
                 <th>数量</th>
-                <th>得意先/メモ</th>
+                <th>得意先</th>
+                <th>メモ</th>
                 <th>参照</th>
+                <th>製造予定</th>
                 <th>状態</th>
                 <th></th>
               </tr>
@@ -1035,6 +1128,13 @@ export default function ProductPlanningClient({
                           type="date"
                           value={demandDraft.dueDate}
                           onChange={(e) => setDemandDraft({ ...demandDraft, dueDate: e.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="date"
+                          value={demandDraft.productionDueDate}
+                          onChange={(e) => setDemandDraft({ ...demandDraft, productionDueDate: e.target.value })}
                         />
                       </td>
                       <td>
@@ -1071,9 +1171,18 @@ export default function ProductPlanningClient({
                       </td>
                       <td>
                         <input
+                          value={demandDraft.note}
+                          onChange={(e) => setDemandDraft({ ...demandDraft, note: e.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
                           value={demandDraft.externalRef}
                           onChange={(e) => setDemandDraft({ ...demandDraft, externalRef: e.target.value })}
                         />
+                      </td>
+                      <td>
+                        <span className="muted">{demand.productionPlanId ? "紐づき済み" : "未紐づき"}</span>
                       </td>
                       <td>
                         <select
@@ -1081,6 +1190,7 @@ export default function ProductPlanningClient({
                           onChange={(e) => setDemandDraft({ ...demandDraft, status: e.target.value })}
                         >
                           <option value="open">未処理</option>
+                          <option value="tentative">仮受注</option>
                           <option value="fulfilled">処理済み</option>
                           <option value="cancelled">取消</option>
                         </select>
@@ -1107,6 +1217,7 @@ export default function ProductPlanningClient({
                   ) : (
                     <>
                       <td>{demand.dueDate}</td>
+                      <td>{demand.productionDueDate ?? "—"}</td>
                       <td>{demandTypeLabel(demand.demandType)}</td>
                       <td>
                         {demand.product.productCode} · {demand.product.officialName}
@@ -1118,8 +1229,33 @@ export default function ProductPlanningClient({
                         })}
                       </td>
                       <td>{demand.customerName ?? "—"}</td>
+                      <td>{demand.note ?? "—"}</td>
                       <td>{demand.externalRef ?? "—"}</td>
-                      <td>{demandStatusLabel(demand.status)}</td>
+                      <td>
+                        {demand.productionPlan ? (
+                          <div className="stacked-list">
+                            <Link href={kitagoyaPath(`/production-plans/${demand.productionPlan.id}`)}>
+                              {demand.productionPlan.date} / {demand.productionPlan.workAreaName}
+                            </Link>
+                            <span className="product-planning-row-badges">
+                              <span className={`badge ${demand.productionPlan.productionType === "make_to_order" ? "info" : "muted"}`}>
+                                {productionTypeLabel(demand.productionPlan.productionType)}
+                              </span>
+                              <span className="badge muted">{planStatusText(demand.productionPlan.status)}</span>
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="table-actions">
+                            <button type="button" className="secondary" onClick={() => scheduleDemand(demand)} disabled={busy}>
+                              予定化
+                            </button>
+                            <Link href={kitagoyaPath(`/planning/monthly?ym=${monthFromDate(demand.productionDueDate ?? demand.dueDate)}#replan`)}>
+                              再計画差分
+                            </Link>
+                          </div>
+                        )}
+                      </td>
+                      <td><span className={`badge ${demand.status === "tentative" ? "info" : demand.status === "fulfilled" ? "success" : "warn"}`}>{demandStatusLabel(demand.status)}</span></td>
                       <td>
                         <div className="table-actions">
                           <button type="button" className="secondary" onClick={() => beginDemandEdit(demand)}>
@@ -1174,8 +1310,27 @@ function demandStatusLabel(value: string) {
   switch (value) {
     case "open":
       return "未処理";
+    case "tentative":
+      return "仮受注";
     case "fulfilled":
       return "処理済み";
+    case "cancelled":
+      return "取消";
+    default:
+      return value;
+  }
+}
+
+function planStatusText(value: string) {
+  switch (value) {
+    case "draft":
+      return "仮予定";
+    case "tentative_confirmed":
+      return "仮確定";
+    case "confirmed":
+      return "確定";
+    case "completed":
+      return "完了";
     case "cancelled":
       return "取消";
     default:
@@ -1201,10 +1356,22 @@ function productionTypeLabel(value: SuggestionRow["productionType"]) {
     case "stock":
       return "在庫";
     case "make_to_order":
-      return "受注";
+      return "受注生産";
     case "both":
       return "共通";
+    case "external":
+      return "外注";
+    case "trial":
+      return "試作";
     default:
       return value;
   }
+}
+
+function monthFromDate(value: string) {
+  return /^\d{4}-\d{2}/.test(value) ? value.slice(0, 7) : new Date().toISOString().slice(0, 7);
+}
+
+function dateOnly(value: unknown) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
 }

@@ -23,6 +23,7 @@ import {
   type EditableGridKind,
   type EditableGridMovement,
 } from "@/lib/inventory-editable-grid";
+import { loadInventoryVisibilityDashboard } from "@/lib/inventory-visibility";
 import { INVENTORY_LEDGER_STATUS, MANUAL_INVENTORY_SOURCE_TYPE } from "@/lib/inventory-types";
 import { kitagoyaPath } from "@/lib/paths";
 import { prisma } from "@/lib/prisma";
@@ -96,12 +97,14 @@ export default async function InventoryPage({
   const productScope = sp.scope === "all" ? "all" : "kitagoya";
   const adminMode = sp.admin === "1";
   const monthEnd = endOfMonth(month);
+  const visibilityItemType = active === "raw" ? "raw_material" : active === "packaging" ? "packaging" : "product";
 
-  const [productCount, rawCount, packagingCount, activeData] = await Promise.all([
+  const [productCount, rawCount, packagingCount, activeData, visibilityDashboard] = await Promise.all([
     prisma.product.count({ where: { active: true } }),
     prisma.material.count({ where: { active: true } }),
     prisma.packagingMaterial.count({ where: { active: true } }),
     loadActiveInventoryData(active, month, monthEnd, { adminMode, productScope }),
+    loadInventoryVisibilityDashboard({ targetMonth: month, itemType: visibilityItemType }),
   ]);
 
   const tabs: InventoryTabMeta[] = [
@@ -254,6 +257,61 @@ export default async function InventoryPage({
           </CollapsiblePanel>
         </div>
       </CollapsiblePanel>
+
+      <section id="inventory-visibility" className="panel anchor-offset">
+        <div className="toolbar">
+          <div>
+            <span className="badge info">在庫見える化</span>
+            <strong className="ml-2">{formatMonthLabel(month)} / {activeTabLabel}</strong>
+            <span className="subtext"> 現在庫・予定引当・確定入荷・未確定入荷・月末予測を同じ行で確認します。</span>
+          </div>
+          <div className="spacer" />
+          <Link className="button-link secondary-link" href={kitagoyaPath(`/api/inventory/visibility?month=${month}&itemType=${visibilityItemType}`)}>
+            API
+          </Link>
+        </div>
+        <div className="table-frame">
+          <table>
+            <thead>
+              <tr>
+                <th>品目</th>
+                <th>現在庫</th>
+                <th>予定引当後</th>
+                <th>確定入荷込み</th>
+                <th>未確定入荷込み</th>
+                <th>月末予測</th>
+                <th>不足/推奨</th>
+                <th>導線</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibilityDashboard.rows.slice(0, 20).map((row) => (
+                <tr key={`${row.itemType}:${row.itemId}`}>
+                  <td>{row.itemCode ? `${row.itemCode} · ` : ""}{row.itemName}</td>
+                  <td className="right">{formatQuantity(row.currentQuantity)} {row.unit}</td>
+                  <td className="right">{formatQuantity(row.afterPlannedAllocationQuantity)} {row.unit}</td>
+                  <td className="right">{formatQuantity(row.withConfirmedInboundQuantity)} {row.unit}</td>
+                  <td className="right">{formatQuantity(row.withUnconfirmedInboundQuantity)} {row.unit}</td>
+                  <td className="right">{formatQuantity(row.monthEndProjectedQuantity)} {row.unit}</td>
+                  <td>
+                    <span className={`badge ${row.shortageQuantity > 0 ? "warn" : "success"}`}>
+                      {row.recommendedAction}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="table-actions">
+                      <Link href={row.links.stockMovements}>StockMovement</Link>
+                      {row.links.purchaseOrders && <Link href={row.links.purchaseOrders}>PurchaseOrder</Link>}
+                      {row.links.productionPlans && <Link href={row.links.productionPlans}>ProductionPlan</Link>}
+                      {row.links.dailyReports && <Link href={row.links.dailyReports}>日報</Link>}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <InventoryTabs
         active={active}
@@ -444,6 +502,10 @@ function normalizeMonth(value: string) {
 function formatMonthLabel(month: string) {
   const [year, monthPart] = month.split("-");
   return `${year}年 ${monthPart}月`;
+}
+
+function formatQuantity(value: number) {
+  return Number.isInteger(value) ? value.toLocaleString() : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 function endOfMonth(month: string) {

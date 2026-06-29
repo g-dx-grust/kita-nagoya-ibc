@@ -19,6 +19,24 @@ type CreatedPlan = {
   warnings: string[];
 };
 
+type PlanCandidate = {
+  id: string;
+  date: string;
+  planDate?: string;
+  productCode: string;
+  productName: string;
+  workAreaName: string;
+  startTime: string | null;
+  endTime: string | null;
+  quantity: number;
+  unit: string;
+  assignedCount: number;
+  warnings: string[];
+  demandType: string;
+  materialRisk: string | null;
+  replacesPlanId: string | null;
+};
+
 type SkippedPlan = {
   productId?: string;
   productCode: string;
@@ -30,9 +48,16 @@ type SkippedPlan = {
 };
 
 type GenerateResult = {
+  runId?: string;
+  status?: string;
+  candidateCount?: number;
   createdCount: number;
+  replacedPlanCount?: number;
   message: string;
   listUrl?: string;
+  previewUrl?: string;
+  adoptUrl?: string;
+  candidates?: PlanCandidate[];
   plans: CreatedPlan[];
   skipped: SkippedPlan[];
 };
@@ -57,6 +82,7 @@ export default function MonthlyScheduleActions({
   const [baselineEndTime, setBaselineEndTime] = useState("17:00");
   const [replaceExistingDrafts, setReplaceExistingDrafts] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [adopting, setAdopting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GenerateResult | null>(null);
 
@@ -64,7 +90,7 @@ export default function MonthlyScheduleActions({
     if (disabled) return;
     if (
       replaceExistingDrafts &&
-      !confirm(`対象期間 ${dateFrom} 〜 ${dateTo} の仮予定を削除してから月間予定を作成します。よろしいですか？`)
+      !confirm(`対象期間 ${dateFrom} 〜 ${dateTo} の置換候補として月間計画候補を生成します。よろしいですか？`)
     ) {
       return;
     }
@@ -95,27 +121,79 @@ export default function MonthlyScheduleActions({
     router.refresh();
   }
 
+  async function adoptRun() {
+    if (!result?.runId || !result.adoptUrl || result.status === "adopted") return;
+    if (
+      replaceExistingDrafts &&
+      !confirm(`対象期間 ${dateFrom} 〜 ${dateTo} の置換対象を差し替えて、候補を仮予定として採用します。よろしいですか？`)
+    ) {
+      return;
+    }
+
+    setAdopting(true);
+    setError(null);
+    const res = await fetch(kitagoyaApiPath(result.adoptUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const json = await res.json().catch(() => ({}));
+    setAdopting(false);
+    if (!res.ok) {
+      setError(`候補の採用に失敗しました: ${json.error ?? "unknown"}`);
+      return;
+    }
+    setResult((prev) => ({
+      ...(prev ?? {
+        createdCount: 0,
+        message: "",
+        plans: [],
+        skipped: [],
+      }),
+      ...json,
+      status: "adopted",
+      candidateCount: prev?.candidateCount ?? json.createdCount ?? 0,
+      message: json.message ?? "候補を仮予定として採用しました。",
+      candidates: prev?.candidates ?? [],
+      skipped: prev?.skipped ?? [],
+    }));
+    router.refresh();
+  }
+
   const planWarningCount = result?.plans.reduce((sum, plan) => sum + plan.warnings.length, 0) ?? 0;
-  const hasResultWarnings = result ? planWarningCount > 0 || result.skipped.length > 0 : false;
+  const candidateWarningCount = result?.candidates?.reduce((sum, candidate) => sum + candidate.warnings.length, 0) ?? 0;
+  const warningCount = planWarningCount + candidateWarningCount;
+  const hasResultWarnings = result ? warningCount > 0 || result.skipped.length > 0 : false;
   const assignedPeopleTotal = result?.plans.reduce((sum, plan) => sum + plan.assignedCount, 0) ?? 0;
+  const candidateAssignedPeopleTotal = result?.candidates?.reduce((sum, plan) => sum + plan.assignedCount, 0) ?? 0;
+  const candidateCount = result?.candidateCount ?? result?.candidates?.length ?? 0;
+  const isAdopted = result?.status === "adopted";
   const resultStatusLabel = !result
     ? disabled
       ? "候補なし"
       : "生成待ち"
     : hasResultWarnings
       ? "確認が必要"
-      : result.createdCount > 0
-        ? "生成済み"
-        : "生成なし";
+      : isAdopted
+        ? "採用済み"
+        : candidateCount > 0
+          ? "候補保存済み"
+          : result.createdCount > 0
+            ? "生成済み"
+            : "生成なし";
   const resultStatusClass = !result
     ? disabled
       ? "muted"
       : "info"
     : hasResultWarnings
       ? "warn"
-      : result.createdCount > 0
+      : isAdopted
         ? "success"
-        : "muted";
+        : candidateCount > 0
+          ? "info"
+          : result.createdCount > 0
+            ? "success"
+            : "muted";
 
   return (
     <div className={embedded ? "monthly-schedule-action-panel monthly-schedule-action-panel-embedded" : "panel monthly-schedule-action-panel"}>
@@ -137,7 +215,7 @@ export default function MonthlyScheduleActions({
         </div>
         <div className="monthly-schedule-command-actions">
           <button type="button" onClick={generate} disabled={busy || disabled}>
-            {busy ? "生成中..." : "シフト連動で仮予定生成"}
+            {busy ? "生成中..." : "シフト連動で候補生成"}
           </button>
         </div>
       </div>
@@ -167,18 +245,77 @@ export default function MonthlyScheduleActions({
         <div className="after-table monthly-schedule-result">
           <div className="monthly-schedule-result-summary">
             <span className={`badge ${resultStatusClass}`}>{resultStatusLabel}</span>
+            <span className="badge info">候補 {candidateCount}</span>
             <span className="badge success">作成 {result.createdCount}</span>
-            <span className={`badge ${planWarningCount > 0 ? "warn" : "success"}`}>警告 {planWarningCount}</span>
+            {result.replacedPlanCount != null && <span className="badge warn">置換 {result.replacedPlanCount}</span>}
+            <span className={`badge ${warningCount > 0 ? "warn" : "success"}`}>警告 {warningCount}</span>
             <span className={`badge ${result.skipped.length > 0 ? "warn" : "success"}`}>未配置 {result.skipped.length}</span>
-            <span className="badge info">配置人数 {assignedPeopleTotal}</span>
+            <span className="badge info">配置人数 {assignedPeopleTotal + candidateAssignedPeopleTotal}</span>
           </div>
           <div className={hasResultWarnings ? "alert warn" : result.createdCount > 0 ? "alert success" : "alert info"}>
             {result.message}
           </div>
           {hasResultWarnings && (
             <div className="alert warn">
-              警告 {planWarningCount} 件 / 未配置 {result.skipped.length} 件。部屋変更、日付前倒し、残業、数量調整を確認してください。
+              警告 {warningCount} 件 / 未配置 {result.skipped.length} 件。部屋変更、日付前倒し、残業、数量調整を確認してください。
             </div>
+          )}
+          {result.candidates && result.candidates.length > 0 && !isAdopted && (
+            <>
+              <div className="table-frame monthly-schedule-created-frame">
+                <table className="monthly-schedule-created-table">
+                  <thead>
+                    <tr>
+                      <th>日付</th>
+                      <th>商品</th>
+                      <th>作業場所</th>
+                      <th>時間</th>
+                      <th>数量</th>
+                      <th>配置人数</th>
+                      <th>区分</th>
+                      <th>注意</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.candidates.map((candidate) => (
+                      <tr key={candidate.id} className={candidate.warnings.length > 0 ? "row-needs-action" : ""}>
+                        <td data-label="日付">{candidate.planDate ?? candidate.date}</td>
+                        <td data-label="商品">
+                          <div className="monthly-schedule-product-cell">
+                            <strong>{candidate.productCode} · {candidate.productName}</strong>
+                            {candidate.replacesPlanId && <span className="badge warn">差替候補</span>}
+                          </div>
+                        </td>
+                        <td data-label="作業場所">{candidate.workAreaName}</td>
+                        <td data-label="時間">
+                          {candidate.startTime ?? "--:--"} - {candidate.endTime ?? "--:--"}
+                        </td>
+                        <td className="right" data-label="数量">
+                          {candidate.quantity.toLocaleString()} {candidate.unit}
+                        </td>
+                        <td className="right" data-label="配置人数">{candidate.assignedCount}</td>
+                        <td data-label="区分">
+                          <span className="badge info">{candidateDemandTypeLabel(candidate.demandType)}</span>
+                        </td>
+                        <td data-label="注意">
+                          <WarningBadges warnings={candidate.warnings} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="form-actions">
+                <button type="button" onClick={adoptRun} disabled={adopting}>
+                  {adopting ? "採用中..." : "仮予定として採用"}
+                </button>
+                {result.previewUrl && (
+                  <Link className="button-link secondary-link" href={result.previewUrl}>
+                    候補プレビュー
+                  </Link>
+                )}
+              </div>
+            </>
           )}
           {result.plans.length > 0 && (
             <>
@@ -234,7 +371,7 @@ export default function MonthlyScheduleActions({
                     className="button-link secondary-link"
                     href={kitagoyaPath(`/production-plans/monthly/confirm?dateFrom=${dateFrom}&dateTo=${dateTo}`)}
                   >
-                    本決定画面へ
+                    仮確定画面へ
                   </Link>
                 </div>
               )}
@@ -280,6 +417,19 @@ export default function MonthlyScheduleActions({
       )}
     </div>
   );
+}
+
+function candidateDemandTypeLabel(value: string) {
+  switch (value) {
+    case "order":
+      return "受注";
+    case "forecast":
+      return "予測";
+    case "inventory":
+      return "在庫";
+    default:
+      return value;
+  }
 }
 
 function WarningBadges({ warnings }: { warnings: string[] }) {

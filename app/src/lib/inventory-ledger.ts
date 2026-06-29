@@ -165,6 +165,32 @@ export async function removeProductionDailyReportMovements(tx: LedgerClient, ent
   await tx.stockMovement.deleteMany({ where: productionDailyReportMovementWhere(entryId) });
 }
 
+export async function cancelDailyReportActualMovementsForPlans(
+  tx: LedgerClient,
+  productionPlanIds: string[],
+) {
+  const uniquePlanIds = [...new Set(productionPlanIds)].filter(Boolean);
+  if (uniquePlanIds.length === 0) return;
+
+  const reports = await tx.dailyReport.findMany({
+    where: { productionPlanId: { in: uniquePlanIds }, status: "confirmed" },
+    select: { id: true },
+  });
+  if (reports.length === 0) return;
+
+  await tx.stockMovement.updateMany({
+    where: {
+      sourceType: "daily_report",
+      status: INVENTORY_LEDGER_STATUS.CONFIRMED,
+      OR: reports.flatMap((report) => [
+        { sourceId: report.id },
+        { sourceId: { startsWith: `${report.id}:` } },
+      ]),
+    },
+    data: { status: INVENTORY_LEDGER_STATUS.CANCELLED },
+  });
+}
+
 function productionDailyReportMovementWhere(entryId: string): Prisma.StockMovementWhereInput {
   return {
     sourceType: PRODUCTION_DAILY_REPORT_SOURCE,

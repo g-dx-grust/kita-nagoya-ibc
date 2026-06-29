@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { INVENTORY_LEDGER_STATUS } from "./inventory-types";
+import { PLANNED_PRODUCTION_PLAN_STATUSES } from "./plan-status";
 
 export type MaterialItemType = "raw_material" | "packaging";
 
@@ -14,6 +15,7 @@ export type MaterialForecastItem = {
   safetyStockQuantity: number;
   orderLotQty: number | null;
   minOrderQty: number | null;
+  orderProcessingBufferDays: number;
 };
 
 export type MaterialForecastRequirement = {
@@ -52,6 +54,31 @@ export type MaterialForecastLine = MaterialForecastRequirement & {
   safetyStock: number;
   shortageQuantity: number;
   shortageType: MaterialShortageType;
+};
+
+export type MonthEndInventoryForecastLine = MaterialForecastItem & {
+  targetMonth: string;
+  monthEndDate: string;
+  openingQuantity: number;
+  confirmedStockMovementQuantity: number;
+  confirmedInboundQuantity: number;
+  unconfirmedInboundQuantity: number;
+  plannedUsageQuantity: number;
+  confirmedProjectedQuantity: number;
+  projectedWithUnconfirmedQuantity: number;
+  monthEndShortageQuantity: number;
+  monthEndShortageType: MaterialShortageType;
+  shortageQuantity: number;
+  shortageType: MaterialShortageType;
+  shortageDate: string | null;
+};
+
+export type MonthEndInventoryForecast = {
+  targetMonth: string;
+  monthStartDate: string;
+  monthEndDate: string;
+  items: MaterialForecastItem[];
+  lines: MonthEndInventoryForecastLine[];
 };
 
 export function buildMaterialForecast(input: {
@@ -214,7 +241,7 @@ export async function loadMaterialForecast({
         where: {
           productionPlan: {
             date: { gte: dateFrom, lte: dateTo },
-            status: { in: ["draft", "confirmed"] },
+            status: { in: [...PLANNED_PRODUCTION_PLAN_STATUSES] },
           },
         },
         include: { productionPlan: true },
@@ -233,6 +260,7 @@ export async function loadMaterialForecast({
       safetyStockQuantity: m.safetyStockQuantity,
       orderLotQty: m.orderLotQty,
       minOrderQty: m.minOrderQty,
+      orderProcessingBufferDays: m.orderProcessingBufferDays ?? 0,
     })),
     ...packaging.map((m) => ({
       itemType: "packaging" as const,
@@ -245,6 +273,7 @@ export async function loadMaterialForecast({
       safetyStockQuantity: m.safetyStockQuantity,
       orderLotQty: m.orderLotQty,
       minOrderQty: m.minOrderQty,
+      orderProcessingBufferDays: m.orderProcessingBufferDays ?? 0,
     })),
   ];
 
@@ -292,6 +321,227 @@ export async function loadMaterialForecast({
   };
 }
 
+export async function loadMonthEndInventoryForecast({
+  targetMonth,
+}: {
+  targetMonth: string;
+}): Promise<MonthEndInventoryForecast> {
+  const { monthStart, monthEnd } = monthRange(targetMonth);
+  const [
+    materials,
+    packaging,
+    monthStartOpenings,
+    monthEndOpenings,
+    confirmedMovements,
+    purchaseOrders,
+    requirements,
+  ] = await Promise.all([
+    prisma.material.findMany({ where: { active: true }, include: { supplier: true } }),
+    prisma.packagingMaterial.findMany({ where: { active: true }, include: { supplier: true } }),
+    prisma.stockMovement.groupBy({
+      by: ["itemType", "itemId"],
+      where: {
+        itemType: { in: ["raw_material", "packaging"] },
+        status: INVENTORY_LEDGER_STATUS.CONFIRMED,
+        effectiveDate: { lte: monthStart },
+      },
+      _sum: { quantity: true },
+    }),
+    prisma.stockMovement.groupBy({
+      by: ["itemType", "itemId"],
+      where: {
+        itemType: { in: ["raw_material", "packaging"] },
+        status: INVENTORY_LEDGER_STATUS.CONFIRMED,
+        effectiveDate: { lte: monthEnd },
+      },
+      _sum: { quantity: true },
+    }),
+    prisma.stockMovement.findMany({
+      where: {
+        itemType: { in: ["raw_material", "packaging"] },
+        status: INVENTORY_LEDGER_STATUS.CONFIRMED,
+        effectiveDate: { gt: monthStart, lte: monthEnd },
+      },
+      select: {
+        id: true,
+        itemType: true,
+        itemId: true,
+        quantity: true,
+        effectiveDate: true,
+      },
+      orderBy: [{ effectiveDate: "asc" }, { id: "asc" }],
+    }),
+    prisma.purchaseOrder.findMany({
+      where: {
+        itemType: { in: ["raw_material", "packaging"] },
+        status: { in: ["confirmed", "ordered_unconfirmed"] },
+        expectedArrivalDate: { not: null, lte: monthEnd },
+      },
+      orderBy: [{ expectedArrivalDate: "asc" }, { id: "asc" }],
+    }),
+    prisma.productionPlanRequirement.findMany({
+      where: {
+        productionPlan: {
+          date: { gte: monthStart, lte: monthEnd },
+          status: { in: [...PLANNED_PRODUCTION_PLAN_STATUSES] },
+        },
+      },
+      include: { productionPlan: true },
+    }),
+  ]);
+
+  const items: MaterialForecastItem[] = [
+    ...materials.map((m) => ({
+      itemType: "raw_material" as const,
+      itemId: m.id,
+      itemName: m.name,
+      unit: m.unit,
+      supplierId: m.supplierId,
+      supplierName: m.supplier?.name ?? null,
+      leadTimeDays: m.leadTimeDays,
+      safetyStockQuantity: m.safetyStockQuantity,
+      orderLotQty: m.orderLotQty,
+      minOrderQty: m.minOrderQty,
+      orderProcessingBufferDays: m.orderProcessingBufferDays ?? 0,
+    })),
+    ...packaging.map((m) => ({
+      itemType: "packaging" as const,
+      itemId: m.id,
+      itemName: m.name,
+      unit: m.unit,
+      supplierId: m.supplierId,
+      supplierName: m.supplier?.name ?? null,
+      leadTimeDays: m.leadTimeDays,
+      safetyStockQuantity: m.safetyStockQuantity,
+      orderLotQty: m.orderLotQty,
+      minOrderQty: m.minOrderQty,
+      orderProcessingBufferDays: m.orderProcessingBufferDays ?? 0,
+    })),
+  ];
+
+  const monthStartOpeningByItemKey: Record<string, number> = {};
+  for (const row of monthStartOpenings) {
+    monthStartOpeningByItemKey[itemKey(row.itemType as MaterialItemType, row.itemId)] = row._sum.quantity ?? 0;
+  }
+
+  const monthEndOpeningByItemKey: Record<string, number> = {};
+  for (const row of monthEndOpenings) {
+    monthEndOpeningByItemKey[itemKey(row.itemType as MaterialItemType, row.itemId)] = row._sum.quantity ?? 0;
+  }
+
+  const confirmedStockMovementByItemKey: Record<string, number> = {};
+  for (const movement of confirmedMovements) {
+    const key = itemKey(movement.itemType as MaterialItemType, movement.itemId);
+    confirmedStockMovementByItemKey[key] = (confirmedStockMovementByItemKey[key] ?? 0) + movement.quantity;
+  }
+
+  const confirmedInboundByItemKey: Record<string, number> = {};
+  const unconfirmedInboundByItemKey: Record<string, number> = {};
+  for (const order of purchaseOrders) {
+    const key = itemKey(order.itemType as MaterialItemType, order.itemId);
+    const quantity = order.confirmedQuantity ?? order.orderedQuantity;
+    if (order.status === "confirmed") {
+      confirmedInboundByItemKey[key] = (confirmedInboundByItemKey[key] ?? 0) + quantity;
+    } else if (order.status === "ordered_unconfirmed") {
+      unconfirmedInboundByItemKey[key] = (unconfirmedInboundByItemKey[key] ?? 0) + quantity;
+    }
+  }
+
+  const usageByItemKey: Record<string, number> = {};
+  const requirementInputs: MaterialForecastRequirement[] = requirements.map((requirement) => {
+    const key = itemKey(requirement.itemType as MaterialItemType, requirement.itemId);
+    usageByItemKey[key] = (usageByItemKey[key] ?? 0) + requirement.plannedQuantity;
+    return {
+      requirementId: requirement.id,
+      productionPlanId: requirement.productionPlanId,
+      date: toDateKey(requirement.productionPlan.date),
+      sortKey: `${requirement.productionPlan.plannedStartTime}#${requirement.productionPlanId}#${requirement.id}`,
+      itemType: requirement.itemType as MaterialItemType,
+      itemId: requirement.itemId,
+      itemName: requirement.itemName,
+      unit: requirement.unit,
+      plannedQuantity: requirement.plannedQuantity,
+    };
+  });
+
+  const safetyByItemKey: Record<string, number> = {};
+  for (const item of items) {
+    safetyByItemKey[itemKey(item.itemType, item.itemId)] = item.safetyStockQuantity;
+  }
+
+  const forecastLines = buildMaterialForecast({
+    requirements: requirementInputs,
+    openingByItemKey: monthStartOpeningByItemKey,
+    inbounds: [
+      ...confirmedMovements.map((movement) => ({
+        date: toDateKey(movement.effectiveDate),
+        itemType: movement.itemType as MaterialItemType,
+        itemId: movement.itemId,
+        quantity: movement.quantity,
+        status: "confirmed" as const,
+      })),
+      ...purchaseOrders.map((order) => ({
+        date: toDateKey(order.expectedArrivalDate!),
+        itemType: order.itemType as MaterialItemType,
+        itemId: order.itemId,
+        quantity: order.confirmedQuantity ?? order.orderedQuantity,
+        status: order.status as MaterialForecastInbound["status"],
+      })),
+    ],
+    safetyByItemKey,
+  });
+  const forecastSummaryByItemKey = summarizeForecastLinesByItem(forecastLines);
+
+  const monthEndDate = toDateKey(monthEnd);
+  const lines = items.map((item) => {
+    const key = itemKey(item.itemType, item.itemId);
+    const openingQuantity = monthEndOpeningByItemKey[key] ?? 0;
+    const confirmedStockMovementQuantity = confirmedStockMovementByItemKey[key] ?? 0;
+    const confirmedInboundQuantity = confirmedInboundByItemKey[key] ?? 0;
+    const unconfirmedInboundQuantity = unconfirmedInboundByItemKey[key] ?? 0;
+    const plannedUsageQuantity = usageByItemKey[key] ?? 0;
+    const confirmedProjectedQuantity = round4(openingQuantity + confirmedInboundQuantity - plannedUsageQuantity);
+    const projectedWithUnconfirmedQuantity = round4(confirmedProjectedQuantity + unconfirmedInboundQuantity);
+    const monthEndShortageType = monthEndShortageStatus({
+      confirmedProjectedQuantity,
+      projectedWithUnconfirmedQuantity,
+      safetyStockQuantity: item.safetyStockQuantity,
+    });
+    const monthEndShortageQuantity = round4(Math.max(0, item.safetyStockQuantity - confirmedProjectedQuantity));
+    const shortage = forecastSummaryByItemKey.get(key) ?? {
+      shortageDate: null,
+      shortageQuantity: 0,
+      shortageType: "none" as MaterialShortageType,
+    };
+
+    return {
+      ...item,
+      targetMonth,
+      monthEndDate,
+      openingQuantity: round4(openingQuantity),
+      confirmedStockMovementQuantity: round4(confirmedStockMovementQuantity),
+      confirmedInboundQuantity: round4(confirmedInboundQuantity),
+      unconfirmedInboundQuantity: round4(unconfirmedInboundQuantity),
+      plannedUsageQuantity: round4(plannedUsageQuantity),
+      confirmedProjectedQuantity,
+      projectedWithUnconfirmedQuantity,
+      monthEndShortageQuantity,
+      monthEndShortageType,
+      shortageQuantity: shortage.shortageQuantity,
+      shortageType: shortage.shortageType,
+      shortageDate: shortage.shortageDate,
+    };
+  });
+
+  return {
+    targetMonth,
+    monthStartDate: toDateKey(monthStart),
+    monthEndDate,
+    items,
+    lines,
+  };
+}
+
 export function itemKey(itemType: MaterialItemType, itemId: string) {
   return `${itemType}:${itemId}`;
 }
@@ -311,4 +561,66 @@ function toDateKey(date: Date) {
 
 function round4(n: number) {
   return Math.round(n * 10000) / 10000;
+}
+
+function summarizeForecastLinesByItem(lines: MaterialForecastLine[]) {
+  const summaries = new Map<
+    string,
+    { shortageDate: string | null; shortageQuantity: number; shortageType: MaterialShortageType }
+  >();
+  for (const line of lines) {
+    const key = itemKey(line.itemType, line.itemId);
+    const current =
+      summaries.get(key) ??
+      ({ shortageDate: null, shortageQuantity: 0, shortageType: "none" } satisfies {
+        shortageDate: string | null;
+        shortageQuantity: number;
+        shortageType: MaterialShortageType;
+      });
+    if (line.shortageType !== "none" && (!current.shortageDate || line.date < current.shortageDate)) {
+      current.shortageDate = line.date;
+    }
+    current.shortageQuantity = Math.max(current.shortageQuantity, line.shortageQuantity);
+    if (shortageSeverity(line.shortageType) > shortageSeverity(current.shortageType)) {
+      current.shortageType = line.shortageType;
+    }
+    summaries.set(key, current);
+  }
+  return summaries;
+}
+
+function shortageSeverity(shortageType: MaterialShortageType) {
+  switch (shortageType) {
+    case "hard_shortage":
+      return 3;
+    case "below_safety":
+      return 2;
+    case "unconfirmed_dependency":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function monthRange(targetMonth: string) {
+  const match = /^(\d{4})-(\d{2})$/.exec(targetMonth);
+  if (!match) throw new Error("targetMonth must be YYYY-MM");
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const monthStart = new Date(Date.UTC(year, monthIndex, 1, 0, 0, 0, 0));
+  const monthEnd = new Date(Date.UTC(year, monthIndex + 1, 0, 23, 59, 59, 999));
+  return { monthStart, monthEnd };
+}
+
+function monthEndShortageStatus(input: {
+  confirmedProjectedQuantity: number;
+  projectedWithUnconfirmedQuantity: number;
+  safetyStockQuantity: number;
+}): MaterialShortageType {
+  if (input.confirmedProjectedQuantity >= input.safetyStockQuantity) return "none";
+  if (input.projectedWithUnconfirmedQuantity >= input.safetyStockQuantity) {
+    return "unconfirmed_dependency";
+  }
+  if (input.projectedWithUnconfirmedQuantity < 0) return "hard_shortage";
+  return "below_safety";
 }

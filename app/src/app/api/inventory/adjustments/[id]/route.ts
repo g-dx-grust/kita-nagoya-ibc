@@ -3,6 +3,7 @@ import { badRequest, handleError, notFound, ok } from "@/lib/http";
 import { MANUAL_INVENTORY_SOURCE_TYPE } from "@/lib/inventory-types";
 import { refreshCumulativeMaterialRequirements } from "@/lib/material-forecast";
 import { prisma } from "@/lib/prisma";
+import { enqueueStockAdjustedReplanEvent } from "@/lib/replan-service";
 
 // 手入力した在庫(StockMovement)の取り消し。誤登録の訂正用。
 // 自動生成(生産予定/日報/発注)の行は対象外。削除は監査ログに残す。
@@ -30,7 +31,8 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
         dateTo: horizonEnd,
       });
     }
-    return ok({ ok: true });
+    const replanEvent = await enqueueStockAdjustedReplanEvent({ movement: row, action: "delete" });
+    return ok({ ok: true, replanEventId: replanEvent?.id ?? null, replanJobId: replanEvent?.jobs[0]?.id ?? null });
   } catch (e) {
     return handleError(e);
   }

@@ -8,6 +8,7 @@ import {
 import { resolveManualMovement } from "@/lib/inventory-manual-entry";
 import { refreshCumulativeMaterialRequirements } from "@/lib/material-forecast";
 import { prisma } from "@/lib/prisma";
+import { enqueueStockAdjustedReplanEvent } from "@/lib/replan-service";
 import { InventoryLedgerStatusEnum, ManualInventoryEntrySchema } from "@/lib/schemas";
 import { z } from "zod";
 
@@ -86,7 +87,8 @@ async function createManualEntry(raw: unknown) {
   });
 
   await refreshMaterialForecastIfNeeded(body.itemType, body.effectiveDate);
-  return created(row);
+  const replanEvent = await enqueueStockAdjustedReplanEvent({ movement: row, action: "create" });
+  return created({ ...row, replanEventId: replanEvent?.id ?? null, replanJobId: replanEvent?.jobs[0]?.id ?? null });
 }
 
 async function createLegacyAdjustment(raw: unknown) {
@@ -112,7 +114,8 @@ async function createLegacyAdjustment(raw: unknown) {
     return movement;
   });
   await refreshMaterialForecastIfNeeded(body.itemType, body.effectiveDate);
-  return created(row);
+  const replanEvent = await enqueueStockAdjustedReplanEvent({ movement: row, action: "create" });
+  return created({ ...row, replanEventId: replanEvent?.id ?? null, replanJobId: replanEvent?.jobs[0]?.id ?? null });
 }
 
 // 原料/資材の在庫が動いたら、以降90日の累積所要量(発注候補の基礎)を引き直す。

@@ -54,7 +54,7 @@ type AutoScheduleRequest = {
   desiredEndTime: string;
   baselineEndTime: string;
   persist: boolean;
-  status: "draft" | "confirmed";
+  status: "draft";
   items: {
     productId: string;
     quantity: number;
@@ -476,7 +476,7 @@ export default function AutoScheduleForm({
     );
   }
 
-  function requestBody(persist: boolean, status: "draft" | "confirmed"): AutoScheduleRequest {
+  function requestBody(persist: boolean, status: "draft"): AutoScheduleRequest {
     return {
       date,
       mode,
@@ -541,7 +541,7 @@ export default function AutoScheduleForm({
       body: JSON.stringify({
         ...previewRequest,
         persist: true,
-        status: "confirmed",
+        status: "draft",
         overrides: previewOverrides(),
         selectedTempIds,
       }),
@@ -554,7 +554,7 @@ export default function AutoScheduleForm({
     }
     setResult(json);
     setSelectedTempIds([]);
-    setMessage(`${json.plans?.length ?? 0}件を当日実施として確定しました。`);
+    setMessage(`${json.plans?.length ?? 0}件を仮予定として作成しました。`);
     router.refresh();
   }
 

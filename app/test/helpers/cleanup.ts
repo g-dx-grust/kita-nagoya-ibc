@@ -2,13 +2,18 @@ import type { PrismaClient } from "@prisma/client";
 
 const CLEANUP_ORDER = [
   "auditLog",
+  "replanJob",
+  "replanEvent",
   "productionDailyReportEntry",
   "dailyReportConsumption",
   "dailyReport",
   "invoiceExport",
   "productionPlanAssignment",
   "productionPlanRequirement",
+  "productionPlanCandidate",
   "productionPlan",
+  "productionPlanBatch",
+  "monthlyPlanningRun",
   "productDemand",
   "productMonthlyActual",
   "specialDemandEvent",

@@ -11,13 +11,16 @@ import {
 import { recomputeMonthlyLaborFees } from "./product-monthly-labor-fee";
 import { HttpError } from "./http";
 import {
+  cancelDailyReportActualMovementsForPlans,
   removeProductionDailyReportMovements,
   replaceProductionDailyReportMovements,
   type ProductionDailyReportConsumption,
 } from "./inventory-ledger";
 import { syncMonthlyActualFromProductionDailyReports, yearMonthFromDate } from "./monthly-actual-aggregation";
+import { COMPLETABLE_PRODUCTION_PLAN_STATUSES } from "./plan-status";
 import { loadProductBom } from "./plan-engine";
 import { prisma } from "./prisma";
+import { enqueueDailyReportApprovedReplanEvent } from "./replan-service";
 import { normalizeForSearch } from "./search";
 
 export type ProductDailyReportMaterialInput = {
@@ -273,6 +276,16 @@ export async function approveProductDailyReportEntry(id: string, approvedBy?: st
 
   await audit({ action: "approve", entityType: "ProductionDailyReportEntry", entityId: id, before, after: row });
   await audit({ action: "sync_inventory", entityType: "StockMovement", entityId: id, after: row!.materials });
+  if (row) {
+    await enqueueDailyReportApprovedReplanEvent({
+      entry: {
+        id: row.id,
+        reportDate: row.reportDate,
+        productId: row.productId,
+        productionPlanId: row.productionPlanId,
+      },
+    });
+  }
   await recomputeMonthlyLaborFeesForEntries(row);
   return row;
 }
@@ -641,9 +654,14 @@ async function completeMatchingPlans(
   productionPlanId?: string | null,
 ) {
   if (productionPlanId) {
+    await cancelDailyReportActualMovementsForPlans(tx, [productionPlanId]);
     await tx.productionPlan.updateMany({
-      where: { id: productionPlanId, productId, status: { in: ["draft", "confirmed"] } },
+      where: { id: productionPlanId, productId, status: { in: [...COMPLETABLE_PRODUCTION_PLAN_STATUSES] } },
       data: { status: "completed" },
+    });
+    await tx.productDemand.updateMany({
+      where: { productionPlanId, status: { in: ["open", "tentative"] } },
+      data: { status: "fulfilled" },
     });
     return;
   }
@@ -651,15 +669,29 @@ async function completeMatchingPlans(
   // 生産日(同日)で一致させる。plan.date に時刻成分があっても拾えるよう [日始, 翌日) で絞る。
   const dayEnd = new Date(reportDate);
   dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
-  await tx.productionPlan.updateMany({
+  const matchingPlans = await tx.productionPlan.findMany({
     where: {
       productId,
       ...(workAreaId ? { workAreaId } : {}),
       date: { gte: reportDate, lt: dayEnd },
-      status: { in: ["draft", "confirmed"] },
+      status: { in: [...COMPLETABLE_PRODUCTION_PLAN_STATUSES] },
+    },
+    select: { id: true },
+  });
+  const matchingPlanIds = matchingPlans.map((plan) => plan.id);
+  await cancelDailyReportActualMovementsForPlans(tx, matchingPlanIds);
+  await tx.productionPlan.updateMany({
+    where: {
+      id: { in: matchingPlanIds },
     },
     data: { status: "completed" },
   });
+  if (matchingPlanIds.length > 0) {
+    await tx.productDemand.updateMany({
+      where: { productionPlanId: { in: matchingPlanIds }, status: { in: ["open", "tentative"] } },
+      data: { status: "fulfilled" },
+    });
+  }
 }
 
 function materialChildData(m: ResolvedMaterial) {

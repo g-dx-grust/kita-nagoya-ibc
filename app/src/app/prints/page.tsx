@@ -37,8 +37,8 @@ export default async function PrintsPage({
   const requiredStaffCount = plans.reduce((sum, plan) => sum + plan.plannedPeopleCount, 0);
   const unassignedCount = Math.max(0, requiredStaffCount - assignedCount);
   const workAreaCount = new Set(plans.map((plan) => plan.workAreaId)).size;
-  const draftCount = plans.filter((plan) => plan.status === "draft").length;
-  const isPrintReady = plans.length > 0 && unassignedCount === 0 && draftCount === 0;
+  const unconfirmedPlanCount = plans.filter((plan) => plan.status !== "confirmed").length;
+  const isPrintReady = plans.length > 0 && unassignedCount === 0 && unconfirmedPlanCount === 0;
   const productionPlansHref = kitagoyaPath(`/production-plans?dateFrom=${date}&dateTo=${date}`);
   const allocationHref = kitagoyaPath(`/production-plans/allocate?date=${date}`);
   const productionScheduleHref = kitagoyaPath(`/prints/production-schedule?date=${date}`);
@@ -48,8 +48,8 @@ export default async function PrintsPage({
       ? { label: "生産予定を確認", href: productionPlansHref }
       : unassignedCount > 0
         ? { label: "当日割り当て", href: allocationHref }
-        : draftCount > 0
-          ? { label: "仮予定を確認", href: productionPlansHref }
+        : unconfirmedPlanCount > 0
+          ? { label: "未確定予定を確認", href: productionPlansHref }
           : { label: "作業日報を開く", href: productionScheduleHref };
   const printFlowCards = [
     {
@@ -63,9 +63,9 @@ export default async function PrintsPage({
     {
       label: "生産予定",
       count: plans.length,
-      detail: draftCount > 0 ? `仮 ${draftCount}件` : `${workAreaCount}室`,
+      detail: unconfirmedPlanCount > 0 ? `未確定 ${unconfirmedPlanCount}件` : `${workAreaCount}室`,
       href: productionPlansHref,
-      tone: plans.length === 0 || draftCount > 0 ? "warn" : "success",
+      tone: plans.length === 0 || unconfirmedPlanCount > 0 ? "warn" : "success",
       Icon: ClipboardList,
     },
     {
@@ -195,14 +195,18 @@ export default async function PrintsPage({
               ? "生産予定なし"
               : unassignedCount > 0
                 ? `未配置 ${unassignedCount} 人`
-                : draftCount > 0
-                  ? `仮予定 ${draftCount} 件`
+                : unconfirmedPlanCount > 0
+                  ? `未確定予定 ${unconfirmedPlanCount} 件`
                   : "配置確認済み"}
           </strong>
         </div>
         <Link className="button-link secondary-link gap-2" href={allocationHref}>
           <Users className="h-4 w-4" />
           当日割り当て
+        </Link>
+        <Link className="button-link secondary-link gap-2" href={kitagoyaPath(`/planning/monthly?ym=${date.slice(0, 7)}#replan`)}>
+          <ClipboardList className="h-4 w-4" />
+          翌日以降の在庫予定を再編成
         </Link>
       </div>
 

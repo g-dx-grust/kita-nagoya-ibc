@@ -1,4 +1,5 @@
 import DayAllocationClient from "./day-allocation-client";
+import { PLANNED_PRODUCTION_PLAN_STATUSES } from "@/lib/plan-status";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ export default async function AllocateDayPage({
       by: ["status"],
       where: {
         date: { gte: dayStart, lt: dayEnd },
-        status: { in: ["draft", "confirmed"] },
+        status: { in: [...PLANNED_PRODUCTION_PLAN_STATUSES] },
       },
       _count: { _all: true },
     }),
@@ -30,13 +31,14 @@ export default async function AllocateDayPage({
     prisma.employee.count({ where: { active: true } }),
   ]);
   const draftPlanCount = planCounts.find((row) => row.status === "draft")?._count._all ?? 0;
+  const tentativeConfirmedPlanCount = planCounts.find((row) => row.status === "tentative_confirmed")?._count._all ?? 0;
   const confirmedPlanCount = planCounts.find((row) => row.status === "confirmed")?._count._all ?? 0;
   return (
     <DayAllocationClient
       initialDate={initialDate}
       initialReadiness={{
-        planCount: draftPlanCount + confirmedPlanCount,
-        draftPlanCount,
+        planCount: draftPlanCount + tentativeConfirmedPlanCount + confirmedPlanCount,
+        draftPlanCount: draftPlanCount + tentativeConfirmedPlanCount,
         confirmedPlanCount,
         shiftCount,
         activeEmployeeCount,

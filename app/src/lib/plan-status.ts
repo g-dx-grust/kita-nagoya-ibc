@@ -1,0 +1,15 @@
+export const PLAN_STATUS = {
+  DRAFT: "draft",
+  TENTATIVE_CONFIRMED: "tentative_confirmed",
+  CONFIRMED: "confirmed",
+  CANCELLED: "cancelled",
+  COMPLETED: "completed",
+} as const;
+
+export const PLANNED_PRODUCTION_PLAN_STATUSES = [
+  PLAN_STATUS.DRAFT,
+  PLAN_STATUS.TENTATIVE_CONFIRMED,
+  PLAN_STATUS.CONFIRMED,
+] as const;
+
+export const COMPLETABLE_PRODUCTION_PLAN_STATUSES = PLANNED_PRODUCTION_PLAN_STATUSES;

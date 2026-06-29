@@ -11,6 +11,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import MonthlyScheduleActions from "./monthly-schedule-actions";
 import { planStatusClass, planStatusLabel } from "@/lib/labels";
+import { PLANNED_PRODUCTION_PLAN_STATUSES } from "@/lib/plan-status";
 import { kitagoyaPath } from "@/lib/paths";
 import { formatCases } from "@/lib/units";
 import type { MonthlyVarianceRow } from "@/lib/monthly-reconciliation";
@@ -89,7 +90,7 @@ export default async function MonthlyProductionPlansPage({
     summaries: preview.productSummaries,
     demands: sheetDemands,
     existingPlans: existingPlans
-      .filter((plan) => plan.status === "draft" || plan.status === "confirmed")
+      .filter((plan) => PLANNED_PRODUCTION_PLAN_STATUSES.includes(plan.status as typeof PLANNED_PRODUCTION_PLAN_STATUSES[number]))
       .map((plan) => ({
         productId: plan.productId,
         date: plan.date.toISOString().slice(0, 10),
@@ -162,10 +163,17 @@ export default async function MonthlyProductionPlansPage({
         <div className="page-title-actions">
           <Link
             className="button-link"
+            href={kitagoyaPath(`/planning/monthly?ym=${dateFrom.slice(0, 7)}`)}
+          >
+            <ListChecks size={16} aria-hidden="true" />
+            月次計画ハブ
+          </Link>
+          <Link
+            className="button-link secondary-link"
             href={kitagoyaPath(`/production-plans/monthly/confirm?dateFrom=${dateFrom}&dateTo=${dateTo}`)}
           >
             <ClipboardCheck size={16} aria-hidden="true" />
-            本決定へ
+            仮確定へ
           </Link>
           <Link className="button-link secondary-link" href={kitagoyaPath("/product-planning")}>
             製品計画へ

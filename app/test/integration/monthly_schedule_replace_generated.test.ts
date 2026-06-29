@@ -22,7 +22,7 @@ describe("月間シフト連動の自動生成draft置換", () => {
     await disconnectTestPrisma();
   });
 
-  it("replaceGeneratedDraftsOnly=true では手入力draftを残し、自動生成draftだけ削除する", async () => {
+  it("replaceGeneratedDraftsOnly=true では生成時に削除せず、採用時に自動生成draftだけ置換する", async () => {
     const workArea = await createTestWorkArea(prisma);
     const product = await createTestProduct(prisma, { defaultWorkAreaId: workArea.id });
     const generated = await createTestProductionPlan(prisma, {
@@ -58,8 +58,26 @@ describe("月間シフト連動の自動生成draft置換", () => {
 
     const json = await response.json();
     expect(response.status).toBe(201);
+    expect(json.runId).toBeTruthy();
+    expect(json.candidateCount).toBe(0);
     expect(json.createdCount).toBe(0);
-    expect(json.replacedDraftCount).toBe(1);
+    expect(json.replacedDraftCount).toBe(0);
+    await expect(prisma.productionPlan.findUnique({ where: { id: generated.id } })).resolves.toBeTruthy();
+    await expect(prisma.productionPlan.findUnique({ where: { id: manual.id } })).resolves.toBeTruthy();
+
+    const { POST: ADOPT } = await import("@/app/api/planning/monthly-runs/[id]/adopt/route");
+    const adoptResponse = await ADOPT(
+      new Request("http://test.local/api/planning/monthly-runs/run/adopt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: json.runId }) },
+    );
+    const adoptJson = await adoptResponse.json();
+    expect(adoptResponse.status).toBe(200);
+    expect(adoptJson.createdCount).toBe(0);
+    expect(adoptJson.replacedPlanCount).toBe(1);
     await expect(prisma.productionPlan.findUnique({ where: { id: generated.id } })).resolves.toBeNull();
     await expect(prisma.productionPlan.findUnique({ where: { id: manual.id } })).resolves.toBeTruthy();
   });
@@ -127,13 +145,50 @@ describe("月間シフト連動の自動生成draft置換", () => {
 
     const json = await response.json();
     expect(response.status).toBe(201);
-    expect(json.createdCount).toBe(1);
-    expect(json.plans[0]).toMatchObject({
+    expect(json.runId).toBeTruthy();
+    expect(json.createdCount).toBe(0);
+    expect(json.candidateCount).toBe(1);
+    expect(json.candidates[0]).toMatchObject({
       date: "2026-06-23",
       productCode: "MONTHLY-ORDER-001",
       quantity: 100,
       assignedCount: 1,
+      demandType: "order",
     });
+
+    await expect(
+      prisma.productionPlan.findFirst({
+        where: { productId: product.id, date: new Date("2026-06-23T00:00:00.000Z") },
+      }),
+    ).resolves.toBeNull();
+
+    const { GET: GET_RUN } = await import("@/app/api/planning/monthly-runs/[id]/route");
+    const previewResponse = await GET_RUN(
+      new Request(`http://test.local/api/planning/monthly-runs/${json.runId}`),
+      { params: Promise.resolve({ id: json.runId }) },
+    );
+    const previewJson = await previewResponse.json();
+    expect(previewResponse.status).toBe(200);
+    expect(previewJson.candidateCount).toBe(1);
+    expect(previewJson.diffSummary).toMatchObject({ add: 1 });
+    expect(previewJson.calendarEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "candidate", date: "2026-06-23" }),
+      ]),
+    );
+
+    const { POST: ADOPT } = await import("@/app/api/planning/monthly-runs/[id]/adopt/route");
+    const adoptResponse = await ADOPT(
+      new Request("http://test.local/api/planning/monthly-runs/run/adopt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: json.runId }) },
+    );
+    const adoptJson = await adoptResponse.json();
+    expect(adoptResponse.status).toBe(200);
+    expect(adoptJson.createdCount).toBe(1);
 
     const plan = await prisma.productionPlan.findFirst({
       where: { productId: product.id, date: new Date("2026-06-23T00:00:00.000Z") },
@@ -143,8 +198,13 @@ describe("月間シフト連動の自動生成draft置換", () => {
     expect(plan!.status).toBe("draft");
     expect(plan!.productionType).toBe("make_to_order");
     expect(plan!.plannedQuantity).toBe(100);
+    expect(plan!.planningRunId).toBe(json.runId);
+    expect(plan!.planningBatchId).toBe(adoptJson.batchId);
     expect(plan!.note).toContain(MONTHLY_SHIFT_GENERATED_NOTE_PREFIX);
     expect(plan!.note).toContain("受注/出荷予定 100袋");
     expect(plan!.assignments).toHaveLength(1);
+
+    const run = await prisma.monthlyPlanningRun.findUnique({ where: { id: json.runId } });
+    expect(run).toMatchObject({ status: "adopted" });
   });
 });

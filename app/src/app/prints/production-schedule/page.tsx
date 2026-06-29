@@ -39,7 +39,7 @@ export default async function ProductionSchedulePrintPage({
   const assignedCount = plans.reduce((sum, plan) => sum + plan.assignments.length, 0);
   const requiredStaffCount = plans.reduce((sum, plan) => sum + plan.plannedPeopleCount, 0);
   const unassignedCount = Math.max(0, requiredStaffCount - assignedCount);
-  const warningCount = plans.filter((plan) => plan.status === "draft" || warningList(plan).length > 0).length;
+  const warningCount = plans.filter((plan) => plan.status !== "confirmed" || warningList(plan).length > 0).length;
   const isReady = plans.length > 0 && unassignedCount === 0 && warningCount === 0;
 
   return (
@@ -153,7 +153,7 @@ export default async function ProductionSchedulePrintPage({
                 </thead>
                 <tbody>
                   {areaPlans.map((plan) => (
-                    <tr key={plan.id} className={plan.status === "draft" || warningList(plan).length > 0 ? "print-row-warn" : undefined}>
+                    <tr key={plan.id} className={plan.status !== "confirmed" || warningList(plan).length > 0 ? "print-row-warn" : undefined}>
                       <td className="center">
                         {plan.plannedStartTime}～{plan.plannedEndTime ?? plan.desiredEndTime ?? "　"}
                       </td>

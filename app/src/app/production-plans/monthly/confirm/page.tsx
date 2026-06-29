@@ -5,6 +5,8 @@ import MonthlyPlanDecisionClient from "./monthly-plan-decision-client";
 import { autoScheduleRoleRank } from "@/lib/auto-schedule-policy";
 import { computeDemandPlanCoverage } from "@/lib/monthly-production-decision";
 import { kitagoyaPath } from "@/lib/paths";
+import { PLANNED_PRODUCTION_PLAN_STATUSES } from "@/lib/plan-status";
+import { evaluatePlanBacking } from "@/lib/plan-backing";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +25,7 @@ export default async function MonthlyProductionConfirmPage({
     prisma.productionPlan.findMany({
       where: {
         date: { gte: new Date(dateFrom), lte: new Date(dateTo) },
-        status: { in: ["draft", "confirmed"] },
+        status: { in: [...PLANNED_PRODUCTION_PLAN_STATUSES] },
       },
       include: {
         product: {
@@ -80,7 +82,10 @@ export default async function MonthlyProductionConfirmPage({
     })),
   });
   const coverageByDemandId = new Map(coverageRows.map((row) => [row.id, row]));
+  const backingResults = await evaluatePlanBacking(plans.map((plan) => plan.id));
+  const backingByPlanId = new Map(backingResults.map((result) => [result.planId, result]));
   const draftCount = plans.filter((plan) => plan.status === "draft").length;
+  const tentativeConfirmedCount = plans.filter((plan) => plan.status === "tentative_confirmed").length;
   const confirmedCount = plans.filter((plan) => plan.status === "confirmed").length;
   const stockDraftCount = plans.filter((plan) => plan.status === "draft" && plan.productionType === "stock").length;
   const orderDraftCount = plans.filter((plan) => plan.status === "draft" && plan.productionType !== "stock").length;
@@ -89,7 +94,7 @@ export default async function MonthlyProductionConfirmPage({
   return (
     <>
       <div className="page-title-row">
-        <h1>月間生産予定の本決定</h1>
+        <h1>月間生産予定の仮確定</h1>
         <div className="page-title-actions">
           <Link className="button-link secondary-link" href={kitagoyaPath(`/production-plans/monthly?dateFrom=${dateFrom}&dateTo=${dateTo}`)}>
             <CalendarDays size={16} aria-hidden="true" />
@@ -101,14 +106,14 @@ export default async function MonthlyProductionConfirmPage({
           </Link>
           <Link className="button-link secondary-link" href={kitagoyaPath(`/production-plans?dateFrom=${dateFrom}&dateTo=${dateTo}&status=draft`)}>
             <ClipboardList size={16} aria-hidden="true" />
-            下書き一覧
+            仮予定一覧
           </Link>
         </div>
       </div>
 
       <CollapsiblePanel
         title="表示・再計算条件"
-        summary={`${dateFrom} 〜 ${dateTo} / 下書き ${draftCount} / 未予定受注 ${uncoveredDemandCount}`}
+        summary={`${dateFrom} 〜 ${dateTo} / 仮予定 ${draftCount} / 未予定受注 ${uncoveredDemandCount}`}
         className="monthly-decision-period-accordion"
       >
         <form className="toolbar compact-controls monthly-decision-period-form" method="GET">
@@ -148,8 +153,15 @@ export default async function MonthlyProductionConfirmPage({
           plannedEndTime: plan.plannedEndTime,
           plannedPeopleCount: plan.plannedPeopleCount,
           status: plan.status,
+          requirementCount: plan.requirements.length,
           hardShortage: plan.requirements.some((requirement) => requirement.shortageType === "hard_shortage"),
           unconfirmedDependency: plan.requirements.some((requirement) => requirement.shortageType === "unconfirmed_dependency"),
+          belowSafety: plan.requirements.some((requirement) => requirement.shortageType === "below_safety"),
+          canTentativeConfirm: backingByPlanId.get(plan.id)?.canTentativeConfirm ?? false,
+          canConfirm: backingByPlanId.get(plan.id)?.canConfirm ?? false,
+          backingPurchaseOrderIds: backingByPlanId.get(plan.id)?.backingPurchaseOrderIds ?? [],
+          blockingRequirementReasons:
+            backingByPlanId.get(plan.id)?.blockingRequirements.map((requirement) => requirement.reason) ?? [],
           note: plan.note,
         }))}
         demands={demands.map((demand) => {
@@ -181,6 +193,7 @@ export default async function MonthlyProductionConfirmPage({
         })}
         summary={{
           draftCount,
+          tentativeConfirmedCount,
           confirmedCount,
           stockDraftCount,
           orderDraftCount,

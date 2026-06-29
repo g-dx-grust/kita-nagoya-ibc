@@ -112,6 +112,15 @@ export async function confirmDailyReport(
   if (plan.status === "cancelled") {
     throw new HttpError(400, "plan_cancelled", "中止済みの生産予定の日報は確定できません。");
   }
+  const reflectedProductDailyReport = await prisma.productionDailyReportEntry.findFirst({
+    where: {
+      productionPlanId: plan.id,
+      active: true,
+      approvalStatus: "approved",
+      inventoryReflected: true,
+    },
+    select: { id: true },
+  });
 
   // 確定日の手間賃単価をスナップショットし、実績数量×単価で実績原価を再計算する。
   const billingUnitPrice = await getCurrentBillingUnitPrice(plan.productId, plan.date);
@@ -134,7 +143,9 @@ export async function confirmDailyReport(
         actualTotalCost: actualCost.actualTotalCost,
       },
     });
-    await replaceDailyReportActualMovements(tx, updated, plan);
+    if (!reflectedProductDailyReport) {
+      await replaceDailyReportActualMovements(tx, updated, plan);
+    }
     await tx.productionPlan.update({ where: { id: plan.id }, data: { status: "completed" } });
     return updated;
   });

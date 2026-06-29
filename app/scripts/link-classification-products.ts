@@ -520,6 +520,7 @@ class PackagingResolver {
         safetyStockQuantity: 0,
         orderLotQty: null,
         minOrderQty: null,
+        orderProcessingBufferDays: null,
         active: true,
         validFrom: null,
         validTo: null,

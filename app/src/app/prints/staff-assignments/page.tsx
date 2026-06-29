@@ -34,7 +34,8 @@ export default async function StaffAssignmentsPrintPage({
   const assignedCount = plans.reduce((sum, plan) => sum + plan.assignments.length, 0);
   const unassignedCount = Math.max(0, requiredStaffCount - assignedCount);
   const unassignedEmployeeCount = employeeRows.filter((row) => row.assignmentTime === "未配置").length;
-  const isReady = plans.length > 0 && unassignedCount === 0;
+  const unconfirmedPlanCount = plans.filter((plan) => plan.status !== "confirmed").length;
+  const isReady = plans.length > 0 && unassignedCount === 0 && unconfirmedPlanCount === 0;
 
   // 部屋別タイムライン（印刷用ガント）の窓・色
   const startsEnds = plans.flatMap((p) => [hm(p.plannedStartTime), hm(p.plannedEndTime ?? p.desiredEndTime ?? "17:00")]);
@@ -69,6 +70,7 @@ export default async function StaffAssignmentsPrintPage({
         <div className="print-readiness-checks">
           <span className="badge info">部屋 {byWorkArea.length}</span>
           <span className="badge info">予定 {plans.length}</span>
+          <span className={unconfirmedPlanCount > 0 ? "badge warn" : "badge success"}>未確定 {unconfirmedPlanCount}</span>
           <span className={unassignedCount > 0 ? "badge warn" : "badge success"}>未配置 {unassignedCount}</span>
           <span className={unassignedEmployeeCount > 0 ? "badge warn" : "badge success"}>
             未割当スタッフ {unassignedEmployeeCount}
